@@ -1,0 +1,10 @@
+[package]
+name = "gameboy-emulator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hound = "3.0"
+macroquad = { version = "0.4", features = ["audio"] }
+spin_sleep = "1.0"
+rfd = "0.17"
