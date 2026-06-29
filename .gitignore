@@ -1,4 +1,5 @@
 /target
 # IMPORTANT: NEVER upload Nintendo's copyrighted games
 /roms
+*.gb
 Cargo.lock
