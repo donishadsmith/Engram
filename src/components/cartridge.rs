@@ -1,4 +1,6 @@
 /*
+    https://tonisagrista.com/blog/2026/playkid/
+
     https://gbdev.io/pandocs/The_Cartridge_Header.html
     0147 — Cartridge type, indicates the memory bank controller based on some 8 bit value
 
@@ -6,8 +8,10 @@
     Gameboy can only see 64 KB but some Roms can be up to 1 MB, bank switching required
 */
 
+use std::path::PathBuf;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum MBC {
+pub enum MBCType {
     RomOnly,
     MBC1,
     MBC2,
@@ -16,60 +20,60 @@ pub enum MBC {
     Unknown(u8),
 }
 
-impl MBC {
+impl MBCType {
     fn byte_to_id(rom: &[u8]) -> Self {
         match rom[0x0147] {
-            0x00 | 0x08 | 0x09 => MBC::RomOnly,
-            0x01..=0x03 => MBC::MBC1,
-            0x05 | 0x06 => MBC::MBC2,
-            0x0F..=0x13 => MBC::MBC3,
-            0x19..=0x1E => MBC::MBC5,
+            0x00 | 0x08 | 0x09 => MBCType::RomOnly,
+            0x01..=0x03 => MBCType::MBC1,
+            0x05 | 0x06 => MBCType::MBC2,
+            0x0F..=0x13 => MBCType::MBC3,
+            0x19..=0x1E => MBCType::MBC5,
             /*
                 For now we will stick with these and maybe
                 implement others such as HuC3 later, a lot of
                 banks are chinese or japan exclusives or custom banks
             */
-            other => MBC::Unknown(other),
+            other => MBCType::Unknown(other),
         }
     }
 
     pub fn to_str(&self) -> &str {
         match self {
-            MBC::RomOnly => "RomOnly",
-            MBC::MBC1 => "MBC1",
-            MBC::MBC2 => "MBC2",
-            MBC::MBC3 => "MBC3",
-            MBC::MBC5 => "MBC5",
-            MBC::Unknown(_) => "Unknown",
+            MBCType::RomOnly => "RomOnly",
+            MBCType::MBC1 => "MBC1",
+            MBCType::MBC2 => "MBC2",
+            MBCType::MBC3 => "MBC3",
+            MBCType::MBC5 => "MBC5",
+            MBCType::Unknown(_) => "Unknown",
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CGBFlag {
-    Color,
-    Monochrome,
+    CBG,
+    DMG,
 }
 
 impl CGBFlag {
     fn byte_to_id(rom: &[u8]) -> Self {
         match rom[0x0143] {
-            0x80 | 0xC0 => CGBFlag::Color,
-            _ => CGBFlag::Monochrome,
+            0x80 | 0xC0 => CGBFlag::CBG,
+            _ => CGBFlag::DMG,
         }
     }
 
     pub fn to_str(&self) -> &str {
         match self {
-            CGBFlag::Color => "Color",
-            CGBFlag::Monochrome => "Monochrome",
+            CGBFlag::CBG => "Color",
+            CGBFlag::DMG => "Monochrome",
         }
     }
 }
 
 pub struct Header {
     pub title: String,
-    pub mbc_type: MBC,
+    pub mbc_type: MBCType,
     pub rom_size: usize,
     pub ram_size: usize,
     pub cbc_flag: CGBFlag,
@@ -133,8 +137,8 @@ impl Header {
         checksum
     }
 
-    fn mbc(rom: &[u8]) -> MBC {
-        MBC::byte_to_id(rom)
+    fn mbc(rom: &[u8]) -> MBCType {
+        MBCType::byte_to_id(rom)
     }
 
     fn mode(rom: &[u8]) -> CGBFlag {
@@ -164,7 +168,7 @@ impl Header {
 
     // 0148 — ROM size: 32 KiB * (1 << <value>)
     fn rom_size(rom: &[u8]) -> usize {
-        32 * 1024 * (1 << rom[0x0148] as usize)
+        32 * 1024 * (1usize << rom[0x0148] as usize)
     }
 
     // 0148 — RAM size: 32 KiB * (1 << <value>)
@@ -181,10 +185,10 @@ impl Header {
     fn fake() -> Self {
         Self {
             title: String::from("Test"),
-            mbc_type: MBC::MBC3,
+            mbc_type: MBCType::MBC3,
             rom_size: 0,
             ram_size: 0,
-            cbc_flag: CGBFlag::Monochrome,
+            cbc_flag: CGBFlag::DMG,
             has_battery: false,
             has_rumble: false,
             has_timer: false,
@@ -196,6 +200,8 @@ impl Header {
 pub struct Cartridge {
     pub rom: Vec<u8>,
     pub header: Header,
+    pub sram: Vec<u8>,
+    pub sav_path: PathBuf,
 }
 
 impl Cartridge {
@@ -206,7 +212,7 @@ impl Cartridge {
             return Err(Self::error_message(file_error_msg));
         };
 
-        let rom = std::fs::read(rom_path)?;
+        let rom = std::fs::read(&rom_path)?;
         if rom.len() < 0x150 {
             return Err(Self::error_message(
                 "File too small to be a valid ROM".to_string(),
@@ -214,18 +220,48 @@ impl Cartridge {
         }
 
         let header = Header::new(&rom);
-        Ok(Self { rom, header })
+        let mut sram = vec![0; header.ram_size];
+        let sav_path = rom_path.with_extension("sav");
+        sram = Self::read_sav(sram, &sav_path)?;
+
+        Ok(Self {
+            rom,
+            header,
+            sram,
+            sav_path,
+        })
     }
 
     pub fn error_message(message: String) -> std::io::Error {
         std::io::Error::new(std::io::ErrorKind::InvalidData, message)
     }
 
-    // Literally for testing purposes
+    pub fn read_sav(mut sram: Vec<u8>, sav_path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
+        if sram.is_empty() || !sav_path.exists() {
+            return Ok(sram);
+        }
+
+        let sav_buffer = std::fs::read(sav_path)?;
+        sram.copy_from_slice(&sav_buffer);
+
+        Ok(sram)
+    }
+
+    pub fn write_sav(&self) -> Result<(), std::io::Error> {
+        if self.header.has_battery && !self.sram.is_empty() {
+            std::fs::write(&self.sav_path, &self.sram)?;
+        }
+
+        Ok(())
+    }
+
+    // Just for testing purposes
     pub fn fake() -> Self {
         Self {
             rom: Vec::new(),
             header: Header::fake(),
+            sram: Vec::new(),
+            sav_path: PathBuf::new(),
         }
     }
 }

@@ -390,7 +390,7 @@ pub struct Registers {
 impl Registers {
     pub fn new(cartridge: Cartridge) -> Self {
         match cartridge.header.cbc_flag {
-            CGBFlag::Monochrome => Self {
+            CGBFlag::DMG => Self {
                 a: 0x01,
                 f: StatusFlag::boot(cartridge.header.checksum),
                 b: 0x00,
@@ -404,7 +404,7 @@ impl Registers {
                 instruction_register: None,
             },
 
-            CGBFlag::Color => Self {
+            CGBFlag::CBG => Self {
                 a: 0x11,
                 f: StatusFlag::Z.u8(),
                 b: 0x00,
@@ -502,7 +502,7 @@ impl CPU {
 
     pub fn cycle(&mut self) {
         self.fetch();
-        self.execute();
+        self.decode_and_execute();
     }
 
     fn fetch(&mut self) {
@@ -512,9 +512,7 @@ impl CPU {
         //self.registers.program_counter.increment(1);
     }
 
-    fn execute(&mut self) {
-
-    }
+    fn decode_and_execute(&mut self) {}
 }
 
 #[cfg(test)]

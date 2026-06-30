@@ -25,6 +25,8 @@ fn main() -> Result<(), std::io::Error> {
         println!("Has Battery: {}", cartridge.header.has_battery);
         println!("Has Timer: {}", cartridge.header.has_timer);
         println!("Has Rumble: {}\n", cartridge.header.has_rumble);
+        println!("RAM length: {}\n", cartridge.header.ram_size);
+        println!("RAM length: {}\n", cartridge.sram.len());
     }
 
     Ok(())
