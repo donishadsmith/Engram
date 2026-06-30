@@ -1,1 +1,3 @@
 // https://github.com/Ashiepaws/GBEDG/blob/master/ppu/index.md
+
+pub struct PPU {}

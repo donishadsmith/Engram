@@ -11,7 +11,7 @@ pub enum EmulatorState {
 pub fn file_dialog() -> Option<PathBuf> {
     FileDialog::new()
         .set_title("Select a GameBoy ROM file")
-        .add_filter("GameBoy Roms", &["gb"])
+        .add_filter("GameBoy Roms", &["gb", "gbc"])
         .pick_file()
 }
 
