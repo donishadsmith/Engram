@@ -16,15 +16,15 @@ fn main() -> Result<(), std::io::Error> {
         let filename = Some(std::path::PathBuf::from(rom_name));
         let cartridge = gameboy_emulator::components::cartridge::Cartridge::load(filename)?;
 
-        println!("------------------\n{}", cartridge.title);
-        println!("{}", cartridge.mbc_type.to_str());
-        println!("{}", cartridge.cbc_flag.to_str());
+        println!("------------------\n{}", cartridge.header.title);
+        println!("{}", cartridge.header.mbc_type.to_str());
+        println!("{}", cartridge.header.cbc_flag.to_str());
         println!("{:0x?}", cartridge.rom[0x143]);
         println!("Cartridge Type: {}", cartridge.rom[0x147]);
-        println!("Checksum: {}", cartridge.checksum);
-        println!("Has Battery: {}", cartridge.has_battery);
-        println!("Has Timer: {}", cartridge.has_timer);
-        println!("Has Rumble: {}\n", cartridge.has_rumble);
+        println!("Checksum: {}", cartridge.header.checksum);
+        println!("Has Battery: {}", cartridge.header.has_battery);
+        println!("Has Timer: {}", cartridge.header.has_timer);
+        println!("Has Rumble: {}\n", cartridge.header.has_rumble);
     }
 
     Ok(())

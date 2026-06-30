@@ -67,8 +67,7 @@ impl CGBFlag {
     }
 }
 
-pub struct Cartridge {
-    pub rom: Vec<u8>,
+pub struct Header {
     pub title: String,
     pub mbc_type: MBC,
     pub rom_size: usize,
@@ -80,21 +79,8 @@ pub struct Cartridge {
     pub checksum: u8,
 }
 
-impl Cartridge {
-    pub fn load(filename: Option<std::path::PathBuf>) -> Result<Self, std::io::Error> {
-        let Some(rom_path) = filename else {
-            let file_error_msg = "Issue occured with file selection".to_string();
-
-            return Err(Self::error_message(file_error_msg));
-        };
-
-        let rom = std::fs::read(rom_path)?;
-        if rom.len() < 0x150 {
-            return Err(Self::error_message(
-                "File too small to be a valid ROM".to_string(),
-            ));
-        }
-
+impl Header {
+    fn new(rom: &[u8]) -> Self {
         let mbc_type = Self::mbc(&rom);
         let title = Self::title(&rom);
         let rom_size = Self::rom_size(&rom);
@@ -105,8 +91,7 @@ impl Cartridge {
         let has_timer = Self::has_timer(&rom);
         let checksum = Self::checksum(&rom);
 
-        Ok(Self {
-            rom,
+        Self {
             mbc_type,
             title,
             rom_size,
@@ -116,11 +101,7 @@ impl Cartridge {
             has_rumble,
             has_timer,
             checksum,
-        })
-    }
-
-    pub fn error_message(message: String) -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, message)
+        }
     }
 
     /*
@@ -194,6 +175,57 @@ impl Cartridge {
             0x04 => 128 * 1024, // 16 banks of 8 KiB each
             0x05 => 64 * 1024,  // 8 banks of 8 KiB each
             _ => 0,
+        }
+    }
+
+    fn fake() -> Self {
+        Self {
+            title: String::from("Test"),
+            mbc_type: MBC::MBC3,
+            rom_size: 0,
+            ram_size: 0,
+            cbc_flag: CGBFlag::Monochrome,
+            has_battery: false,
+            has_rumble: false,
+            has_timer: false,
+            checksum: 0,
+        }
+    }
+}
+
+pub struct Cartridge {
+    pub rom: Vec<u8>,
+    pub header: Header,
+}
+
+impl Cartridge {
+    pub fn load(filename: Option<std::path::PathBuf>) -> Result<Self, std::io::Error> {
+        let Some(rom_path) = filename else {
+            let file_error_msg = "Issue occured with file selection".to_string();
+
+            return Err(Self::error_message(file_error_msg));
+        };
+
+        let rom = std::fs::read(rom_path)?;
+        if rom.len() < 0x150 {
+            return Err(Self::error_message(
+                "File too small to be a valid ROM".to_string(),
+            ));
+        }
+
+        let header = Header::new(&rom);
+        Ok(Self { rom, header })
+    }
+
+    pub fn error_message(message: String) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, message)
+    }
+
+    // Literally for testing purposes
+    pub fn fake() -> Self {
+        Self {
+            rom: Vec::new(),
+            header: Header::fake(),
         }
     }
 }

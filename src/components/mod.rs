@@ -1,5 +1,5 @@
+pub mod apu;
 pub mod banks;
-pub mod bootloader;
 pub mod bus;
 pub mod cartridge;
 pub mod cpu;
