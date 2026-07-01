@@ -76,7 +76,7 @@ pub struct Header {
     pub mbc_type: MBCType,
     pub rom_size: usize,
     pub ram_size: usize,
-    pub cbc_flag: CGBFlag,
+    pub cgb_flag: CGBFlag,
     pub has_battery: bool,
     pub has_rumble: bool,
     pub has_timer: bool,
@@ -89,7 +89,7 @@ impl Header {
         let title = Self::title(&rom);
         let rom_size = Self::rom_size(&rom);
         let ram_size = Self::ram_size(&rom);
-        let cbc_flag = Self::mode(&rom);
+        let cgb_flag = Self::mode(&rom);
         let has_battery = Self::has_battery(&rom);
         let has_rumble = Self::has_rumble(&rom);
         let has_timer = Self::has_timer(&rom);
@@ -100,7 +100,7 @@ impl Header {
             title,
             rom_size,
             ram_size,
-            cbc_flag,
+            cgb_flag,
             has_battery,
             has_rumble,
             has_timer,
@@ -188,7 +188,7 @@ impl Header {
             mbc_type: MBCType::MBC3,
             rom_size: 0,
             ram_size: 0,
-            cbc_flag: CGBFlag::DMG,
+            cgb_flag: CGBFlag::DMG,
             has_battery: false,
             has_rumble: false,
             has_timer: false,

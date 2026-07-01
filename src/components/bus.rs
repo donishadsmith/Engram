@@ -1,12 +1,14 @@
-use crate::components::ram::RAM;
+use crate::components::{cartridge::Cartridge, memory::Memory};
 
 pub struct Bus {
-    //pub ram: RAM,
+    pub memory: Memory,
 }
 
 impl Bus {
-    pub fn start() -> Self {
-        Self {}
+    pub fn new(cartridge: Cartridge) -> Self {
+        Self {
+            memory: Memory::new(cartridge),
+        }
     }
 
     pub fn read(&self, address: usize) {

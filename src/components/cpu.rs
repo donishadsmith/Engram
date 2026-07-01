@@ -388,8 +388,8 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new(cartridge: Cartridge) -> Self {
-        match cartridge.header.cbc_flag {
+    pub fn new(cartridge: &Cartridge) -> Self {
+        match cartridge.header.cgb_flag {
             CGBFlag::DMG => Self {
                 a: 0x01,
                 f: StatusFlag::boot(cartridge.header.checksum),
@@ -475,8 +475,8 @@ pub struct CPU {
 impl CPU {
     pub fn start(cartridge: Cartridge) -> Self {
         Self {
-            registers: Registers::new(cartridge),
-            bus: Bus::start(),
+            registers: Registers::new(&cartridge),
+            bus: Bus::new(cartridge),
         }
     }
 
