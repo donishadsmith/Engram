@@ -580,7 +580,7 @@ mod tests {
         // Test flag setting
         let monochrome_cartridge = Cartridge::fake();
         // Default checksum is 0, so f register is set to 0x10000000
-        let mut register = Registers::new(monochrome_cartridge);
+        let mut register = Registers::new(&monochrome_cartridge);
 
         let a: u8 = 255;
         let b: Option<u8> = Some(2);
