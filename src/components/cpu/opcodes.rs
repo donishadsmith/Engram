@@ -1,6 +1,6 @@
 use crate::components::cpu::core::{
-    AddressBus, ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, MergeByteOps,
-    Register8Bits, Register16Bits, StatusFlag,
+    AddressBus, ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType,
+    MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add, half_carry_sub,
 };
 
 impl<A> CPU<A>
@@ -30,26 +30,76 @@ where
                     _ => self.registers.set_16bit(Register16Bits::SP, value),
                 }
             }
-            0x02 => {
-                let address = self.registers.get_16bit(Register16Bits::BC);
-                self.bus.write(address, self.registers.a);
+            0x02 | 0x12 | 0x22 | 0x32 | 0x0A | 0x1A | 0x2A | 0x3A => {
+                let (_, _, _, p, q) = self.decoder(opcode);
+
+                let address = match p {
+                    0 => self.registers.get_16bit(Register16Bits::BC),
+                    1 => self.registers.get_16bit(Register16Bits::DE),
+                    _ => self.registers.get_16bit(Register16Bits::HL),
+                };
+
+                if q == 0 {
+                    self.bus.write(address, self.registers.a);
+                } else {
+                    self.registers.a = self.bus.read(address);
+                }
+
+                match p {
+                    2 => self
+                        .registers
+                        .set_16bit(Register16Bits::HL, address.wrapping_add(1)),
+                    3 => self
+                        .registers
+                        .set_16bit(Register16Bits::HL, address.wrapping_sub(1)),
+                    _ => {}
+                }
             }
-            0x12 => {
-                let address = self.registers.get_16bit(Register16Bits::DE);
-                self.bus.write(address, self.registers.a);
+            0x03 | 0x13 | 0x23 | 0x33 | 0x0B | 0x1B | 0x2B | 0x3B => {
+                let (_, _, _, p, q) = self.decoder(opcode);
+
+                let register = match p {
+                    0 => Register16Bits::BC,
+                    1 => Register16Bits::DE,
+                    2 => Register16Bits::HL,
+                    _ => Register16Bits::SP,
+                };
+
+                let value = if q == 0 {
+                    self.registers.get_16bit(register).wrapping_add(1)
+                } else {
+                    self.registers.get_16bit(register).wrapping_sub(1)
+                };
+
+                self.registers.set_16bit(register, value);
             }
 
-            0x22 => {
-                let address = self.registers.get_16bit(Register16Bits::HL);
-                self.bus.write(address, self.registers.a);
-                self.registers
-                    .set_16bit(Register16Bits::HL, address.wrapping_add(1));
-            }
-            0x32 => {
-                let address = self.registers.get_16bit(Register16Bits::HL);
-                self.bus.write(address, self.registers.a);
-                self.registers
-                    .set_16bit(Register16Bits::HL, address.wrapping_sub(1));
+            0x04 | 0x14 | 0x24 | 0x34 | 0x05 | 0x15 | 0x25 | 0x35 | 0x0C | 0x1C | 0x2C | 0x3C
+            | 0x0D | 0x1D | 0x2D | 0x3D => {
+                let (_, destination, z, _, _) = self.decoder(opcode);
+                let is_inc = z == 4;
+
+                if destination == 6 {
+                    let address = self.registers.get_16bit(Register16Bits::HL);
+                    let old = self.bus.read(address);
+                    let new = self.inc_dec_instruction(old, is_inc);
+                    self.bus.write(address, new);
+                } else {
+                    let register = match destination {
+                        0 => Register8Bits::B,
+                        1 => Register8Bits::C,
+                        2 => Register8Bits::D,
+                        3 => Register8Bits::E,
+                        4 => Register8Bits::H,
+                        5 => Register8Bits::L,
+                        7 => Register8Bits::A,
+                        _ => unreachable!(),
+                    };
+
+                    let old = self.registers.get_8bit(register);
+                    let new = self.inc_dec_instruction(old, is_inc);
+                    self.registers.set_8bit(register, new);
+                }
             }
             0x06 | 0x16 | 0x26 | 0x36 => {
                 let value = self.fetch_byte();
@@ -71,26 +121,6 @@ where
 
                 self.bus.write(address, low_byte);
                 self.bus.write(address + 1, high_byte);
-            }
-            0x0A => {
-                let address = self.registers.get_16bit(Register16Bits::BC);
-                self.registers.a = self.bus.read(address);
-            }
-            0x1A => {
-                let address = self.registers.get_16bit(Register16Bits::DE);
-                self.registers.a = self.bus.read(address);
-            }
-            0x2A => {
-                let address = self.registers.get_16bit(Register16Bits::HL);
-                self.registers.a = self.bus.read(address);
-                self.registers
-                    .set_16bit(Register16Bits::HL, address.wrapping_add(1));
-            }
-            0x3A => {
-                let address = self.registers.get_16bit(Register16Bits::HL);
-                self.registers.a = self.bus.read(address);
-                self.registers
-                    .set_16bit(Register16Bits::HL, address.wrapping_sub(1));
             }
             0xC1 | 0xD1 | 0xE1 | 0xF1 => {
                 let (low_byte, high_byte) = self.pop();
@@ -117,7 +147,7 @@ where
 
                 self.push(address);
             }
-            0x45..=0x75 | 0x77..=0x7F => {
+            0x40..=0x75 | 0x77..=0x7F => {
                 let (_, destination, source, _, _) = self.decoder(opcode);
 
                 let value = self.fetch_source_value(source);
@@ -164,14 +194,18 @@ where
                     _ => self.registers.set_8bit(Register8Bits::A, value),
                 }
             }
-            0xC6 | 0xD6 | 0xE6 | 0xF6 => {
+            0xC6 | 0xD6 | 0xE6 | 0xF6 | 0xCE | 0xDE | 0xEE | 0xFE => {
                 let value = self.fetch_byte();
 
                 match opcode {
                     0xC6 => self.add_instruction(value),
+                    0xCE => self.adc_instruction(value),
                     0xD6 => self.sub_instruction(value),
+                    0xDE => self.sbc_instruction(value),
                     0xE6 => self.bitwise_and_instruction(value),
-                    _ => self.bitwise_or_instruction(value),
+                    0xEE => self.bitwise_xor_instruction(value),
+                    0xF6 => self.bitwise_or_instruction(value),
+                    _ => self.cp_instruction(value),
                 }
             }
             0xCB => {
@@ -280,6 +314,36 @@ where
         self.registers.set_8bit(Register8Bits::A, result);
         self.registers.apply_flags(delta);
     }
+
+    fn inc_dec_instruction(&mut self, old: u8, is_inc: bool) -> u8 {
+        let (new, half_carry) = if is_inc {
+            (old.wrapping_add(1), half_carry_add(old, 1, false))
+        } else {
+            (old.wrapping_sub(1), half_carry_sub(old, 1, false))
+        };
+
+        let delta = FlagDelta {
+            z: if new == 0 {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+            n: if is_inc {
+                FlagType::Unset
+            } else {
+                FlagType::Set
+            },
+            h: if half_carry {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+            c: FlagType::Unmodified,
+        };
+        self.registers.apply_flags(delta);
+
+        new
+    }
 }
 
 // For JSON tests
@@ -351,17 +415,20 @@ mod tests {
     fn json_instructions() {
         let mut implemented_instructions = vec![
             "02", "12", "22", "32", "0a", "1a", "2a", "3a", "c1", "d1", "e1", "f1", "c6", "d6",
-            "e6", "f6", "01", "11", "21", "31", "06", "16", "26", "36", "0e", "1e", "2e", "3e",
-            "08", "c5", "d5", "e5", "f5",
+            "e6", "f6", "ce", "de", "ee", "fe", "01", "11", "21", "31", "06", "16", "26", "36",
+            "0e", "1e", "2e", "3e", "08", "c5", "d5", "e5", "f5", "03", "13", "23", "33", "0b",
+            "1b", "2b", "3b", "14", "24", "05", "15", "25", "35", "0c", "1c", "2c", "3c", "0d",
+            "1d", "2d", "3d",
         ]
         .into_iter()
         .map(String::from)
         .collect::<Vec<_>>();
+    
         for hex in 0x80..=0xBFu8 {
             implemented_instructions.push(format!("{:0x}", hex));
         }
 
-        for hex in 0x45..=0x75 {
+        for hex in 0x40..=0x75 {
             implemented_instructions.push(format!("{:0x}", hex));
         }
 

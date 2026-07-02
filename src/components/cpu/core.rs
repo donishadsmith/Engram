@@ -211,11 +211,11 @@ pub enum ArithmeticOperation {
     Bit(BitwiseOperation),
 }
 
-fn half_carry_add(a: u8, b: u8, carry: bool) -> bool {
+pub fn half_carry_add(a: u8, b: u8, carry: bool) -> bool {
     a.mask(0x0F) + b.mask(0x0F) + carry as u8 > 0x0F
 }
 
-fn half_carry_sub(a: u8, b: u8, carry: bool) -> bool {
+pub fn half_carry_sub(a: u8, b: u8, carry: bool) -> bool {
     a.mask(0x0F) < b.mask(0x0f) + carry as u8
 }
 
@@ -354,6 +354,7 @@ impl ProgramCounter {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum Register8Bits {
     A,
     F,
@@ -365,6 +366,7 @@ pub enum Register8Bits {
     L,
 }
 
+#[derive(Clone, Copy)]
 pub enum Register16Bits {
     AF,
     BC,
