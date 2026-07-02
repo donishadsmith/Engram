@@ -19,14 +19,14 @@ fn main() -> Result<(), std::io::Error> {
         println!("------------------\n{}", cartridge.header.title);
         println!("{}", cartridge.header.mbc_type.to_str());
         println!("{}", cartridge.header.cgb_flag.to_str());
-        println!("{:0x?}", cartridge.rom[0x143]);
-        println!("Cartridge Type: {}", cartridge.rom[0x147]);
+        println!("{:0x?}", cartridge.mbc.get_rom()[0x143]);
+        println!("Cartridge Type: {}", cartridge.mbc.get_rom()[0x147]);
         println!("Checksum: {}", cartridge.header.checksum);
         println!("Has Battery: {}", cartridge.header.has_battery);
         println!("Has Timer: {}", cartridge.header.has_timer);
         println!("Has Rumble: {}\n", cartridge.header.has_rumble);
         println!("RAM length: {}\n", cartridge.header.ram_size);
-        println!("RAM length: {}\n", cartridge.sram.len());
+        println!("RAM length: {}\n", cartridge.mbc.get_ram().len());
     }
 
     Ok(())

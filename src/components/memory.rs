@@ -1,5 +1,6 @@
 use crate::components::cartridge::{CGBFlag, Cartridge};
 
+#[derive(PartialEq)]
 pub enum BootStatus {
     Complete,
     Incomplete,
@@ -20,12 +21,12 @@ MemoryMap
 */
 
 pub struct Memory {
-    boot_status: BootStatus,
-    cartridge: Cartridge,
-    wram: Vec<u8>,
-    vram: Vec<u8>,
-    hram: Vec<u8>,
-    oam: Vec<u8>,
+    pub boot_status: BootStatus,
+    pub cartridge: Cartridge,
+    pub wram: Vec<u8>,
+    pub vram: Vec<u8>,
+    pub hram: Vec<u8>,
+    pub oam: Vec<u8>,
 }
 
 impl Memory {

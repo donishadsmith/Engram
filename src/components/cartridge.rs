@@ -10,6 +10,8 @@
 
 use std::path::PathBuf;
 
+use crate::components::mbc::prelude::*;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MBCType {
     RomOnly,
@@ -45,6 +47,17 @@ impl MBCType {
             MBCType::MBC3 => "MBC3",
             MBCType::MBC5 => "MBC5",
             MBCType::Unknown(_) => "Unknown",
+        }
+    }
+
+    pub fn to_struct(&self, rom: Vec<u8>, ram: Vec<u8>) -> Option<Box<dyn MBC>> {
+        match self {
+            MBCType::RomOnly => Some(Box::new(RomOnly::new(rom, ram))),
+            MBCType::MBC1 => Some(Box::new(MBC1::new(rom, ram))),
+            MBCType::MBC2 => Some(Box::new(MBC2::new(rom, ram))),
+            MBCType::MBC3 => Some(Box::new(MBC3::new(rom, ram))),
+            MBCType::MBC5 => Some(Box::new(MBC5::new(rom, ram))),
+            MBCType::Unknown(_) => None,
         }
     }
 }
@@ -120,7 +133,6 @@ impl Header {
             .map(|&byte| byte as char)
             .collect()
     }
-
     /*
         uint8_t - wraps
         uint8_t checksum = 0;
@@ -198,10 +210,9 @@ impl Header {
 }
 
 pub struct Cartridge {
-    pub rom: Vec<u8>,
     pub header: Header,
-    pub sram: Vec<u8>,
     pub sav_path: PathBuf,
+    pub mbc: Box<dyn MBC>,
 }
 
 impl Cartridge {
@@ -220,15 +231,16 @@ impl Cartridge {
         }
 
         let header = Header::new(&rom);
-        let mut sram = vec![0; header.ram_size];
+        let mut ram = vec![0; header.ram_size];
         let sav_path = rom_path.with_extension("sav");
-        sram = Self::read_sav(sram, &sav_path)?;
+        ram = Self::read_sav(ram, &sav_path)?;
+
+        let mbc = Self::get_mbc(&header, rom, ram)?;
 
         Ok(Self {
-            rom,
             header,
-            sram,
             sav_path,
+            mbc,
         })
     }
 
@@ -236,32 +248,50 @@ impl Cartridge {
         std::io::Error::new(std::io::ErrorKind::InvalidData, message)
     }
 
-    pub fn read_sav(mut sram: Vec<u8>, sav_path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
-        if sram.is_empty() || !sav_path.exists() {
-            return Ok(sram);
+    fn get_mbc(
+        header: &Header,
+        rom: Vec<u8>,
+        ram: Vec<u8>,
+    ) -> Result<Box<dyn MBC>, std::io::Error> {
+        header.mbc_type.to_struct(rom, ram).ok_or_else(|| {
+            Self::error_message(
+                "Only MBC1, MBC2, MBC3, MBC5, and RomOnly are supported.".to_string(),
+            )
+        })
+    }
+
+    pub fn read_sav(mut ram: Vec<u8>, sav_path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
+        if ram.is_empty() || !sav_path.exists() {
+            return Ok(ram);
         }
 
         let sav_buffer = std::fs::read(sav_path)?;
-        sram.copy_from_slice(&sav_buffer);
+        let n = ram.len().min(sav_buffer.len());
+        ram[..n].copy_from_slice(&sav_buffer[..n]);
 
-        Ok(sram)
+        Ok(ram)
     }
 
     pub fn write_sav(&self) -> Result<(), std::io::Error> {
-        if self.header.has_battery && !self.sram.is_empty() {
-            std::fs::write(&self.sav_path, &self.sram)?;
+        if self.header.has_battery && !self.mbc.get_ram().is_empty() {
+            std::fs::write(&self.sav_path, self.mbc.get_ram())?;
         }
 
         Ok(())
     }
 
     // Just for testing purposes
-    pub fn fake() -> Self {
-        Self {
-            rom: Vec::new(),
-            header: Header::fake(),
-            sram: Vec::new(),
+    pub fn fake() -> Result<Self, std::io::Error> {
+        let rom = Vec::new();
+        let ram = Vec::new();
+        let header = Header::fake();
+
+        let mbc = Self::get_mbc(&header, rom, ram)?;
+
+        Ok(Self {
+            header: header,
             sav_path: PathBuf::new(),
-        }
+            mbc,
+        })
     }
 }
