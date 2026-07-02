@@ -334,7 +334,7 @@ impl ArithmeticOperation {
 }
 
 pub struct ProgramCounter {
-    address: u16,
+    pub address: u16,
 }
 
 impl ProgramCounter {
@@ -352,6 +352,17 @@ impl ProgramCounter {
     fn jump(&mut self, address: u16) {
         self.address = address
     }
+}
+
+pub enum Register8Bits {
+    A,
+    F,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
 }
 
 pub enum Register16Bits {
@@ -448,8 +459,34 @@ impl Registers {
         self.f = delta.apply(self.f);
     }
 
-    pub fn set_16bit(&mut self, register_16bit: Register16Bits, value: u16) {
-        match register_16bit {
+    pub fn set_8bit(&mut self, register_8bits: Register8Bits, value: u8) {
+        match register_8bits {
+            Register8Bits::A => self.a = value,
+            Register8Bits::F => self.f = value.mask(0xF0),
+            Register8Bits::B => self.b = value,
+            Register8Bits::C => self.c = value,
+            Register8Bits::D => self.d = value,
+            Register8Bits::E => self.e = value,
+            Register8Bits::H => self.h = value,
+            Register8Bits::L => self.l = value,
+        }
+    }
+
+    pub fn get_8bit(&mut self, register_8bits: Register8Bits) -> u8 {
+        match register_8bits {
+            Register8Bits::A => self.a,
+            Register8Bits::F => self.f,
+            Register8Bits::B => self.b,
+            Register8Bits::C => self.c,
+            Register8Bits::D => self.d,
+            Register8Bits::E => self.e,
+            Register8Bits::H => self.h,
+            Register8Bits::L => self.l,
+        }
+    }
+
+    pub fn set_16bit(&mut self, register_16bits: Register16Bits, value: u16) {
+        match register_16bits {
             Register16Bits::AF => {
                 self.a = value.high_byte();
                 self.f = value.low_byte() & 0xF0;
@@ -472,8 +509,8 @@ impl Registers {
         };
     }
 
-    pub fn get_16bit(&self, register_16bit: Register16Bits) -> u16 {
-        match register_16bit {
+    pub fn get_16bit(&self, register_16bits: Register16Bits) -> u16 {
+        match register_16bits {
             Register16Bits::AF => self.a.merge_bytes(self.f),
             Register16Bits::BC => self.b.merge_bytes(self.c),
             Register16Bits::DE => self.d.merge_bytes(self.e),
@@ -492,8 +529,8 @@ pub struct CPU<A>
 where
     A: AddressBus,
 {
-    registers: Registers,
-    bus: A,
+    pub registers: Registers,
+    pub bus: A,
 }
 
 impl<A> CPU<A>
@@ -532,7 +569,7 @@ where
             Serial link: 0x0058
             Button pressed: 0x0060
     */
-    fn push(&mut self, value: u16) {
+    pub fn push(&mut self, value: u16) {
         // High byte stored first, stack grows down
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
         self.bus
@@ -541,7 +578,7 @@ where
         self.bus.write(self.registers.stack_pointer, value as u8);
     }
 
-    fn pop(&mut self) -> (u8, u8) {
+    pub fn pop(&mut self) -> (u8, u8) {
         // Low byte poppped first
         let low_byte = self.bus.read(self.registers.stack_pointer);
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_add(1);
@@ -551,12 +588,12 @@ where
         (low_byte, high_byte)
     }
 
-    fn call(&mut self, target: u16) {
+    pub fn call(&mut self, target: u16) {
         self.push(self.registers.program_counter.address);
         self.registers.program_counter.jump(target);
     }
 
-    fn ret(&mut self) {
+    pub fn ret(&mut self) {
         let (low_byte, high_byte) = self.pop();
         self.registers
             .program_counter
@@ -568,94 +605,17 @@ where
         self.fetch();
     }
 
-    fn fetch(&mut self) {
+    pub fn fetch(&mut self) {
         self.registers.instruction_register =
             Some(self.bus.read(self.registers.program_counter.address));
 
         self.registers.program_counter.increment(1u16);
-    }
-
-    fn decode_and_execute(&mut self) {
-        let opcode = self.registers.instruction_register.unwrap();
-
-        // https://izik1.github.io/gbops/
-        match opcode {
-            0x22 => {
-                // LD (HL+),A - 1byte
-                let address = self.registers.get_16bit(Register16Bits::HL);
-                self.bus.write(address, self.registers.a);
-                self.registers
-                    .set_16bit(Register16Bits::HL, address.wrapping_add(1));
-            }
-            0xf1 => {
-                //POP AF - 1 byte
-                let (low_byte, high_byte) = self.pop();
-                self.registers.a = high_byte;
-                self.registers.f = low_byte.mask(0xF0)
-            }
-            0x80 => {
-                // ADD A,B - 1 byte
-                let (result, delta) = ArithmeticOperation::Add
-                    .operation(self.registers.a, Some(self.registers.b), false)
-                    .unwrap();
-                self.registers.a = result;
-                self.registers.apply_flags(delta);
-            }
-            _ => panic!("Opcode {:#04x} not implemented yet", opcode),
-        }
-    }
-}
-
-// For JSON tests
-pub struct TestBus {
-    ram: Vec<u8>,
-}
-
-impl TestBus {
-    pub fn new() -> Self {
-        Self {
-            ram: vec![0u8; 0x10000],
-        }
-    }
-}
-
-impl AddressBus for TestBus {
-    fn read(&self, address: u16) -> u8 {
-        self.ram[address as usize]
-    }
-    fn write(&mut self, address: u16, value: u8) {
-        self.ram[address as usize] = value;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    struct CpuState {
-        a: u8,
-        b: u8,
-        c: u8,
-        d: u8,
-        e: u8,
-        f: u8,
-        h: u8,
-        l: u8,
-        pc: u16,
-        sp: u16,
-        ram: Vec<(u16, u8)>,
-    }
-
-    #[derive(Deserialize)]
-    struct TestCase {
-        name: String,
-        initial: CpuState,
-        #[serde(rename = "final")]
-        final_state: CpuState,
-    }
 
     #[test]
     fn test_arithmetic_add() {
@@ -736,76 +696,5 @@ mod tests {
         assert_eq!(register.f, 0b00110000);
 
         Ok(())
-    }
-
-    #[test]
-    fn add_a_b_runs() {
-        let registers = Registers::from_state(255, 0, 2, 0, 0, 0, 0, 0, 0xC001, 0xFFFE);
-        let mut bus = TestBus::new();
-        bus.write(0xC000, 0x80);
-        let mut cpu = CPU::from_state(registers, bus);
-
-        cpu.cycle();
-
-        assert_eq!(cpu.registers.a, 1);
-        assert_eq!(cpu.registers.f, 0x30)
-    }
-
-    #[test]
-    fn json_opcodes() {
-        let implemented_opcodes = ["22", "80", "f1"];
-        for opcode in implemented_opcodes {
-            let text = std::fs::read_to_string(format!("tests/sm83/v2/{}.json", opcode)).unwrap();
-            let cases: Vec<TestCase> = serde_json::from_str(&text).unwrap();
-
-            for case in &cases {
-                let mut bus = TestBus::new();
-                for (address, value) in &case.initial.ram {
-                    bus.write(*address, *value);
-                }
-
-                let registers = Registers::from_state(
-                    case.initial.a,
-                    case.initial.f,
-                    case.initial.b,
-                    case.initial.c,
-                    case.initial.d,
-                    case.initial.e,
-                    case.initial.h,
-                    case.initial.l,
-                    case.initial.pc,
-                    case.initial.sp,
-                );
-                let mut cpu = CPU::from_state(registers, bus);
-
-                cpu.cycle();
-
-                let final_state = &case.final_state;
-
-                assert_eq!(cpu.registers.a, final_state.a, "{}: A", case.name);
-                assert_eq!(cpu.registers.b, final_state.b, "{}: B", case.name);
-                assert_eq!(cpu.registers.c, final_state.c, "{}: C", case.name);
-                assert_eq!(cpu.registers.d, final_state.d, "{}: D", case.name);
-                assert_eq!(cpu.registers.e, final_state.e, "{}: E", case.name);
-                assert_eq!(cpu.registers.h, final_state.h, "{}: H", case.name);
-                assert_eq!(cpu.registers.l, final_state.l, "{}: L", case.name);
-                assert_eq!(cpu.registers.f, final_state.f, "{}: F", case.name);
-                assert_eq!(
-                    cpu.registers.stack_pointer, final_state.sp,
-                    "{}: SP",
-                    case.name
-                );
-
-                for (address, value) in &final_state.ram {
-                    assert_eq!(
-                        cpu.bus.read(*address),
-                        *value,
-                        "{}: mem[{:#06x}]",
-                        case.name,
-                        address
-                    );
-                }
-            }
-        }
     }
 }

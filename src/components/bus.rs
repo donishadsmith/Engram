@@ -1,7 +1,7 @@
 use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
     cartridge::{CGBFlag, Cartridge},
-    cpu::AddressBus,
+    cpu::core::AddressBus,
     memory::{BootStatus, Memory},
 };
 
