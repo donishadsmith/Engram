@@ -37,12 +37,12 @@ impl ByteOps16 for u16 {
 }
 
 pub trait MergeByteOps {
-    fn merge_bytes<L: Into<u16>>(self, low_bytes: L) -> u16;
+    fn merge_bytes<L: Into<u16>>(self, low_byte: L) -> u16;
 }
 
 impl<T: Into<u16>> MergeByteOps for T {
-    fn merge_bytes<L: Into<u16>>(self, low_bytes: L) -> u16 {
-        (self.into() << 8) | low_bytes.into()
+    fn merge_bytes<L: Into<u16>>(self, low_byte: L) -> u16 {
+        (self.into() << 8) | low_byte.into()
     }
 }
 
@@ -345,11 +345,11 @@ impl ProgramCounter {
     }
 
     // Instructions can be 1 to 3 bytes, presented in 8 bits
-    fn increment(&mut self, step: u16) {
+    pub fn increment(&mut self, step: u16) {
         self.address = self.address.wrapping_add(step);
     }
 
-    fn jump(&mut self, address: u16) {
+    pub fn jump(&mut self, address: u16) {
         self.address = address
     }
 }
@@ -531,6 +531,7 @@ where
 {
     pub registers: Registers,
     pub bus: A,
+    pub halt_bug: bool,
 }
 
 impl<A> CPU<A>
@@ -541,13 +542,18 @@ where
         let mut cpu = Self {
             registers: Registers::new(&cartridge),
             bus,
+            halt_bug: false,
         };
         cpu.fetch();
         cpu
     }
 
     pub fn from_state(registers: Registers, bus: A) -> Self {
-        let mut cpu = Self { registers, bus };
+        let mut cpu = Self {
+            registers,
+            bus,
+            halt_bug: false,
+        };
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
         cpu.registers.instruction_register = Some(cpu.bus.read(opcode_address));
         cpu
@@ -569,13 +575,13 @@ where
             Serial link: 0x0058
             Button pressed: 0x0060
     */
-    pub fn push(&mut self, value: u16) {
+    pub fn push(&mut self, address: u16) {
         // High byte stored first, stack grows down
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
         self.bus
-            .write(self.registers.stack_pointer, (value >> 8) as u8);
+            .write(self.registers.stack_pointer, (address >> 8) as u8);
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
-        self.bus.write(self.registers.stack_pointer, value as u8);
+        self.bus.write(self.registers.stack_pointer, address as u8);
     }
 
     pub fn pop(&mut self) -> (u8, u8) {
@@ -609,7 +615,11 @@ where
         self.registers.instruction_register =
             Some(self.bus.read(self.registers.program_counter.address));
 
-        self.registers.program_counter.increment(1u16);
+        if self.halt_bug {
+            self.halt_bug = false;
+        } else {
+            self.registers.program_counter.increment(1u16);
+        }
     }
 }
 
