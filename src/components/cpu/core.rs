@@ -7,6 +7,8 @@ pub trait ByteOps8 {
     fn set_bit(&self, mask: u8, flag: bool) -> u8;
 
     fn mask(&self, hex: u8) -> u8;
+
+    fn i16(&self) -> i16;
 }
 
 impl ByteOps8 for u8 {
@@ -16,6 +18,10 @@ impl ByteOps8 for u8 {
 
     fn mask(&self, hex: u8) -> u8 {
         self & hex
+    }
+
+    fn i16(&self) -> i16 {
+        *self as i8 as i16
     }
 }
 
@@ -596,9 +602,9 @@ where
         (low_byte, high_byte)
     }
 
-    pub fn call(&mut self, target: u16) {
+    pub fn call(&mut self, address: u16) {
         self.push(self.registers.program_counter.address);
-        self.registers.program_counter.jump(target);
+        self.registers.program_counter.jump(address);
     }
 
     pub fn ret(&mut self) {

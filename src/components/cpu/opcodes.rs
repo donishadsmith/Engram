@@ -1,7 +1,14 @@
 use crate::components::cpu::core::{
-    AddressBus, ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType,
-    MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add, half_carry_sub,
+    AddressBus, ArithmeticOperation, BitwiseOperation, ByteOps8, ByteOps16, CPU, FlagDelta,
+    FlagType, MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add,
+    half_carry_sub,
 };
+
+#[derive(PartialEq)]
+enum RPTable {
+    RP,
+    RP2,
+}
 
 impl<A> CPU<A>
 where
@@ -58,12 +65,7 @@ where
             0x03 | 0x13 | 0x23 | 0x33 | 0x0B | 0x1B | 0x2B | 0x3B => {
                 let (_, _, _, p, q) = self.decoder(opcode);
 
-                let register = match p {
-                    0 => Register16Bits::BC,
-                    1 => Register16Bits::DE,
-                    2 => Register16Bits::HL,
-                    _ => Register16Bits::SP,
-                };
+                let register = self.select_16bit_register(p, RPTable::RP);
 
                 let value = if q == 0 {
                     self.registers.get_16bit(register).wrapping_add(1)
@@ -122,6 +124,49 @@ where
                 self.bus.write(address, low_byte);
                 self.bus.write(address + 1, high_byte);
             }
+            0x09 | 0x19 | 0x29 | 0x39 => {
+                let (_, _, _, p, _) = self.decoder(opcode);
+                let register = self.select_16bit_register(p, RPTable::RP);
+
+                self.add_16bit(register, Register16Bits::HL);
+            }
+            0x20 | 0x30 | 0x18 | 0x28 | 0x38 => {
+                let displacement = self.fetch_byte().i16() as u16;
+                let address = self
+                    .registers
+                    .program_counter
+                    .address
+                    .wrapping_add(displacement);
+
+                if opcode == 0x18 {
+                    self.registers.program_counter.jump(address);
+
+                    return;
+                }
+
+                let (_, y, _, _, _) = self.decoder(opcode);
+
+                if self.conditional_move(y - 4) {
+                    self.registers.program_counter.jump(address);
+                }
+            }
+            0xC0 | 0xD0 | 0xC8 | 0xD8 | 0xC9 => {
+                if opcode == 0xC9 {
+                    let (low_byte, high_byte) = self.pop();
+                    let address = high_byte.merge_bytes(low_byte);
+                    self.registers.program_counter.jump(address);
+
+                    return;
+                }
+
+                let (_, y, _, _, _) = self.decoder(opcode);
+
+                if self.conditional_move(y) {
+                    let (low_byte, high_byte) = self.pop();
+                    let address = high_byte.merge_bytes(low_byte);
+                    self.registers.program_counter.jump(address);
+                }
+            }
             0xC1 | 0xD1 | 0xE1 | 0xF1 => {
                 let (low_byte, high_byte) = self.pop();
                 let value = if opcode == 0xF1 {
@@ -138,12 +183,9 @@ where
                 }
             }
             0xC5 | 0xD5 | 0xE5 | 0xF5 => {
-                let address = match opcode {
-                    0xC5 => self.registers.get_16bit(Register16Bits::BC),
-                    0xD5 => self.registers.get_16bit(Register16Bits::DE),
-                    0xE5 => self.registers.get_16bit(Register16Bits::HL),
-                    _ => self.registers.get_16bit(Register16Bits::AF),
-                };
+                let (_, _, _, p, _) = self.decoder(opcode);
+                let register = self.select_16bit_register(p, RPTable::RP2);
+                let address = self.registers.get_16bit(register);
 
                 self.push(address);
             }
@@ -208,8 +250,149 @@ where
                     _ => self.cp_instruction(value),
                 }
             }
+
+            0xC2 | 0xD2 | 0xC3 | 0xCA | 0xDA => {
+                let address = self.fetch_2bytes();
+
+                if opcode == 0xC3 {
+                    self.registers.program_counter.jump(address);
+
+                    return;
+                }
+
+                let (_, y, _, _, _) = self.decoder(opcode);
+
+                if self.conditional_move(y) {
+                    self.registers.program_counter.jump(address);
+                }
+            }
+
+            0xC4 | 0xD4 | 0xCC | 0xDC | 0xCD => {
+                let address = self.fetch_2bytes();
+
+                if opcode == 0xCD {
+                    self.call(address);
+
+                    return;
+                }
+
+                let (_, y, _, _, _) = self.decoder(opcode);
+
+                if self.conditional_move(y) {
+                    self.call(address);
+                }
+            }
+
+            0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
+                let (_, y, _, _, _) = self.decoder(opcode);
+                let address = (y as u16) * 8;
+                self.call(address);
+            }
+
             0xCB => {
                 let (x, y, z, _, _) = self.decoder(opcode);
+            }
+
+            0xE0 | 0xF0 | 0xE2 | 0xF2 | 0xEA | 0xFA => {
+                let (_, y, _, _, _) = self.decoder(opcode);
+
+                if opcode == 0xE0 || opcode == 0xF0 {
+                    let address = 0xFF00 + self.fetch_byte() as u16;
+
+                    match y {
+                        4 => {
+                            let value = self.registers.get_8bit(Register8Bits::A);
+                            self.bus.write(address, value);
+                        }
+                        _ => {
+                            let value = self.bus.read(address);
+                            self.registers.set_8bit(Register8Bits::A, value);
+                        }
+                    }
+
+                    return;
+                }
+
+                match y {
+                    4 => {
+                        let a = self.registers.get_8bit(Register8Bits::A);
+                        let c = self.registers.get_8bit(Register8Bits::C) as u16;
+                        self.bus.write(0xFF00 + c, a);
+                    }
+                    5 => {
+                        let value = self.registers.get_8bit(Register8Bits::A);
+                        let address = self.fetch_2bytes();
+                        self.bus.write(address, value);
+                    }
+                    6 => {
+                        let c = self.registers.get_8bit(Register8Bits::C) as u16;
+                        let address = 0xFF00 + c;
+                        let value = self.bus.read(address);
+                        self.registers.set_8bit(Register8Bits::A, value);
+                    }
+                    _ => {
+                        let address = self.fetch_2bytes();
+                        let value = self.bus.read(address);
+                        self.registers.set_8bit(Register8Bits::A, value);
+                    }
+                };
+            }
+
+            0xE8 => {
+                let sp = self.registers.get_16bit(Register16Bits::SP);
+                let byte = self.fetch_byte();
+                let value = sp.wrapping_add(byte.i16() as u16);
+
+                let delta = FlagDelta {
+                    z: FlagType::Unset,
+                    n: FlagType::Unset,
+                    h: if (sp & 0x0F) + (byte as u16 & 0x0F) > 0x0F {
+                        FlagType::Set
+                    } else {
+                        FlagType::Unset
+                    },
+                    c: if (sp & 0xFF) + (byte as u16) > 0xFF {
+                        FlagType::Set
+                    } else {
+                        FlagType::Unset
+                    },
+                };
+
+                self.registers.set_16bit(Register16Bits::SP, value);
+                self.registers.apply_flags(delta);
+            }
+            0xE9 => {
+                let address = self.registers.get_16bit(Register16Bits::HL);
+                self.registers.program_counter.jump(address);
+            }
+            0xF8 => {
+                let byte = self.fetch_byte().i16() as u16;
+                let sp = self.registers.get_16bit(Register16Bits::SP);
+                let half_carry = (sp & 0x000F) + (byte & 0x000F) > 0x000F;
+                let carry = (sp & 0x00FF) + (byte & 0x00FF) > 0x00FF;
+                let value = sp.wrapping_add(byte);
+
+                let delta = FlagDelta {
+                    z: FlagType::Unset,
+                    n: FlagType::Unset,
+                    h: if half_carry {
+                        FlagType::Set
+                    } else {
+                        FlagType::Unset
+                    },
+                    c: if carry {
+                        FlagType::Set
+                    } else {
+                        FlagType::Unset
+                    },
+                };
+
+                self.registers.set_16bit(Register16Bits::HL, value);
+                self.registers.apply_flags(delta);
+            }
+            0xF9 => {
+                let value = self.registers.get_16bit(Register16Bits::HL);
+                self.registers.set_16bit(Register16Bits::SP, value);
             }
             _ => unimplemented!("Opcode {:#04x}", opcode),
         }
@@ -223,6 +406,15 @@ where
         let q: u8 = y & 0x1; // boolean toggle
 
         (x, y, z, p, q)
+    }
+
+    fn conditional_move(&self, y: u8) -> bool {
+        match y {
+            0 => !self.registers.flag(StatusFlag::Z),
+            1 => self.registers.flag(StatusFlag::Z),
+            2 => !self.registers.flag(StatusFlag::C),
+            _ => self.registers.flag(StatusFlag::C),
+        }
     }
 
     fn fetch_byte(&mut self) -> u8 {
@@ -312,6 +504,48 @@ where
 
     fn apply_alu_results(&mut self, result: u8, delta: FlagDelta) {
         self.registers.set_8bit(Register8Bits::A, result);
+        self.registers.apply_flags(delta);
+    }
+
+    fn select_16bit_register(&self, p: u8, table: RPTable) -> Register16Bits {
+        match p {
+            0 => Register16Bits::BC,
+            1 => Register16Bits::DE,
+            2 => Register16Bits::HL,
+            _ => {
+                if table == RPTable::RP {
+                    Register16Bits::SP
+                } else {
+                    Register16Bits::AF
+                }
+            }
+        }
+    }
+
+    fn add_16bit(&mut self, source: Register16Bits, destination: Register16Bits) {
+        let a = self.registers.get_16bit(source);
+        let b = self.registers.get_16bit(destination);
+        // 0000 | 0000 | 0000 | 0000;
+        //        ^ bit 11
+        let half_carry = (a & 0x0FFF) + (b & 0x0FFF) > 0x0FFF;
+        let (value, overflow) = a.overflowing_add(b);
+
+        let delta = FlagDelta {
+            z: FlagType::Unmodified,
+            n: FlagType::Unset,
+            h: if half_carry {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+            c: if overflow {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+        };
+
+        self.registers.set_16bit(destination, value);
         self.registers.apply_flags(delta);
     }
 
@@ -418,12 +652,15 @@ mod tests {
             "e6", "f6", "ce", "de", "ee", "fe", "01", "11", "21", "31", "06", "16", "26", "36",
             "0e", "1e", "2e", "3e", "08", "c5", "d5", "e5", "f5", "03", "13", "23", "33", "0b",
             "1b", "2b", "3b", "14", "24", "05", "15", "25", "35", "0c", "1c", "2c", "3c", "0d",
-            "1d", "2d", "3d",
+            "1d", "2d", "3d", "09", "19", "29", "39", "e8", "e2", "f2", "ea", "fa", "e0", "f0",
+            "f8", "f9", "c7", "d7", "e7", "f7", "cf", "df", "ef", "ff", "c2", "d2", "c3", "ca",
+            "da", "e9", "c4", "d4", "cc", "dc", "cd", "04", "18", "20", "30", "18", "28", "38",
+            "c0", "d0", "c8", "d8", "c9",
         ]
         .into_iter()
         .map(String::from)
         .collect::<Vec<_>>();
-    
+
         for hex in 0x80..=0xBFu8 {
             implemented_instructions.push(format!("{:0x}", hex));
         }
