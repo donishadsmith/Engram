@@ -4,6 +4,7 @@ pub mod bus;
 pub mod cartridge;
 pub mod cpu;
 pub mod gameboy;
+pub mod joypad;
 pub mod mbc;
 pub mod memory;
 pub mod ppu;

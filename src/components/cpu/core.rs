@@ -540,6 +540,7 @@ where
     pub registers: Registers,
     pub bus: A,
     pub halt_bug: bool,
+    pub interrupt_master_enable: bool,
 }
 
 impl<A> CPU<A>
@@ -551,6 +552,7 @@ where
             registers: Registers::new(&cartridge),
             bus,
             halt_bug: false,
+            interrupt_master_enable: false,
         };
         cpu.fetch();
         cpu
@@ -561,7 +563,9 @@ where
             registers,
             bus,
             halt_bug: false,
+            interrupt_master_enable: false,
         };
+
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
         cpu.registers.instruction_register = Some(cpu.bus.read(opcode_address));
         cpu
@@ -628,6 +632,14 @@ where
         } else {
             self.registers.program_counter.increment(1u16);
         }
+    }
+
+    pub fn enable_interrupts(&mut self) {
+        self.interrupt_master_enable = true;
+    }
+
+    pub fn disable_interrupts(&mut self) {
+        self.interrupt_master_enable = false;
     }
 }
 

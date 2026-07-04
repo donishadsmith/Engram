@@ -11,6 +11,7 @@ fn main() -> Result<(), std::io::Error> {
         r".\roms\test2.gb",
         r".\roms\test3.gbc",
         r".\roms\test4.gbc",
+        r".\roms\test5.gb",
     ];
     for rom_name in rom_names {
         let filename = Some(std::path::PathBuf::from(rom_name));

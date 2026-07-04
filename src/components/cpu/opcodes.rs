@@ -1,13 +1,18 @@
 use crate::components::cpu::core::{
-    AddressBus, ArithmeticOperation, BitwiseOperation, ByteOps8, ByteOps16, CPU, FlagDelta,
-    FlagType, MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add,
-    half_carry_sub,
+    AddressBus, ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType,
+    MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add, half_carry_sub,
 };
 
 #[derive(PartialEq)]
 enum RPTable {
     RP,
     RP2,
+}
+
+#[derive(PartialEq)]
+enum BitDirection {
+    Right,
+    Left,
 }
 
 impl<A> CPU<A>
@@ -17,7 +22,7 @@ where
     pub fn decode_and_execute(&mut self) {
         let opcode = self.registers.instruction_register.unwrap();
         eprintln!(
-            "Opcode {:#0x}; PC={:#06x}",
+            "Opcode {:02x}; PC={:04x}",
             opcode,
             self.registers.program_counter.address.wrapping_sub(1)
         );
@@ -37,7 +42,7 @@ where
                     _ => self.registers.set_16bit(Register16Bits::SP, value),
                 }
             }
-            0x02 | 0x12 | 0x22 | 0x32 | 0x0A | 0x1A | 0x2A | 0x3A => {
+            0x02 | 0x0A | 0x12 | 0x1A | 0x22 | 0x2A | 0x32 | 0x3A => {
                 let (_, _, _, p, q) = self.decoder(opcode);
 
                 let address = match p {
@@ -62,7 +67,7 @@ where
                     _ => {}
                 }
             }
-            0x03 | 0x13 | 0x23 | 0x33 | 0x0B | 0x1B | 0x2B | 0x3B => {
+            0x03 | 0x0B | 0x13 | 0x1B | 0x23 | 0x2B | 0x33 | 0x3B => {
                 let (_, _, _, p, q) = self.decoder(opcode);
 
                 let register = self.select_16bit_register(p, RPTable::RP);
@@ -75,17 +80,15 @@ where
 
                 self.registers.set_16bit(register, value);
             }
-
-            0x04 | 0x14 | 0x24 | 0x34 | 0x05 | 0x15 | 0x25 | 0x35 | 0x0C | 0x1C | 0x2C | 0x3C
-            | 0x0D | 0x1D | 0x2D | 0x3D => {
+            0x04 | 0x05 | 0x0C | 0x0D | 0x14 | 0x15 | 0x1C | 0x1D | 0x24 | 0x25 | 0x2C | 0x2D
+            | 0x34 | 0x35 | 0x3C | 0x3D => {
                 let (_, destination, z, _, _) = self.decoder(opcode);
                 let is_inc = z == 4;
 
                 if destination == 6 {
-                    let address = self.registers.get_16bit(Register16Bits::HL);
-                    let old = self.bus.read(address);
+                    let old = self.read_from_hl_address();
                     let new = self.inc_dec_instruction(old, is_inc);
-                    self.bus.write(address, new);
+                    self.write_to_hl_address(new);
                 } else {
                     let register = match destination {
                         0 => Register8Bits::B,
@@ -115,6 +118,23 @@ where
                         .write(self.registers.get_16bit(Register16Bits::HL), value),
                 }
             }
+            0x07 | 0x0F | 0x17 | 0x1F => {
+                let (_, y, _, _, _) = self.decoder(opcode);
+
+                match y {
+                    0 => self.circular_rotate(7, BitDirection::Left), // Rotate left circular accumulator
+                    1 => self.circular_rotate(7, BitDirection::Right), // Rotate right circular accumulator
+                    2 => self.rotate(7, BitDirection::Left),           // Rotate left accumulator
+                    _ => self.rotate(7, BitDirection::Right),          // Rotate right accumulator
+                }
+
+                self.registers.apply_flags(FlagDelta {
+                    z: FlagType::Unset,
+                    n: FlagType::Unmodified,
+                    h: FlagType::Unmodified,
+                    c: FlagType::Unmodified,
+                });
+            }
             0x08 => {
                 let value = self.registers.get_16bit(Register16Bits::SP);
                 let low_byte = value as u8;
@@ -130,7 +150,21 @@ where
 
                 self.add_16bit(register, Register16Bits::HL);
             }
-            0x20 | 0x30 | 0x18 | 0x28 | 0x38 => {
+            0x0E | 0x1E | 0x2E | 0x3E => {
+                let value = self.fetch_byte();
+
+                match opcode {
+                    0x0E => self.registers.set_8bit(Register8Bits::C, value),
+                    0x1E => self.registers.set_8bit(Register8Bits::E, value),
+                    0x2E => self.registers.set_8bit(Register8Bits::L, value),
+                    _ => self.registers.set_8bit(Register8Bits::A, value),
+                }
+            }
+            0x10 => {
+                // STOP-for now just consume byte
+                self.fetch_byte();
+            }
+            0x18 | 0x20 | 0x28 | 0x30 | 0x38 => {
                 let displacement = self.fetch_byte().i16() as u16;
                 let address = self
                     .registers
@@ -150,7 +184,85 @@ where
                     self.registers.program_counter.jump(address);
                 }
             }
-            0xC0 | 0xD0 | 0xC8 | 0xD8 | 0xC9 => {
+            0x27 => {
+                // TODO: DAA-decimal adjust accumulator
+                todo!("Opcode 0x27 (DAA) not implemented")
+            }
+            0x2F => {
+                // CPL - complement accumulator
+                self.registers.a = !self.registers.a;
+                self.registers.apply_flags(FlagDelta {
+                    z: FlagType::Unmodified,
+                    n: FlagType::Set,
+                    h: FlagType::Set,
+                    c: FlagType::Unmodified,
+                });
+            }
+            0x37 => {
+                // SCF - set carry flag
+                self.registers.apply_flags(FlagDelta {
+                    z: FlagType::Unmodified,
+                    n: FlagType::Unset,
+                    h: FlagType::Unset,
+                    c: FlagType::Set,
+                });
+            }
+            0x3F => {
+                // CCF - complement carry flag
+                let carry = self.registers.flag(StatusFlag::C);
+                self.registers.apply_flags(FlagDelta {
+                    z: FlagType::Unmodified,
+                    n: FlagType::Unset,
+                    h: FlagType::Unset,
+                    c: if !carry {
+                        FlagType::Set
+                    } else {
+                        FlagType::Unset
+                    },
+                });
+            }
+            0x40..=0x75 | 0x77..=0x7F => {
+                let (_, destination, source, _, _) = self.decoder(opcode);
+
+                let value = self.fetch_source_value(source);
+
+                match destination {
+                    0 => self.registers.set_8bit(Register8Bits::B, value),
+                    1 => self.registers.set_8bit(Register8Bits::C, value),
+                    2 => self.registers.set_8bit(Register8Bits::D, value),
+                    3 => self.registers.set_8bit(Register8Bits::E, value),
+                    4 => self.registers.set_8bit(Register8Bits::H, value),
+                    5 => self.registers.set_8bit(Register8Bits::L, value),
+                    6 => self
+                        .bus
+                        .write(self.registers.get_16bit(Register16Bits::HL), value),
+                    7 => self.registers.set_8bit(Register8Bits::A, value),
+                    _ => unreachable!(),
+                }
+            }
+            0x76 => {
+                // TODO: HALT-stop execution until an interrupt is pending;
+                // reuires ime,ie,if,halt_bug
+                todo!("Opcode 0x76 (HALT) not implemented")
+            }
+            0x80..=0xBF => {
+                let (_, destination, source, _, _) = self.decoder(opcode);
+
+                let value = self.fetch_source_value(source);
+
+                match destination {
+                    0 => self.add_instruction(value),
+                    1 => self.adc_instruction(value),
+                    2 => self.sub_instruction(value),
+                    3 => self.sbc_instruction(value),
+                    4 => self.bitwise_and_instruction(value),
+                    5 => self.bitwise_xor_instruction(value),
+                    6 => self.bitwise_or_instruction(value),
+                    7 => self.cp_instruction(value),
+                    _ => unreachable!(),
+                }
+            }
+            0xC0 | 0xC8 | 0xC9 | 0xD0 | 0xD8 => {
                 if opcode == 0xC9 {
                     let (low_byte, high_byte) = self.pop();
                     let address = high_byte.merge_bytes(low_byte);
@@ -182,76 +294,7 @@ where
                     _ => self.registers.set_16bit(Register16Bits::AF, value),
                 }
             }
-            0xC5 | 0xD5 | 0xE5 | 0xF5 => {
-                let (_, _, _, p, _) = self.decoder(opcode);
-                let register = self.select_16bit_register(p, RPTable::RP2);
-                let address = self.registers.get_16bit(register);
-
-                self.push(address);
-            }
-            0x40..=0x75 | 0x77..=0x7F => {
-                let (_, destination, source, _, _) = self.decoder(opcode);
-
-                let value = self.fetch_source_value(source);
-
-                match destination {
-                    0 => self.registers.set_8bit(Register8Bits::B, value),
-                    1 => self.registers.set_8bit(Register8Bits::C, value),
-                    2 => self.registers.set_8bit(Register8Bits::D, value),
-                    3 => self.registers.set_8bit(Register8Bits::E, value),
-                    4 => self.registers.set_8bit(Register8Bits::H, value),
-                    5 => self.registers.set_8bit(Register8Bits::L, value),
-                    6 => self
-                        .bus
-                        .write(self.registers.get_16bit(Register16Bits::HL), value),
-                    7 => self.registers.set_8bit(Register8Bits::A, value),
-                    _ => unreachable!(),
-                }
-            }
-            0x76 => {}
-            0x80..=0xBF => {
-                let (_, destination, source, _, _) = self.decoder(opcode);
-
-                let value = self.fetch_source_value(source);
-
-                match destination {
-                    0 => self.add_instruction(value),
-                    1 => self.adc_instruction(value),
-                    2 => self.sub_instruction(value),
-                    3 => self.sbc_instruction(value),
-                    4 => self.bitwise_and_instruction(value),
-                    5 => self.bitwise_xor_instruction(value),
-                    6 => self.bitwise_or_instruction(value),
-                    7 => self.cp_instruction(value),
-                    _ => unreachable!(),
-                }
-            }
-            0x0E | 0x1E | 0x2E | 0x3E => {
-                let value = self.fetch_byte();
-
-                match opcode {
-                    0x0E => self.registers.set_8bit(Register8Bits::C, value),
-                    0x1E => self.registers.set_8bit(Register8Bits::E, value),
-                    0x2E => self.registers.set_8bit(Register8Bits::L, value),
-                    _ => self.registers.set_8bit(Register8Bits::A, value),
-                }
-            }
-            0xC6 | 0xD6 | 0xE6 | 0xF6 | 0xCE | 0xDE | 0xEE | 0xFE => {
-                let value = self.fetch_byte();
-
-                match opcode {
-                    0xC6 => self.add_instruction(value),
-                    0xCE => self.adc_instruction(value),
-                    0xD6 => self.sub_instruction(value),
-                    0xDE => self.sbc_instruction(value),
-                    0xE6 => self.bitwise_and_instruction(value),
-                    0xEE => self.bitwise_xor_instruction(value),
-                    0xF6 => self.bitwise_or_instruction(value),
-                    _ => self.cp_instruction(value),
-                }
-            }
-
-            0xC2 | 0xD2 | 0xC3 | 0xCA | 0xDA => {
+            0xC2 | 0xC3 | 0xCA | 0xD2 | 0xDA => {
                 let address = self.fetch_2bytes();
 
                 if opcode == 0xC3 {
@@ -266,8 +309,7 @@ where
                     self.registers.program_counter.jump(address);
                 }
             }
-
-            0xC4 | 0xD4 | 0xCC | 0xDC | 0xCD => {
+            0xC4 | 0xCC | 0xCD | 0xD4 | 0xDC => {
                 let address = self.fetch_2bytes();
 
                 if opcode == 0xCD {
@@ -282,18 +324,58 @@ where
                     self.call(address);
                 }
             }
+            0xC5 | 0xD5 | 0xE5 | 0xF5 => {
+                let (_, _, _, p, _) = self.decoder(opcode);
+                let register = self.select_16bit_register(p, RPTable::RP2);
+                let address = self.registers.get_16bit(register);
 
-            0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
+                self.push(address);
+            }
+            0xC6 | 0xCE | 0xD6 | 0xDE | 0xE6 | 0xEE | 0xF6 | 0xFE => {
+                let value = self.fetch_byte();
+
+                match opcode {
+                    0xC6 => self.add_instruction(value),
+                    0xCE => self.adc_instruction(value),
+                    0xD6 => self.sub_instruction(value),
+                    0xDE => self.sbc_instruction(value),
+                    0xE6 => self.bitwise_and_instruction(value),
+                    0xEE => self.bitwise_xor_instruction(value),
+                    0xF6 => self.bitwise_or_instruction(value),
+                    _ => self.cp_instruction(value),
+                }
+            }
+            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
                 let (_, y, _, _, _) = self.decoder(opcode);
                 let address = (y as u16) * 8;
                 self.call(address);
             }
-
             0xCB => {
+                let opcode = self.fetch_byte();
                 let (x, y, z, _, _) = self.decoder(opcode);
-            }
 
-            0xE0 | 0xF0 | 0xE2 | 0xF2 | 0xEA | 0xFA => {
+                match x {
+                    0 => match y {
+                        0 => self.circular_rotate(z, BitDirection::Left),
+                        1 => self.circular_rotate(z, BitDirection::Right),
+                        2 => self.rotate(z, BitDirection::Left),
+                        3 => self.rotate(z, BitDirection::Right),
+                        4 => self.shift_arithmetic(z, BitDirection::Left),
+                        5 => self.shift_arithmetic(z, BitDirection::Right),
+                        6 => self.swap(z),
+                        _ => self.srl(z),
+                    },
+                    1 => self.test_bit(y, z),
+                    2 => self.reset_bit(y, z),
+                    _ => self.set_bit(y, z),
+                }
+            }
+            0xD9 => {
+                // RETI - return and enable interrupts
+                self.ret();
+                self.enable_interrupts();
+            }
+            0xE0 | 0xE2 | 0xEA | 0xF0 | 0xF2 | 0xFA => {
                 let (_, y, _, _, _) = self.decoder(opcode);
 
                 if opcode == 0xE0 || opcode == 0xF0 {
@@ -337,13 +419,13 @@ where
                     }
                 };
             }
-
             0xE8 => {
                 let sp = self.registers.get_16bit(Register16Bits::SP);
                 let byte = self.fetch_byte();
                 let value = sp.wrapping_add(byte.i16() as u16);
 
-                let delta = FlagDelta {
+                self.registers.set_16bit(Register16Bits::SP, value);
+                self.registers.apply_flags(FlagDelta {
                     z: FlagType::Unset,
                     n: FlagType::Unset,
                     h: if (sp & 0x0F) + (byte as u16 & 0x0F) > 0x0F {
@@ -356,43 +438,43 @@ where
                     } else {
                         FlagType::Unset
                     },
-                };
-
-                self.registers.set_16bit(Register16Bits::SP, value);
-                self.registers.apply_flags(delta);
+                });
             }
             0xE9 => {
                 let address = self.registers.get_16bit(Register16Bits::HL);
                 self.registers.program_counter.jump(address);
             }
+            0xF3 => {
+                self.disable_interrupts();
+            }
             0xF8 => {
                 let byte = self.fetch_byte().i16() as u16;
                 let sp = self.registers.get_16bit(Register16Bits::SP);
-                let half_carry = (sp & 0x000F) + (byte & 0x000F) > 0x000F;
-                let carry = (sp & 0x00FF) + (byte & 0x00FF) > 0x00FF;
                 let value = sp.wrapping_add(byte);
 
-                let delta = FlagDelta {
+                self.registers.set_16bit(Register16Bits::HL, value);
+                self.registers.apply_flags(FlagDelta {
                     z: FlagType::Unset,
                     n: FlagType::Unset,
-                    h: if half_carry {
+                    h: if (sp & 0x000F) + (byte & 0x000F) > 0x000F {
                         FlagType::Set
                     } else {
                         FlagType::Unset
                     },
-                    c: if carry {
+                    c: if (sp & 0x00FF) + (byte & 0x00FF) > 0x00FF {
                         FlagType::Set
                     } else {
                         FlagType::Unset
                     },
-                };
-
-                self.registers.set_16bit(Register16Bits::HL, value);
-                self.registers.apply_flags(delta);
+                });
             }
             0xF9 => {
                 let value = self.registers.get_16bit(Register16Bits::HL);
                 self.registers.set_16bit(Register16Bits::SP, value);
+            }
+            0xFB => {
+                // TODO: EI-enable interrupts; IME is true, delayed by one instruction
+                todo!("Opcode 0xFB not implemented")
             }
             _ => unimplemented!("Opcode {:#04x}", opcode),
         }
@@ -530,7 +612,8 @@ where
         let half_carry = (a & 0x0FFF) + (b & 0x0FFF) > 0x0FFF;
         let (value, overflow) = a.overflowing_add(b);
 
-        let delta = FlagDelta {
+        self.registers.set_16bit(destination, value);
+        self.registers.apply_flags(FlagDelta {
             z: FlagType::Unmodified,
             n: FlagType::Unset,
             h: if half_carry {
@@ -543,10 +626,7 @@ where
             } else {
                 FlagType::Unset
             },
-        };
-
-        self.registers.set_16bit(destination, value);
-        self.registers.apply_flags(delta);
+        });
     }
 
     fn inc_dec_instruction(&mut self, old: u8, is_inc: bool) -> u8 {
@@ -556,7 +636,7 @@ where
             (old.wrapping_sub(1), half_carry_sub(old, 1, false))
         };
 
-        let delta = FlagDelta {
+        self.registers.apply_flags(FlagDelta {
             z: if new == 0 {
                 FlagType::Set
             } else {
@@ -573,10 +653,161 @@ where
                 FlagType::Unset
             },
             c: FlagType::Unmodified,
-        };
-        self.registers.apply_flags(delta);
+        });
 
         new
+    }
+
+    fn circular_rotate(&mut self, z: u8, direction: BitDirection) {
+        // rotate left circular, bit 7 wraps to bit 0
+        // rotate right circular, bit 0 wraps to bit 7
+        let value = self.get_value_for_cb_op(z);
+
+        let (result, carry) = if direction == BitDirection::Left {
+            (value.rotate_left(1), value.mask(0x80) != 0)
+        } else {
+            (value.rotate_right(1), value.mask(0x01) != 0)
+        };
+
+        self.write_value_for_cb_op(z, result);
+        self.apply_rotate_flags(result, carry);
+    }
+
+    fn rotate(&mut self, z: u8, direction: BitDirection) {
+        // Rotate left - old carry becomes bit 0 and bit 7 is new carry
+        // Rotate right - old carry becomes bit 7 and the bit 0 is new carry
+        let value = self.get_value_for_cb_op(z);
+
+        let old_carry = self.registers.flag(StatusFlag::C) as u8;
+
+        let (result, carry) = if direction == BitDirection::Left {
+            ((value << 1) | old_carry, value.mask(0x80) != 0)
+        } else {
+            ((value >> 1) | (old_carry << 7), value.mask(0x01) != 0)
+        };
+
+        self.write_value_for_cb_op(z, result);
+        self.apply_rotate_flags(result, carry);
+    }
+
+    fn shift_arithmetic(&mut self, z: u8, direction: BitDirection) {
+        // Shift left arithmetic - shift bit 7 out and let it become carry; let bit 0 be zero
+        // Shift right arithmetic - bit 7 is duplicated and bit zero becomes carry
+        let value = self.get_value_for_cb_op(z);
+
+        let (result, carry) = if direction == BitDirection::Left {
+            (value << 1, value.mask(0x80) != 0)
+        } else {
+            ((value >> 1) | value.mask(0x80), value.mask(0x01) != 0)
+        };
+
+        self.write_value_for_cb_op(z, result);
+        self.apply_rotate_flags(result, carry);
+    }
+
+    fn swap(&mut self, z: u8) {
+        // Swap high nibble and low nibble
+        let value = self.get_value_for_cb_op(z);
+        let carry = false;
+        let result = value.rotate_left(4);
+
+        self.write_value_for_cb_op(z, result);
+        self.apply_rotate_flags(result, carry);
+    }
+
+    fn srl(&mut self, z: u8) {
+        // Shift right logical - bit 0 becomes carry, bit 7 becomes zero
+        let value = self.get_value_for_cb_op(z);
+        let carry = value.mask(0x01) != 0;
+        let result = value >> 1;
+
+        self.write_value_for_cb_op(z, result);
+        self.apply_rotate_flags(result, carry);
+    }
+
+    fn apply_rotate_flags(&mut self, result: u8, carry: bool) {
+        self.registers.apply_flags(FlagDelta {
+            z: if result == 0 {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+            n: FlagType::Unset,
+            h: FlagType::Unset,
+            c: if carry {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+        });
+    }
+
+    fn test_bit(&mut self, y: u8, z: u8) {
+        let value = self.get_value_for_cb_op(z);
+        let is_zero = value & (1 << y) == 0;
+
+        self.registers.apply_flags(FlagDelta {
+            z: if is_zero {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+            n: FlagType::Unset,
+            h: FlagType::Set,
+            c: FlagType::Unmodified,
+        });
+    }
+
+    fn reset_bit(&mut self, y: u8, z: u8) {
+        let value = self.get_value_for_cb_op(z);
+        let result = value & !(1 << y);
+
+        self.write_value_for_cb_op(z, result);
+    }
+
+    fn set_bit(&mut self, y: u8, z: u8) {
+        let value = self.get_value_for_cb_op(z);
+        let result = value | (1 << y);
+
+        self.write_value_for_cb_op(z, result);
+    }
+
+    fn select_8bit_register(&self, z: u8) -> Option<Register8Bits> {
+        match z {
+            0 => Some(Register8Bits::B),
+            1 => Some(Register8Bits::C),
+            2 => Some(Register8Bits::D),
+            3 => Some(Register8Bits::E),
+            4 => Some(Register8Bits::H),
+            5 => Some(Register8Bits::L),
+            6 => None,
+            7 => Some(Register8Bits::A),
+            _ => unreachable!(),
+        }
+    }
+
+    fn read_from_hl_address(&self) -> u8 {
+        let address = self.registers.get_16bit(Register16Bits::HL);
+        self.bus.read(address)
+    }
+
+    fn write_to_hl_address(&mut self, value: u8) {
+        let address = self.registers.get_16bit(Register16Bits::HL);
+        self.bus.write(address, value);
+    }
+
+    fn get_value_for_cb_op(&mut self, z: u8) -> u8 {
+        match self.select_8bit_register(z) {
+            Some(register) => self.registers.get_8bit(register),
+            None => self.read_from_hl_address(),
+        }
+    }
+
+    fn write_value_for_cb_op(&mut self, z: u8, result: u8) {
+        match self.select_8bit_register(z) {
+            Some(register) => self.registers.set_8bit(register, result),
+            None => self.write_to_hl_address(result),
+        }
     }
 }
 
@@ -645,36 +876,22 @@ mod tests {
         assert_eq!(cpu.registers.f, 0x30)
     }
 
+    const SKIPPED_OPCODES: &[u8] = &[
+        0x10, 0x27, 0x76, 0xF3, 0xFB, // remaining
+        0xD3, 0xDB, 0xDD, 0xE3, 0xE4, 0xEB, 0xEC, 0xED, 0xF4, 0xFC, 0xFD, // illegal
+    ];
+
     #[test]
     fn json_instructions() {
-        let mut implemented_instructions = vec![
-            "02", "12", "22", "32", "0a", "1a", "2a", "3a", "c1", "d1", "e1", "f1", "c6", "d6",
-            "e6", "f6", "ce", "de", "ee", "fe", "01", "11", "21", "31", "06", "16", "26", "36",
-            "0e", "1e", "2e", "3e", "08", "c5", "d5", "e5", "f5", "03", "13", "23", "33", "0b",
-            "1b", "2b", "3b", "14", "24", "05", "15", "25", "35", "0c", "1c", "2c", "3c", "0d",
-            "1d", "2d", "3d", "09", "19", "29", "39", "e8", "e2", "f2", "ea", "fa", "e0", "f0",
-            "f8", "f9", "c7", "d7", "e7", "f7", "cf", "df", "ef", "ff", "c2", "d2", "c3", "ca",
-            "da", "e9", "c4", "d4", "cc", "dc", "cd", "04", "18", "20", "30", "18", "28", "38",
-            "c0", "d0", "c8", "d8", "c9",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect::<Vec<_>>();
-
-        for hex in 0x80..=0xBFu8 {
-            implemented_instructions.push(format!("{:0x}", hex));
-        }
-
-        for hex in 0x40..=0x75 {
-            implemented_instructions.push(format!("{:0x}", hex));
-        }
-
-        for hex in 0x77..=0x7F {
-            implemented_instructions.push(format!("{:0x}", hex));
-        }
+        let implemented_instructions: Vec<String> = (0x00..=0xFFu8)
+            .filter(|opcode| !SKIPPED_OPCODES.contains(opcode))
+            .map(|opcode| format!("{:02x}", opcode))
+            .collect();
 
         for opcode in implemented_instructions.iter() {
-            let text = std::fs::read_to_string(format!("tests/sm83/v2/{}.json", opcode)).unwrap();
+            let path = format!("tests/sm83/v2/{}.json", opcode);
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
             let cases: Vec<TestCase> = serde_json::from_str(&text).unwrap();
 
             for case in &cases {
