@@ -27,11 +27,12 @@ jobs:
             ext: ''
     steps:
       - uses: actions/checkout@v6
-      - name: Test emulator
-        run: cargo test
 
       - name: Install Libraries (Ubuntu)
         if: matrix.runner == 'ubuntu-latest'
         run: |
           sudo apt update
           sudo apt install libwayland-dev libasound2-dev libudev-dev pkg-config
+
+      - name: Test emulator
+        run: cargo test
