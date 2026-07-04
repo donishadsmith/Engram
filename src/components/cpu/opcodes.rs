@@ -142,7 +142,7 @@ where
                 let address = self.fetch_2bytes();
 
                 self.bus.write(address, low_byte);
-                self.bus.write(address + 1, high_byte);
+                self.bus.write(address.wrapping_add(1), high_byte);
             }
             0x09 | 0x19 | 0x29 | 0x39 => {
                 let (_, _, _, p, _) = self.decoder(opcode);
