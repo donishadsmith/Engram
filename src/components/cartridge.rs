@@ -143,7 +143,7 @@ impl Header {
     fn checksum(rom: &[u8]) -> u8 {
         let mut checksum: u8 = 0;
         for address in 0x0134..=0x014C {
-            checksum = checksum.wrapping_sub(rom[address].wrapping_sub(1));
+            checksum = checksum.wrapping_sub(rom[address]).wrapping_sub(1);
         }
 
         checksum

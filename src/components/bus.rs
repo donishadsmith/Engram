@@ -50,6 +50,7 @@ impl AddressBus for Bus {
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize],
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize],
             0xFE00..=0xFE9F => self.memory.oam[(address - 0xFE00) as usize],
+            0xFF44 => 0x90, // TODO: LY - Fixed read for now until PPU exists; self.ppu.ly
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
             0xFEA0..=0xFEFF | 0xFF00..=0xFF7F | 0xFFFF => 0xFF,
         }
