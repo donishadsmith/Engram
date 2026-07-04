@@ -1,0 +1,46 @@
+name: Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.runner }} ${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: ubuntu
+            ext: ''
+          - runner: windows-latest
+            target: windows_x86_64
+            ext: '.exe'
+          - runner: macos-latest
+            target: macos_arm64
+            ext: ''
+          - runner: macos-15-intel
+            target: macos_x86_64
+            ext: ''
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build release
+        run: cargo build --release
+
+      - name: Rename binary (Unix)
+        if: matrix.runner != 'windows-latest'
+        run: mv target/release/gameboy_emulator target/release/gameboy_emulator-${{ matrix.target }}
+
+      - name: Rename binary (Windows)
+        if: matrix.runner == 'windows-latest'
+        shell: bash
+        run: mv target/release/gameboy_emulator.exe target/release/gameboy_emulator-${{ matrix.target }}${{ matrix.ext }}
+
+      - name: Attach files to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/gameboy_emulator-${{ matrix.target }}${{ matrix.ext }}

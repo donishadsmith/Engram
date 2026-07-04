@@ -1,0 +1,31 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [main, development]
+  schedule:
+    - cron: 0 0 * * 1
+
+jobs:
+  build:
+    name: Build (${{ matrix.runner }} ${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: ubuntu
+            ext: ''
+          - runner: windows-latest
+            target: windows_x86_64
+            ext: '.exe'
+          - runner: macos-latest
+            target: macos_arm64
+            ext: ''
+          - runner: macos-15-intel
+            target: macos_x86_64
+            ext: ''
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test emulator
+        run: cargo test
