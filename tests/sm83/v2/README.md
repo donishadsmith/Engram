@@ -6,7 +6,7 @@ The Gameboy's CPU is a custom chip called the Sharp LR35902. The chip is very si
 
 The tests assume a decode-execute-prefetch loop and so start at PC+1, with the final cycle being the prefetch of the next instruction. See [Gameboy CPU Internals](https://gist.github.com/SonoSooS/c0055300670d678b5ae8433e20bea595#fetch-and-stuff) for more info.
 
-`STOP`, `HALT`, `EI` and `DI` are currently omitted until I can devise a meaningful way to test their behaviour. 
+`STOP`, `HALT`, `EI` and `DI` are currently omitted until I can devise a meaningful way to test their behaviour.
 
 Sample test:
 ```json
