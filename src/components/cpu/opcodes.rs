@@ -379,7 +379,7 @@ where
                 let (_, y, _, _, _) = self.decoder(opcode);
 
                 if opcode == 0xE0 || opcode == 0xF0 {
-                    let address = 0xFF00 + self.fetch_byte() as u16;
+                    let address = 0xFF00u16.wrapping_add(self.fetch_byte() as u16);
 
                     match y {
                         4 => {
@@ -399,7 +399,7 @@ where
                     4 => {
                         let a = self.registers.get_8bit(Register8Bits::A);
                         let c = self.registers.get_8bit(Register8Bits::C) as u16;
-                        self.bus.write(0xFF00 + c, a);
+                        self.bus.write(0xFF00u16.wrapping_add(c), a);
                     }
                     5 => {
                         let value = self.registers.get_8bit(Register8Bits::A);
@@ -408,7 +408,7 @@ where
                     }
                     6 => {
                         let c = self.registers.get_8bit(Register8Bits::C) as u16;
-                        let address = 0xFF00 + c;
+                        let address = 0xFF00u16.wrapping_add(c);
                         let value = self.bus.read(address);
                         self.registers.set_8bit(Register8Bits::A, value);
                     }
