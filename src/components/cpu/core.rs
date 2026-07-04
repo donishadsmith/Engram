@@ -533,6 +533,38 @@ pub trait AddressBus {
     fn write(&mut self, address: u16, value: u8);
 }
 
+pub enum InterruptTypes {
+    VBlank = 0,
+    LCD = 1,
+    Timer = 2,
+    Serial = 3,
+    Joypad = 4,
+}
+
+pub struct Interrupt {
+    master_enable: bool,
+    flag: u8,
+    enable: u8,
+}
+
+impl Interrupt {
+    fn new() -> Self {
+        Self {
+            master_enable: false,
+            flag: 0x00,
+            enable: 0x00,
+        }
+    }
+
+    pub fn enable_master(&mut self) {
+        self.master_enable = true;
+    }
+
+    pub fn disable_master(&mut self) {
+        self.master_enable = false;
+    }
+}
+
 pub struct CPU<A>
 where
     A: AddressBus,
@@ -540,7 +572,7 @@ where
     pub registers: Registers,
     pub bus: A,
     pub halt_bug: bool,
-    pub interrupt_master_enable: bool,
+    pub interrupt: Interrupt,
 }
 
 impl<A> CPU<A>
@@ -552,7 +584,7 @@ where
             registers: Registers::new(&cartridge),
             bus,
             halt_bug: false,
-            interrupt_master_enable: false,
+            interrupt: Interrupt::new(),
         };
         cpu.fetch();
         cpu
@@ -563,7 +595,7 @@ where
             registers,
             bus,
             halt_bug: false,
-            interrupt_master_enable: false,
+            interrupt: Interrupt::new(),
         };
 
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
@@ -632,14 +664,6 @@ where
         } else {
             self.registers.program_counter.increment(1u16);
         }
-    }
-
-    pub fn enable_interrupts(&mut self) {
-        self.interrupt_master_enable = true;
-    }
-
-    pub fn disable_interrupts(&mut self) {
-        self.interrupt_master_enable = false;
     }
 }
 

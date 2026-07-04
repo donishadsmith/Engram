@@ -185,8 +185,7 @@ where
                 }
             }
             0x27 => {
-                // TODO: DAA-decimal adjust accumulator
-                todo!("Opcode 0x27 (DAA) not implemented")
+                self.daa_instruction();
             }
             0x2F => {
                 // CPL - complement accumulator
@@ -373,7 +372,7 @@ where
             0xD9 => {
                 // RETI - return and enable interrupts
                 self.ret();
-                self.enable_interrupts();
+                self.interrupt.enable_master();
             }
             0xE0 | 0xE2 | 0xEA | 0xF0 | 0xF2 | 0xFA => {
                 let (_, y, _, _, _) = self.decoder(opcode);
@@ -445,7 +444,7 @@ where
                 self.registers.program_counter.jump(address);
             }
             0xF3 => {
-                self.disable_interrupts();
+                self.interrupt.disable_master();
             }
             0xF8 => {
                 let byte = self.fetch_byte().i16() as u16;
@@ -476,7 +475,7 @@ where
                 // TODO: EI-enable interrupts; IME is true, delayed by one instruction
                 todo!("Opcode 0xFB not implemented")
             }
-            _ => unimplemented!("Opcode {:#04x}", opcode),
+            _ => unreachable!("Remaining opcodes are illegal"),
         }
     }
 
@@ -809,6 +808,67 @@ where
             None => self.write_to_hl_address(result),
         }
     }
+
+    fn daa_instruction(&mut self) {
+        // applying flags to the accumulator value, subtraction
+        // determined by negative flag
+
+        /*
+            DAA-decimal adjust accumulator
+            https://forums.nesdev.org/viewtopic.php?t=15944
+            https://blog.ollien.com/posts/gb-daa/
+            BCD-binary coded decimal
+            Byte=8 bits, nibble is 4 bits, high nibble + low nibble.
+            In base 2, each nibble has 2^4 valid combinations, meaning
+            (2^4)*(2^4) = 256 total.
+            BCD only goes from 0-99, each nibble goes from 0-9,
+            since 10+ is not a valid decimal digit, hence 10*10=100 combinations.
+            If a nibble overflows past 9 (nibble > 9 or half-carry set), add an
+            offset of 6 to the ones place, derived from 16 - 10 (base gap, skips
+            the invalid hex codes A-F). Same for the 10s place, if high nibble > 9
+            or carry set, add 0x60, then wrap and carry
+        */
+
+        let mut update_carry_flag = false;
+        let mut a = self.registers.get_8bit(Register8Bits::A);
+        let half_carry = self.registers.flag(StatusFlag::H);
+        let carry = self.registers.flag(StatusFlag::C);
+
+        if !self.registers.flag(StatusFlag::N) {
+            if a > 0x99 || carry {
+                update_carry_flag = true;
+                a = a.wrapping_add(0x60);
+            }
+
+            if a.mask(0x0F) > 0x09 || half_carry {
+                a = a.wrapping_add(0x06);
+            }
+        } else {
+            if carry {
+                a = a.wrapping_sub(0x60);
+            }
+
+            if half_carry {
+                a = a.wrapping_sub(0x06);
+            }
+        }
+
+        self.registers.set_8bit(Register8Bits::A, a);
+        self.registers.apply_flags(FlagDelta {
+            z: if a == 0 {
+                FlagType::Set
+            } else {
+                FlagType::Unset
+            },
+            n: FlagType::Unmodified,
+            h: FlagType::Unset,
+            c: if update_carry_flag {
+                FlagType::Set
+            } else {
+                FlagType::Unmodified
+            },
+        });
+    }
 }
 
 // For JSON tests
@@ -877,7 +937,8 @@ mod tests {
     }
 
     const SKIPPED_OPCODES: &[u8] = &[
-        0x10, 0x27, 0x76, 0xF3, 0xFB, // remaining
+        0x76, 0xFB, // remaining
+        0x10, 0xF3, // No json files
         0xD3, 0xDB, 0xDD, 0xE3, 0xE4, 0xEB, 0xEC, 0xED, 0xF4, 0xFC, 0xFD, // illegal
     ];
 
