@@ -1,25 +1,40 @@
 use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
     cartridge::{CGBFlag, Cartridge},
-    cpu::core::AddressBus,
-    memory::{BootStatus, Memory},
+    cpu::core::ByteOps8,
+    memory::Memory,
 };
 
-//http://gameboy.mongenel.com/dmg/asmmemmap.html
+#[derive(PartialEq)]
+pub enum BootStatus {
+    Complete,
+    Incomplete,
+}
 
+pub trait AddressBus {
+    fn read(&self, address: u16) -> u8;
+
+    fn write(&mut self, address: u16, value: u8);
+
+    fn pending_interrupt(&self) -> u8;
+}
+
+//http://gameboy.mongenel.com/dmg/asmmemmap.html
 pub struct Bus {
     pub memory: Memory,
+    boot_status: BootStatus,
 }
 
 impl Bus {
     pub fn new(cartridge: Cartridge) -> Self {
         Self {
             memory: Memory::new(cartridge),
+            boot_status: BootStatus::Incomplete,
         }
     }
 
     fn boot_rom_read(&self, address: u16) -> Option<u8> {
-        if self.memory.boot_status == BootStatus::Complete {
+        if self.boot_status == BootStatus::Complete {
             return None;
         }
 
@@ -50,9 +65,11 @@ impl AddressBus for Bus {
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize],
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize],
             0xFE00..=0xFE9F => self.memory.oam[(address - 0xFE00) as usize],
+            0xFF0F => self.memory.interrupt_flag | 0xE0,
             0xFF44 => 0x90, // TODO: LY - Fixed read for now until PPU exists; self.ppu.ly
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
-            0xFEA0..=0xFEFF | 0xFF00..=0xFF7F | 0xFFFF => 0xFF,
+            0xFEA0..=0xFEFF | 0xFF00..=0xFF7F => 0xFF,
+            0xFFFF => self.memory.interrupt_enable,
         }
     }
 
@@ -63,8 +80,19 @@ impl AddressBus for Bus {
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize] = value,
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize] = value,
             0xFE00..=0xFE9F => self.memory.oam[(address - 0xFE00) as usize] = value,
+            0xFF0F => self.memory.interrupt_flag = value.mask(0x1F),
+            0xFF50 => {
+                if value.mask(0x01) != 0 {
+                    self.boot_status = BootStatus::Complete;
+                }
+            }
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize] = value,
-            0xFEA0..=0xFEFF | 0xFF00..=0xFF7F | 0xFFFF => {}
+            0xFEA0..=0xFEFF | 0xFF00..=0xFF7F => {}
+            0xFFFF => self.memory.interrupt_enable = value,
         }
+    }
+
+    fn pending_interrupt(&self) -> u8 {
+        self.read(0xFF0F).mask(self.read(0xFFFF)).mask(0x1F)
     }
 }

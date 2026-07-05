@@ -1,11 +1,5 @@
 use crate::components::cartridge::{CGBFlag, Cartridge};
 
-#[derive(PartialEq)]
-pub enum BootStatus {
-    Complete,
-    Incomplete,
-}
-
 /*
 https://rylev.github.io/DMG-01/public/book/memory_map.html
 https://gbdev.io/pandocs/Specifications.html
@@ -21,12 +15,13 @@ MemoryMap
 */
 
 pub struct Memory {
-    pub boot_status: BootStatus,
     pub cartridge: Cartridge,
     pub wram: Vec<u8>,
     pub vram: Vec<u8>,
     pub hram: Vec<u8>,
     pub oam: Vec<u8>,
+    pub interrupt_flag: u8,
+    pub interrupt_enable: u8,
 }
 
 impl Memory {
@@ -38,16 +33,13 @@ impl Memory {
         };
 
         Self {
-            boot_status: BootStatus::Incomplete,
             cartridge,
             wram: vec![0u8; wram_size],
             vram: vec![0u8; vram_size],
             hram: vec![0u8; 0x007F],
             oam: vec![0u8; 0x00A0],
+            interrupt_enable: 0x00,
+            interrupt_flag: 0x00,
         }
-    }
-
-    pub fn boot_complete(&mut self) {
-        self.boot_status = BootStatus::Complete;
     }
 }

@@ -1,6 +1,8 @@
 // TODO: currently placeholder logic for mbc1-5 logic
 
 pub mod prelude {
+    use crate::components::cpu::core::ByteOps8;
+
     pub trait MBC {
         fn read(&self, address: u16) -> u8;
 
@@ -94,7 +96,7 @@ pub mod prelude {
         fn write(&mut self, address: u16, value: u8) {
             match address {
                 0x2000..=0x3FFF => {
-                    let bank = (value & 0x1F) as usize;
+                    let bank = value.mask(0x1F) as usize;
                     self.rom_bank = if bank == 0 { 1 } else { bank };
                 }
                 _ => {}
@@ -151,7 +153,7 @@ pub mod prelude {
         fn write(&mut self, address: u16, value: u8) {
             match address {
                 0x2000..=0x3FFF => {
-                    let bank = (value & 0x1F) as usize;
+                    let bank = value.mask(0x1F) as usize;
                     self.rom_bank = if bank == 0 { 1 } else { bank };
                 }
                 _ => {}
@@ -208,7 +210,7 @@ pub mod prelude {
         fn write(&mut self, address: u16, value: u8) {
             match address {
                 0x2000..=0x3FFF => {
-                    let bank = (value & 0x1F) as usize;
+                    let bank = value.mask(0x1F) as usize;
                     self.rom_bank = if bank == 0 { 1 } else { bank };
                 }
                 _ => {}
@@ -265,7 +267,7 @@ pub mod prelude {
         fn write(&mut self, address: u16, value: u8) {
             match address {
                 0x2000..=0x3FFF => {
-                    let bank = (value & 0x1F) as usize;
+                    let bank = value.mask(0x1F) as usize;
                     self.rom_bank = if bank == 0 { 1 } else { bank };
                 }
                 _ => {}

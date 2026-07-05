@@ -1,6 +1,10 @@
-use crate::components::cpu::core::{
-    AddressBus, ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType,
-    MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add, half_carry_sub,
+use crate::components::{
+    bus::AddressBus,
+    cpu::core::{
+        ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType, MergeByteOps,
+        Register8Bits, Register16Bits, StatusFlag, half_carry_add, half_carry_sub,
+    },
+    cpu::cycles::{PREFIX_CYCLES, UNPREFIX_CYCLES},
 };
 
 #[derive(PartialEq)]
@@ -15,23 +19,29 @@ enum BitDirection {
     Left,
 }
 
+// https://archive.gbdev.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
+fn opcode_decoder(opcode: u8) -> (u8, u8, u8, u8, u8) {
+    let x = (opcode >> 6).mask(0x03); // category; the opcode's 1st octal digit (i.e. bits 7-6)
+    let y = (opcode >> 3).mask(0x07); // destination register; the opcode's 2nd octal digit (i.e. bits 5-3)
+    let z = opcode.mask(0x07); // source register; the opcode's 3rd octal digit (i.e. bits 2-0)
+    let p = y >> 1; // 16 bit register pair; y rightshifted one position (i.e. bits 5-4)
+    let q = y.mask(0x01); // boolean toggle; y modulo 2 (i.e. bit 3)
+
+    (x, y, z, p, q)
+}
+
 impl<A> CPU<A>
 where
     A: AddressBus,
 {
-    pub fn decode_and_execute(&mut self) {
+    pub fn decode_and_execute(&mut self) -> u8 {
         let opcode = self.registers.instruction_register.unwrap();
-        eprintln!(
-            "Opcode {:02x}; PC={:04x}",
-            opcode,
-            self.registers.program_counter.address.wrapping_sub(1)
-        );
+        let base = UNPREFIX_CYCLES[opcode as usize];
 
         // https://izik1.github.io/gbops/
         // https://gekkio.fi/files/gb-docs/gbctr.pdf
-        // https://archive.gbdev.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
         match opcode {
-            0x00 => return,
+            0x00 => return base,
             0x01 | 0x11 | 0x21 | 0x31 => {
                 let value = self.fetch_2bytes();
 
@@ -43,7 +53,7 @@ where
                 }
             }
             0x02 | 0x0A | 0x12 | 0x1A | 0x22 | 0x2A | 0x32 | 0x3A => {
-                let (_, _, _, p, q) = self.decoder(opcode);
+                let (_, _, _, p, q) = opcode_decoder(opcode);
 
                 let address = match p {
                     0 => self.registers.get_16bit(Register16Bits::BC),
@@ -68,7 +78,7 @@ where
                 }
             }
             0x03 | 0x0B | 0x13 | 0x1B | 0x23 | 0x2B | 0x33 | 0x3B => {
-                let (_, _, _, p, q) = self.decoder(opcode);
+                let (_, _, _, p, q) = opcode_decoder(opcode);
 
                 let register = self.select_16bit_register(p, RPTable::RP);
 
@@ -82,7 +92,7 @@ where
             }
             0x04 | 0x05 | 0x0C | 0x0D | 0x14 | 0x15 | 0x1C | 0x1D | 0x24 | 0x25 | 0x2C | 0x2D
             | 0x34 | 0x35 | 0x3C | 0x3D => {
-                let (_, destination, z, _, _) = self.decoder(opcode);
+                let (_, destination, z, _, _) = opcode_decoder(opcode);
                 let is_inc = z == 4;
 
                 if destination == 6 {
@@ -119,7 +129,7 @@ where
                 }
             }
             0x07 | 0x0F | 0x17 | 0x1F => {
-                let (_, y, _, _, _) = self.decoder(opcode);
+                let (_, y, _, _, _) = opcode_decoder(opcode);
 
                 match y {
                     0 => self.circular_rotate(7, BitDirection::Left), // Rotate left circular accumulator
@@ -145,7 +155,7 @@ where
                 self.bus.write(address.wrapping_add(1), high_byte);
             }
             0x09 | 0x19 | 0x29 | 0x39 => {
-                let (_, _, _, p, _) = self.decoder(opcode);
+                let (_, _, _, p, _) = opcode_decoder(opcode);
                 let register = self.select_16bit_register(p, RPTable::RP);
 
                 self.add_16bit(register, Register16Bits::HL);
@@ -175,13 +185,15 @@ where
                 if opcode == 0x18 {
                     self.registers.program_counter.jump(address);
 
-                    return;
+                    return base;
                 }
 
-                let (_, y, _, _, _) = self.decoder(opcode);
+                let (_, y, _, _, _) = opcode_decoder(opcode);
 
                 if self.conditional_move(y - 4) {
                     self.registers.program_counter.jump(address);
+                } else {
+                    return base - 1;
                 }
             }
             0x27 => {
@@ -221,7 +233,7 @@ where
                 });
             }
             0x40..=0x75 | 0x77..=0x7F => {
-                let (_, destination, source, _, _) = self.decoder(opcode);
+                let (_, destination, source, _, _) = opcode_decoder(opcode);
 
                 let value = self.fetch_source_value(source);
 
@@ -240,12 +252,14 @@ where
                 }
             }
             0x76 => {
-                // TODO: HALT-stop execution until an interrupt is pending;
-                // reuires ime,ie,if,halt_bug
-                todo!("Opcode 0x76 (HALT) not implemented")
+                if !self.interrupt.master_enable && self.bus.pending_interrupt() != 0 {
+                    self.halt_bug = true
+                } else {
+                    self.halted = true
+                }
             }
             0x80..=0xBF => {
-                let (_, destination, source, _, _) = self.decoder(opcode);
+                let (_, destination, source, _, _) = opcode_decoder(opcode);
 
                 let value = self.fetch_source_value(source);
 
@@ -267,15 +281,17 @@ where
                     let address = high_byte.merge_bytes(low_byte);
                     self.registers.program_counter.jump(address);
 
-                    return;
+                    return base;
                 }
 
-                let (_, y, _, _, _) = self.decoder(opcode);
+                let (_, y, _, _, _) = opcode_decoder(opcode);
 
                 if self.conditional_move(y) {
                     let (low_byte, high_byte) = self.pop();
                     let address = high_byte.merge_bytes(low_byte);
                     self.registers.program_counter.jump(address);
+                } else {
+                    return base - 3;
                 }
             }
             0xC1 | 0xD1 | 0xE1 | 0xF1 => {
@@ -299,13 +315,15 @@ where
                 if opcode == 0xC3 {
                     self.registers.program_counter.jump(address);
 
-                    return;
+                    return base;
                 }
 
-                let (_, y, _, _, _) = self.decoder(opcode);
+                let (_, y, _, _, _) = opcode_decoder(opcode);
 
                 if self.conditional_move(y) {
                     self.registers.program_counter.jump(address);
+                } else {
+                    return base - 1;
                 }
             }
             0xC4 | 0xCC | 0xCD | 0xD4 | 0xDC => {
@@ -314,17 +332,19 @@ where
                 if opcode == 0xCD {
                     self.call(address);
 
-                    return;
+                    return base;
                 }
 
-                let (_, y, _, _, _) = self.decoder(opcode);
+                let (_, y, _, _, _) = opcode_decoder(opcode);
 
                 if self.conditional_move(y) {
                     self.call(address);
+                } else {
+                    return base - 3;
                 }
             }
             0xC5 | 0xD5 | 0xE5 | 0xF5 => {
-                let (_, _, _, p, _) = self.decoder(opcode);
+                let (_, _, _, p, _) = opcode_decoder(opcode);
                 let register = self.select_16bit_register(p, RPTable::RP2);
                 let address = self.registers.get_16bit(register);
 
@@ -345,13 +365,13 @@ where
                 }
             }
             0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
-                let (_, y, _, _, _) = self.decoder(opcode);
+                let (_, y, _, _, _) = opcode_decoder(opcode);
                 let address = (y as u16) * 8;
                 self.call(address);
             }
             0xCB => {
                 let opcode = self.fetch_byte();
-                let (x, y, z, _, _) = self.decoder(opcode);
+                let (x, y, z, _, _) = opcode_decoder(opcode);
 
                 match x {
                     0 => match y {
@@ -368,14 +388,16 @@ where
                     2 => self.reset_bit(y, z),
                     _ => self.set_bit(y, z),
                 }
+
+                return PREFIX_CYCLES[opcode as usize];
             }
             0xD9 => {
                 // RETI - return and enable interrupts
                 self.ret();
-                self.interrupt.enable_master();
+                self.interrupt.master_enable = true;
             }
             0xE0 | 0xE2 | 0xEA | 0xF0 | 0xF2 | 0xFA => {
-                let (_, y, _, _, _) = self.decoder(opcode);
+                let (_, y, _, _, _) = opcode_decoder(opcode);
 
                 if opcode == 0xE0 || opcode == 0xF0 {
                     let address = 0xFF00u16.wrapping_add(self.fetch_byte() as u16);
@@ -391,7 +413,7 @@ where
                         }
                     }
 
-                    return;
+                    return base;
                 }
 
                 match y {
@@ -444,7 +466,8 @@ where
                 self.registers.program_counter.jump(address);
             }
             0xF3 => {
-                self.interrupt.disable_master();
+                self.interrupt.master_enable = false;
+                self.interrupt.pending_enable = false;
             }
             0xF8 => {
                 let byte = self.fetch_byte().i16() as u16;
@@ -471,22 +494,11 @@ where
                 let value = self.registers.get_16bit(Register16Bits::HL);
                 self.registers.set_16bit(Register16Bits::SP, value);
             }
-            0xFB => {
-                // TODO: EI-enable interrupts; IME is true, delayed by one instruction
-                todo!("Opcode 0xFB not implemented")
-            }
+            0xFB => self.interrupt.pending_enable = true,
             _ => unreachable!("Remaining opcodes are illegal"),
         }
-    }
 
-    fn decoder(&self, opcode: u8) -> (u8, u8, u8, u8, u8) {
-        let x = (opcode >> 6).mask(0x03); // category; the opcode's 1st octal digit (i.e. bits 7-6)
-        let y = (opcode >> 3).mask(0x07); // destination register; the opcode's 2nd octal digit (i.e. bits 5-3)
-        let z = opcode.mask(0x07); // source register; the opcode's 3rd octal digit (i.e. bits 2-0)
-        let p = y >> 1; // 16 bit register pair; y rightshifted one position (i.e. bits 5-4)
-        let q = y.mask(0x01); // boolean toggle; y modulo 2 (i.e. bit 3)
-
-        (x, y, z, p, q)
+        base
     }
 
     fn conditional_move(&self, y: u8) -> bool {
@@ -888,8 +900,13 @@ impl AddressBus for TestBus {
     fn read(&self, address: u16) -> u8 {
         self.ram[address as usize]
     }
+
     fn write(&mut self, address: u16, value: u8) {
         self.ram[address as usize] = value;
+    }
+
+    fn pending_interrupt(&self) -> u8 {
+        0
     }
 }
 
@@ -921,6 +938,7 @@ mod tests {
         initial: CpuState,
         #[serde(rename = "final")]
         final_state: CpuState,
+        cycles: Vec<serde_json::Value>,
     }
 
     #[test]
@@ -937,8 +955,7 @@ mod tests {
     }
 
     const SKIPPED_OPCODES: &[u8] = &[
-        0x76, 0xFB, // remaining
-        0x10, 0xF3, // No json files
+        0x76, 0xFB, 0x10, 0xF3, // No json files
         0xD3, 0xDB, 0xDD, 0xE3, 0xE4, 0xEB, 0xEC, 0xED, 0xF4, 0xFC, 0xFD, // illegal
     ];
 
@@ -975,10 +992,16 @@ mod tests {
                 );
                 let mut cpu = CPU::from_state(registers, bus);
 
-                cpu.cycle();
+                let m_cycles = cpu.cycle();
 
                 let final_state = &case.final_state;
 
+                assert_eq!(
+                    m_cycles as usize,
+                    case.cycles.len(),
+                    "{}: cycles",
+                    case.name
+                );
                 assert_eq!(cpu.registers.a, final_state.a, "{}: A", case.name);
                 assert_eq!(cpu.registers.b, final_state.b, "{}: B", case.name);
                 assert_eq!(cpu.registers.c, final_state.c, "{}: C", case.name);

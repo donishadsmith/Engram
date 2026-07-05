@@ -1,7 +1,6 @@
-use crate::components::cartridge::{CGBFlag, Cartridge};
+use crate::components::{bus::AddressBus, cartridge::CGBFlag};
 
 const STARTING_ADDRESS: u16 = 0x0000;
-const AFTER_BOOT_STARTING_ADDRESS: u16 = 0x0100;
 
 pub trait ByteOps8 {
     fn set_bit(&self, mask: u8, flag: bool) -> u8;
@@ -398,11 +397,11 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new(cartridge: &Cartridge) -> Self {
-        match cartridge.header.cgb_flag {
+    pub fn new(cgb_flag: CGBFlag, checksum: u8) -> Self {
+        match cgb_flag {
             CGBFlag::DMG => Self {
                 a: 0x01,
-                f: StatusFlag::boot(cartridge.header.checksum),
+                f: StatusFlag::boot(checksum),
                 b: 0x00,
                 c: 0x13,
                 d: 0x00,
@@ -528,40 +527,90 @@ impl Registers {
     }
 }
 
-pub trait AddressBus {
-    fn read(&self, address: u16) -> u8;
-    fn write(&mut self, address: u16, value: u8);
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InterruptMode {
+    VBlank = 0, // 0b00000001
+    Stat = 1,   // 0b00000010
+    Timer = 2,  //0b00000100
+    Serial = 3, //0b00001000
+    Joypad = 4, //0b00010000
 }
 
-pub enum InterruptTypes {
-    VBlank = 0,
-    LCD = 1,
-    Timer = 2,
-    Serial = 3,
-    Joypad = 4,
+impl InterruptMode {
+    pub fn to_variant(bit: u8) -> InterruptMode {
+        match bit {
+            0 => InterruptMode::VBlank,
+            1 => InterruptMode::Stat,
+            2 => InterruptMode::Timer,
+            3 => InterruptMode::Serial,
+            4 => InterruptMode::Joypad,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn to_str(self) -> &'static str {
+        match self {
+            InterruptMode::VBlank => "VBlank",
+            InterruptMode::Stat => "LCD",
+            InterruptMode::Timer => "Timer",
+            InterruptMode::Serial => "Serial",
+            InterruptMode::Joypad => "Joypad",
+        }
+    }
+
+    pub fn mask(self) -> u8 {
+        match self {
+            InterruptMode::VBlank => 0b00000001,
+            InterruptMode::Stat => 0b00000010,
+            InterruptMode::Timer => 0b00000100,
+            InterruptMode::Serial => 0b00001000,
+            InterruptMode::Joypad => 0b00010000,
+        }
+    }
+
+    pub fn to_address(self) -> u16 {
+        0x0040 + (self as u16) * 8
+    }
 }
 
+/*
+    https://gbdev.io/pandocs/Interrupt_Sources.html
+    https://realboyemulator.wordpress.com/2013/07/01/interrupt-processing-a-real-world-example/
+    https://realboyemulator.wordpress.com/2013/01/18/emulating-the-core-2/
+    https://gbdev.gg8.se/wiki/articles/Interrupts
+
+    Interrupts - Break in program execution by hardware when a condition is met
+
+    Steps:
+        - Check the master enable flag, if false continue executing instructions,
+          if true, apply an interrupt
+        - Check the interrupt flag and interrupt enable, both must be on for a specific
+          bit to be serviced
+        - Lowest bit has highest priority, clear the bit, disable master flag
+        - Push current address to the stack
+        - Jump to some fixed address
+        - Execute
+        - Pop address from stack and jump back to it
+
+    Types:
+       0x0040 + bit * 8
+       bit 0 =  Screen finished a frame (V-Blank): 0x0040
+       bit 1 = LCD condition: 0x0048
+       bit 2 = Timer overflowed: 0x0050
+       bit 3 = Serial link: 0x0058 (i.e., 8 * 3 = 24 (16 + 8) = 0x10 + 0x08, add 0x0040 and its 0x0058)
+       bit 4 = Button pressed (joypad): 0x0060
+*/
 pub struct Interrupt {
-    master_enable: bool,
-    flag: u8,
-    enable: u8,
+    pub master_enable: bool,
+    pub pending_enable: bool,
 }
 
 impl Interrupt {
     fn new() -> Self {
         Self {
             master_enable: false,
-            flag: 0x00,
-            enable: 0x00,
+            pending_enable: false,
         }
-    }
-
-    pub fn enable_master(&mut self) {
-        self.master_enable = true;
-    }
-
-    pub fn disable_master(&mut self) {
-        self.master_enable = false;
     }
 }
 
@@ -572,6 +621,7 @@ where
     pub registers: Registers,
     pub bus: A,
     pub halt_bug: bool,
+    pub halted: bool,
     pub interrupt: Interrupt,
 }
 
@@ -579,11 +629,12 @@ impl<A> CPU<A>
 where
     A: AddressBus,
 {
-    pub fn start(cartridge: Cartridge, bus: A) -> Self {
+    pub fn start(cgb_flag: CGBFlag, checksum: u8, bus: A) -> Self {
         let mut cpu = Self {
-            registers: Registers::new(&cartridge),
+            registers: Registers::new(cgb_flag, checksum),
             bus,
             halt_bug: false,
+            halted: false,
             interrupt: Interrupt::new(),
         };
         cpu.fetch();
@@ -595,6 +646,7 @@ where
             registers,
             bus,
             halt_bug: false,
+            halted: false,
             interrupt: Interrupt::new(),
         };
 
@@ -603,22 +655,6 @@ where
         cpu
     }
 
-    /*
-        Interrupts - Break in program execution by hardware when a condition is met
-
-        Steps:
-            - Push current address to the stack
-            - Jump to some fixed address
-            - Execute
-            - Pop address from stack and jump back to it
-
-        Types:
-            Screen finished a frame (V-Blank): 0x0040
-            LCD condition: 0x0048
-            Timer overflowed: 0x0050
-            Serial link: 0x0058
-            Button pressed: 0x0060
-    */
     pub fn push(&mut self, address: u16) {
         // High byte stored first, stack grows down
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
@@ -650,9 +686,47 @@ where
             .jump(high_byte.merge_bytes(low_byte));
     }
 
-    pub fn cycle(&mut self) {
-        self.decode_and_execute();
-        self.fetch();
+    pub fn cycle(&mut self) -> u8 {
+        /*
+           https://github.com/geaz/emu-gameboy
+           https://github.com/geaz/emu-gameboy/blob/master/docs/The%20Cycle-Accurate%20Game%20Boy%20Docs.pdf
+
+           Exit halt mode when IF and corresponding bit in IE is set, then apply those interrupt
+        */
+        if self.halted {
+            if self.bus.pending_interrupt() == 0 {
+                return 1;
+            }
+
+            self.halted = false;
+            if self.apply_interrupt() {
+                return 6;
+            }
+
+            self.fetch();
+            return 1;
+        }
+
+        let apply_interrupt_after = self.interrupt.pending_enable;
+
+        let mut m_cycles = self.decode_and_execute();
+
+        if apply_interrupt_after && self.interrupt.pending_enable {
+            self.interrupt.master_enable = true;
+            self.interrupt.pending_enable = false
+        }
+
+        if self.halted {
+            return m_cycles;
+        }
+
+        if self.apply_interrupt() {
+            m_cycles += 5;
+        } else {
+            self.fetch();
+        }
+
+        m_cycles
     }
 
     pub fn fetch(&mut self) {
@@ -665,11 +739,35 @@ where
             self.registers.program_counter.increment(1u16);
         }
     }
+
+    fn apply_interrupt(&mut self) -> bool {
+        if !self.interrupt.master_enable {
+            return false;
+        }
+
+        let mut interrupt_flag = self.bus.read(0xFF0F);
+        let service = self.bus.pending_interrupt();
+        if service == 0 {
+            return false;
+        }
+
+        let interrupt_mode = InterruptMode::to_variant(service.trailing_zeros() as u8);
+        self.interrupt.master_enable = false;
+
+        interrupt_flag &= !interrupt_mode.mask();
+        self.bus.write(0xFF0F, interrupt_flag);
+
+        self.call(interrupt_mode.to_address());
+        self.fetch();
+
+        true
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::cartridge::Cartridge;
 
     #[test]
     fn test_arithmetic_add() {
@@ -732,7 +830,10 @@ mod tests {
         // Test flag setting
         let monochrome_cartridge = Cartridge::fake()?;
         // Default checksum is 0, so f register is set to 0x10000000
-        let mut register = Registers::new(&monochrome_cartridge);
+        let mut register = Registers::new(
+            monochrome_cartridge.header.cgb_flag,
+            monochrome_cartridge.header.checksum,
+        );
 
         let a: u8 = 255;
         let b: Option<u8> = Some(2);
