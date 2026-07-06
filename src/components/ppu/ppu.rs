@@ -44,7 +44,7 @@ pub struct PPU {
     pub ly: u8,
     pub vram: Vec<u8>,
     pub oam: Vec<u8>,
-    pub screen: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+    pub viewport: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
 }
 
 impl PPU {
@@ -54,7 +54,7 @@ impl PPU {
             ly: 0,
             vram: vec![0u8; if is_cgb { 0x4000 } else { 0x2000 }],
             oam: vec![0u8; 0x00A0],
-            screen: [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+            viewport: [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
         }
     }
 
