@@ -1,4 +1,4 @@
-use gameboy_emulator::components::{cartridge::Cartridge, gameboy::GameBoy};
+use gameboy_emulator::components::{gameboy::GameBoy, rom::cartridge::Cartridge};
 use std::path::PathBuf;
 
 /* References:

@@ -1,7 +1,7 @@
 use crate::components::{
     apu::channels::APU,
-    cartridge::{CGBFlag, Cartridge},
     ppu::ppu::PPU,
+    rom::cartridge::{CGBFlag, Cartridge},
 };
 
 /*

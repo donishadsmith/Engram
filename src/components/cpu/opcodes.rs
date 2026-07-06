@@ -1,10 +1,13 @@
 use crate::components::{
-    bus::AddressBus,
-    cpu::core::{
-        ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType, MergeByteOps,
-        Register8Bits, Register16Bits, StatusFlag, half_carry_add, half_carry_sub,
+    cpu::{
+        core::{
+            ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType,
+            MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add,
+            half_carry_sub,
+        },
+        cycles::{PREFIX_CYCLES, UNPREFIX_CYCLES},
     },
-    cpu::cycles::{PREFIX_CYCLES, UNPREFIX_CYCLES},
+    memory::bus::AddressBus,
 };
 
 #[derive(PartialEq)]
@@ -23,9 +26,9 @@ enum BitDirection {
 fn opcode_decoder(opcode: u8) -> (u8, u8, u8, u8, u8) {
     let x = (opcode >> 6).mask(0x03); // category; the opcode's 1st octal digit (i.e. bits 7-6)
     let y = (opcode >> 3).mask(0x07); // destination register; the opcode's 2nd octal digit (i.e. bits 5-3)
-    let z = opcode.mask(0x07); // source register; the opcode's 3rd octal digit (i.e. bits 2-0)
+    let z = opcode & 0x07; // source register; the opcode's 3rd octal digit (i.e. bits 2-0)
     let p = y >> 1; // 16 bit register pair; y rightshifted one position (i.e. bits 5-4)
-    let q = y.mask(0x01); // boolean toggle; y modulo 2 (i.e. bit 3)
+    let q = y & 0x01; // boolean toggle; y modulo 2 (i.e. bit 3)
 
     (x, y, z, p, q)
 }
@@ -299,7 +302,7 @@ where
             0xC1 | 0xD1 | 0xE1 | 0xF1 => {
                 let (low_byte, high_byte) = self.pop();
                 let value = if opcode == 0xF1 {
-                    high_byte.merge_bytes(low_byte.mask(0xF0))
+                    high_byte.merge_bytes(low_byte & 0xF0)
                 } else {
                     high_byte.merge_bytes(low_byte)
                 };

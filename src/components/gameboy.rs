@@ -1,4 +1,4 @@
-use crate::components::{bus::Bus, cartridge::Cartridge, cpu::core::CPU};
+use crate::components::{cpu::core::CPU, memory::bus::Bus, rom::cartridge::Cartridge};
 
 const MACHINE_CYCLES_PER_FRAME: u16 = 17556;
 

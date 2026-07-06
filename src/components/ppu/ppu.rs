@@ -8,24 +8,24 @@ const M_CYCLES_PER_SCANLINE: u16 = 456;
 use crate::components::cpu::core::{ByteOps8, InterruptMode};
 
 pub struct Sprite {
-    pub y: i16,
-    pub x: i16,
+    pub position_y: i16,
+    pub position_x: i16,
     pub tile: u8,
     pub below_bg: bool,
-    pub y_flip: bool,
-    pub x_flip: bool,
+    pub flip_y: bool,
+    pub flip_x: bool,
     pub dmg_palette: bool,
 }
 
 impl Sprite {
     pub fn from_oam(bytes: &[u8]) -> Self {
         Self {
-            y: bytes[0] as i16 - 16,
-            x: bytes[1] as i16 - 8,
+            position_y: bytes[0] as i16 - 16,
+            position_x: bytes[1] as i16 - 8,
             tile: bytes[2],
             below_bg: bytes[3].mask(0x80) != 0,
-            y_flip: bytes[3].mask(0x40) != 0,
-            x_flip: bytes[3].mask(0x20) != 0,
+            flip_y: bytes[3].mask(0x40) != 0,
+            flip_x: bytes[3].mask(0x20) != 0,
             dmg_palette: bytes[3].mask(0x10) != 0,
         }
     }

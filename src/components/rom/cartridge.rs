@@ -10,7 +10,7 @@
 
 use std::path::PathBuf;
 
-use crate::components::mbc::prelude::*;
+use crate::components::rom::mbc::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MBCType {

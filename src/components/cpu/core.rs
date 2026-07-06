@@ -1,4 +1,4 @@
-use crate::components::{bus::AddressBus, cartridge::CGBFlag};
+use crate::components::{memory::bus::AddressBus, rom::cartridge::CGBFlag};
 
 const STARTING_ADDRESS: u16 = 0x0000;
 
@@ -130,7 +130,7 @@ impl FlagDelta {
             f = f.set_bit(StatusFlag::C.u8(), self.c == FlagType::Set);
         }
 
-        f.mask(0xF0)
+        f & 0xF0
     }
 }
 
@@ -469,7 +469,7 @@ impl Registers {
     pub fn set_8bit(&mut self, register_8bits: Register8Bits, value: u8) {
         match register_8bits {
             Register8Bits::A => self.a = value,
-            Register8Bits::F => self.f = value.mask(0xF0),
+            Register8Bits::F => self.f = value & 0xF0,
             Register8Bits::B => self.b = value,
             Register8Bits::C => self.c = value,
             Register8Bits::D => self.d = value,
@@ -767,7 +767,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::cartridge::Cartridge;
+    use crate::components::rom::cartridge::Cartridge;
 
     #[test]
     fn test_arithmetic_add() {

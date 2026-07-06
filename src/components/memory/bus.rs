@@ -1,8 +1,8 @@
 use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
-    cartridge::{CGBFlag, Cartridge},
     cpu::core::ByteOps8,
-    memory::Memory,
+    memory::memory::Memory,
+    rom::cartridge::{CGBFlag, Cartridge},
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -97,7 +97,7 @@ impl AddressBus for Bus {
                 }
             }
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
-            0xFF0F => self.memory.interrupt_flag = value.mask(0x1F),
+            0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
             0xFF50 => {
                 if value.mask(0x01) != 0 {
