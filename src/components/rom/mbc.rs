@@ -24,18 +24,11 @@ pub mod prelude {
     pub struct RomOnly {
         rom: Vec<u8>,
         ram: Vec<u8>,
-        rom_bank: usize,
-        ram_bank: usize,
     }
 
     impl RomOnly {
         pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
-            Self {
-                rom,
-                ram,
-                rom_bank: 0,
-                ram_bank: 0,
-            }
+            Self { rom, ram }
         }
     }
 
@@ -59,7 +52,6 @@ pub mod prelude {
         rom: Vec<u8>,
         ram: Vec<u8>,
         rom_bank: usize,
-        ram_bank: usize,
     }
 
     impl MBC1 {
@@ -68,7 +60,6 @@ pub mod prelude {
                 rom,
                 ram,
                 rom_bank: 0,
-                ram_bank: 0,
             }
         }
     }
@@ -78,8 +69,7 @@ pub mod prelude {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
                 0x4000..=0x7FFF => {
-                    let bank = self.rom_bank.max(1);
-                    let offset = bank * 0x4000 + (address as usize - 0x4000);
+                    let offset = self.rom_bank.max(1) * 0x4000 + (address as usize - 0x4000);
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => {
@@ -135,8 +125,7 @@ pub mod prelude {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
                 0x4000..=0x7FFF => {
-                    let bank = self.rom_bank.max(1);
-                    let offset = bank * 0x4000 + (address as usize - 0x4000);
+                    let offset = self.rom_bank.max(1) * 0x4000 + (address as usize - 0x4000);
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => {
@@ -192,8 +181,7 @@ pub mod prelude {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
                 0x4000..=0x7FFF => {
-                    let bank = self.rom_bank.max(1);
-                    let offset = bank * 0x4000 + (address as usize - 0x4000);
+                    let offset = self.rom_bank.max(1) * 0x4000 + (address as usize - 0x4000);
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => {
@@ -249,8 +237,7 @@ pub mod prelude {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
                 0x4000..=0x7FFF => {
-                    let bank = self.rom_bank.max(1);
-                    let offset = bank * 0x4000 + (address as usize - 0x4000);
+                    let offset = self.rom_bank.max(1) * 0x4000 + (address as usize - 0x4000);
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => {

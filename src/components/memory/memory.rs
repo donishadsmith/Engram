@@ -27,6 +27,7 @@ pub struct Memory {
     pub interrupt_flag: u8,
     pub interrupt_enable: u8,
     pub serial_data: u8,
+    pub key_register: u8,
 }
 
 impl Memory {
@@ -47,6 +48,7 @@ impl Memory {
             interrupt_enable: 0x00,
             interrupt_flag: 0x00,
             serial_data: 0x00,
+            key_register: 0x00,
         }
     }
 }

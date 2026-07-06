@@ -70,13 +70,23 @@ impl AddressBus for Bus {
 
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.read(address),
-            0x8000..=0x9FFF => self.memory.ppu.vram[(address - 0x8000) as usize],
+            0x8000..=0x9FFF => self.memory.ppu.vram.read(address),
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize],
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize],
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
             0xFF0F => self.memory.interrupt_flag | 0xE0,
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize],
+            0xFF40 => self.memory.ppu.lcdc,
+            0xFF41 => {
+                let equal = ((self.memory.ppu.ly == self.memory.ppu.lyc) as u8) << 2;
+                0x80 | equal | (self.memory.ppu.mode() as u8)
+            }
+            0xFF42 => self.memory.ppu.scy,
+            0xFF43 => self.memory.ppu.scx,
             0xFF44 => self.memory.ppu.ly,
+            0xFF45 => self.memory.ppu.lyc,
+            0xFF47 => self.memory.ppu.bgp,
+            0xFF4D => self.memory.key_register,
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
             0xFEA0..=0xFEFF | 0xFF00..=0xFF7F => 0xFF,
             0xFFFF => self.memory.interrupt_enable,
@@ -86,7 +96,7 @@ impl AddressBus for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.write(address, value),
-            0x8000..=0x9FFF => self.memory.ppu.vram[(address - 0x8000) as usize] = value,
+            0x8000..=0x9FFF => self.memory.ppu.vram.write(address, value),
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize] = value,
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize] = value,
             0xFF01 => self.memory.serial_data = value,
@@ -99,6 +109,19 @@ impl AddressBus for Bus {
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
+            0xFF40 => self.memory.ppu.lcdc = value,
+            0xFF42 => self.memory.ppu.scy = value,
+            0xFF43 => self.memory.ppu.scx = value,
+            0xFF45 => self.memory.ppu.lyc = value,
+            0xFF47 => self.memory.ppu.bgp = value,
+            0xFF4D => {
+                if value & 0x80 != 0 {
+                    self.memory.key_register = (self.memory.key_register ^ 0x80) & 0x80;
+                } else {
+                    self.memory.key_register = (self.memory.key_register & 0x80) | (value & 0x01);
+                }
+            }
+            0xFF4F => self.memory.ppu.vram.bank_swap(value),
             0xFF50 => {
                 if value.mask(0x01) != 0 {
                     self.boot_status = BootStatus::Complete;

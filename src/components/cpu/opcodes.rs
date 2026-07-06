@@ -176,7 +176,10 @@ where
                 }
             }
             0x10 => {
-                // STOP-for now just consume byte
+                if self.bus.read(0xFF4D) & 0x01 != 0 {
+                    self.bus.write(0xFF4D, 0x80);
+                }
+
                 self.fetch_byte();
             }
             0x18 | 0x20 | 0x28 | 0x30 | 0x38 => {
