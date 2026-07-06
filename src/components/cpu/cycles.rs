@@ -1,8 +1,20 @@
 /*
-    https://izik1.github.io/gbops/
+    https://www.zilog.com/docs/z80/um0080.pdf
+    https://www.scilab.org/signal-edge-detection
+    Based on the z80 manual, which is one of the cpu's the gb cpu is
+    inspired from. First machine cycle can occur with an interrupt
+    acknowledgment or the fetch operation of the subsequent instuction.
+    While gb is fixes, each machine cycle of the z80 could have variable
+    clock cycles (3-6) that could be extended using wait operations.
+    First machine cycle could be fetch (3-6 ticks), second machine cycle
+    could be a read operation (3 ticks), and third machine cycle would be a
+    write operation (3 ticks). CPU sampling occured on the rising edge of
+    the clock (0 -> 1) to ensure signal stabilization + synchronisation with
+    other pins.
 
+    https://izik1.github.io/gbops/
     https://github.com/sysprog21/jitboy/blob/master/README.md
-    1 machine cycle = 4 clock cycles
+    1 machine cycle of the gb = 4 clock cycles
     Each operation cycle will:
 
     - Fetch the next opcode

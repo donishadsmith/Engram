@@ -1,6 +1,12 @@
-use macroquad::input::{KeyCode, get_keys_down, get_keys_pressed};
+use macroquad::{
+    input::{KeyCode, get_keys_down, get_keys_pressed},
+    window::next_frame,
+};
 use rfd::FileDialog;
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 pub enum EmulatorState {
     Active,
@@ -34,4 +40,15 @@ pub fn get_key() -> Option<KeyCode> {
     }
 
     key_press
+}
+
+pub async fn fps_lock(frame_start_time: Instant) {
+    let frame_duration = Duration::from_secs_f64(1.0 / 60.0);
+
+    let elapsed_time = frame_start_time.elapsed();
+    if elapsed_time < frame_duration {
+        spin_sleep::sleep(frame_duration - elapsed_time);
+    }
+
+    next_frame().await
 }

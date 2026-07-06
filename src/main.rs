@@ -1,3 +1,6 @@
+use gameboy_emulator::components::{cartridge::Cartridge, gameboy::GameBoy};
+use std::path::PathBuf;
+
 /* References:
    - https://gbdev.io/pandocs
    - https://aquova.net/emudev/gb
@@ -5,7 +8,7 @@
    - https://github.com/smparsons/retroboy
 */
 
-fn main() -> Result<(), std::io::Error> {
+fn check_cartridge() -> Result<(), std::io::Error> {
     let rom_names = [
         r".\roms\test1.gb",
         r".\roms\test2.gb",
@@ -15,7 +18,7 @@ fn main() -> Result<(), std::io::Error> {
     ];
     for rom_name in rom_names {
         let filename = Some(std::path::PathBuf::from(rom_name));
-        let cartridge = gameboy_emulator::components::cartridge::Cartridge::load(filename)?;
+        let cartridge = Cartridge::load(filename)?;
 
         println!("------------------\n{}", cartridge.header.title);
         println!("{}", cartridge.header.mbc_type.to_str());
@@ -28,6 +31,17 @@ fn main() -> Result<(), std::io::Error> {
         println!("Has Rumble: {}\n", cartridge.header.has_rumble);
         println!("RAM length: {}\n", cartridge.header.ram_size);
         println!("RAM length: {}\n", cartridge.mbc.get_ram().len());
+    }
+
+    Ok(())
+}
+
+fn main() -> Result<(), std::io::Error> {
+    let rom_path = PathBuf::from(r".\roms\test5.gb"); // no mbc; rom only
+    let cartridge = Cartridge::load(Some(rom_path))?;
+    let mut gameboy = GameBoy::boot(cartridge);
+    loop {
+        gameboy.run();
     }
 
     Ok(())

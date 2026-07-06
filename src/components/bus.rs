@@ -5,10 +5,19 @@ use crate::components::{
     memory::Memory,
 };
 
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum BootStatus {
     Complete,
     Incomplete,
+}
+
+impl BootStatus {
+    fn to_str(self) -> &'static str {
+        match self {
+            BootStatus::Complete => "Boot Complete",
+            BootStatus::Incomplete => "Boot Incomplete",
+        }
+    }
 }
 
 pub trait AddressBus {
@@ -61,12 +70,13 @@ impl AddressBus for Bus {
 
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.read(address),
-            0x8000..=0x9FFF => self.memory.vram[(address - 0x8000) as usize],
+            0x8000..=0x9FFF => self.memory.ppu.vram[(address - 0x8000) as usize],
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize],
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize],
-            0xFE00..=0xFE9F => self.memory.oam[(address - 0xFE00) as usize],
+            0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
             0xFF0F => self.memory.interrupt_flag | 0xE0,
-            0xFF44 => 0x90, // TODO: LY - Fixed read for now until PPU exists; self.ppu.ly
+            0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize],
+            0xFF44 => self.memory.ppu.ly,
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
             0xFEA0..=0xFEFF | 0xFF00..=0xFF7F => 0xFF,
             0xFFFF => self.memory.interrupt_enable,
@@ -76,11 +86,19 @@ impl AddressBus for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.write(address, value),
-            0x8000..=0x9FFF => self.memory.vram[(address - 0x8000) as usize] = value,
+            0x8000..=0x9FFF => self.memory.ppu.vram[(address - 0x8000) as usize] = value,
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize] = value,
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize] = value,
-            0xFE00..=0xFE9F => self.memory.oam[(address - 0xFE00) as usize] = value,
+            0xFF01 => self.memory.serial_data = value,
+            0xFF02 => {
+                if value == 0x81 {
+                    print!("{}", self.memory.serial_data as char);
+                    self.memory.interrupt_flag |= 0x08;
+                }
+            }
+            0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value.mask(0x1F),
+            0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
             0xFF50 => {
                 if value.mask(0x01) != 0 {
                     self.boot_status = BootStatus::Complete;
