@@ -6,3 +6,4 @@ pub mod joypad;
 pub mod memory;
 pub mod ppu;
 pub mod rom;
+pub mod timer;

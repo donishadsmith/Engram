@@ -38,6 +38,13 @@ impl GameBoy {
                 .memory
                 .ppu
                 .tick(ppu_t_cycles, &mut self.cpu.bus.memory.interrupt_flag);
+
+            self.cpu
+                .bus
+                .memory
+                .timer
+                .tick(ppu_t_cycles, &mut self.cpu.bus.memory.interrupt_flag);
+
             remaining_cycles = remaining_cycles.saturating_sub(cpu_t_cycles);
         }
     }

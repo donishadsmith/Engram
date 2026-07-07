@@ -120,7 +120,13 @@ pub struct PPU {
     pub lcdc: u8,
     pub scy: u8,
     pub scx: u8,
+    pub oam_dma: u8,
     pub bgp: u8,
+    pub obp0: u8,
+    pub obp1: u8,
+    pub wx: u8,
+    pub wy: u8,
+    pub stat: u8,
     pub frame_ready: bool,
     is_cgb: bool,
     pub viewport: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
@@ -137,7 +143,13 @@ impl PPU {
             lcdc: 0x00,
             scy: 0x00,
             scx: 0x00,
+            oam_dma: 0x00,
             bgp: 0x00,
+            obp0: 0x00,
+            obp1: 0x00,
+            wx: 0x00,
+            wy: 0x00,
+            stat: 0x00,
             frame_ready: false,
             is_cgb: is_cgb,
             viewport: [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
@@ -191,4 +203,6 @@ impl PPU {
             _ => PPUMode::HBlank,
         }
     }
+
+    pub fn write_lcdc(&self, value: u8) {}
 }

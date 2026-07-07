@@ -1,7 +1,9 @@
 use crate::components::{
     apu::channels::APU,
+    joypad::Joypad,
     ppu::ppu::PPU,
     rom::cartridge::{CGBFlag, Cartridge},
+    timer::Timer,
 };
 
 /*
@@ -22,12 +24,15 @@ pub struct Memory {
     pub cartridge: Cartridge,
     pub ppu: PPU,
     pub apu: APU,
+    pub timer: Timer,
+    pub joypad: Joypad,
     pub wram: Vec<u8>,
     pub hram: Vec<u8>,
     pub interrupt_flag: u8,
     pub interrupt_enable: u8,
     pub serial_data: u8,
     pub key_register: u8,
+    pub svbk_register: u8,
 }
 
 impl Memory {
@@ -44,11 +49,14 @@ impl Memory {
             wram: vec![0u8; wram_size],
             ppu: PPU::new(cbg_flag == CGBFlag::CBG),
             apu: APU::new(),
+            timer: Timer::new(),
+            joypad: Joypad::new(),
             hram: vec![0u8; 0x007F],
             interrupt_enable: 0x00,
             interrupt_flag: 0x00,
             serial_data: 0x00,
-            key_register: 0x00,
+            key_register: 0,
+            svbk_register: 0,
         }
     }
 }

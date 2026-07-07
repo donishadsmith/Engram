@@ -1,6 +1,6 @@
 use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
-    cpu::core::ByteOps8,
+    cpu::core::{ByteOps8, InterruptMode},
     memory::memory::Memory,
     rom::cartridge::{CGBFlag, Cartridge},
 };
@@ -60,6 +60,33 @@ impl Bus {
             },
         }
     }
+
+    fn is_cgb(&self) -> bool {
+        self.memory.cartridge.header.cgb_flag == CGBFlag::CBG
+    }
+
+    fn get_wram_index(&self, address: u16) -> usize {
+        // Echo Ram is a mirror of work ram 0xC000–0xDDFF
+        let adjusted_address = if (0xE000..=0xFDFF).contains(&address) {
+            address - (0xFDFF - 0xDDFF)
+        } else {
+            address
+        };
+
+        if (0xC000..=0xCFFF).contains(&adjusted_address) {
+            return (adjusted_address - 0xC000) as usize;
+        }
+
+        // 0xD000-0xDFFF; 4kb on monochrome; bankable on color using svbk register
+        let offset = (adjusted_address - 0xD000) as usize;
+        if !self.is_cgb() {
+            offset + (0xD000 - 0xC000)
+        } else {
+            // https://gbdev.io/pandocs/CGB_Registers.html?highlight=cgb%20mode
+            let bank = (self.memory.svbk_register & 0x07).min(1) as usize;
+            bank * (0xD000 - 0xC000) + offset
+        }
+    }
 }
 
 impl AddressBus for Bus {
@@ -71,9 +98,17 @@ impl AddressBus for Bus {
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.read(address),
             0x8000..=0x9FFF => self.memory.ppu.vram.read(address),
-            0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize],
-            0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize],
+            0xC000..=0xCFFF | 0xD000..=0xDFFF | 0xE000..=0xFDFF => {
+                self.memory.wram[self.get_wram_index(address)]
+            }
+            0xFF00 => self.memory.joypad.read(),
+            0xFF01 => self.memory.serial_data,
+            0xFF04 => (self.memory.timer.div >> 8) as u8,
+            0xFF05 => self.memory.timer.tima,
+            0xFF06 => self.memory.timer.tma,
+            0xFF07 => self.memory.timer.tac | 0xF8,
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
+            0xFEA0..=0xFEFF => 0xFF,
             0xFF0F => self.memory.interrupt_flag | 0xE0,
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize],
             0xFF40 => self.memory.ppu.lcdc,
@@ -85,11 +120,19 @@ impl AddressBus for Bus {
             0xFF43 => self.memory.ppu.scx,
             0xFF44 => self.memory.ppu.ly,
             0xFF45 => self.memory.ppu.lyc,
+            0xFF46 => self.memory.ppu.oam_dma,
             0xFF47 => self.memory.ppu.bgp,
+            0xFF48 => self.memory.ppu.obp0,
+            0xFF49 => self.memory.ppu.obp1,
+            0xFF4A => self.memory.ppu.wy,
+            0xFF4B => self.memory.ppu.wx,
             0xFF4D => self.memory.key_register,
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
-            0xFEA0..=0xFEFF | 0xFF00..=0xFF7F => 0xFF,
             0xFFFF => self.memory.interrupt_enable,
+            _ => {
+                eprintln!("The following address is not readable: {:04x}", address);
+                0xFF
+            }
         }
     }
 
@@ -99,37 +142,52 @@ impl AddressBus for Bus {
             0x8000..=0x9FFF => self.memory.ppu.vram.write(address, value),
             0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize] = value,
             0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize] = value,
+            0xFF00 => self.memory.joypad.select = value & 0x30,
             0xFF01 => self.memory.serial_data = value,
             0xFF02 => {
                 if value == 0x81 {
                     print!("{}", self.memory.serial_data as char);
-                    self.memory.interrupt_flag |= 0x08;
+                    self.memory.interrupt_flag |= InterruptMode::Serial.mask();
                 }
             }
+            0xFF04 => self.memory.timer.div = 0,
+            0xFF05 => self.memory.timer.tima = value,
+            0xFF06 => self.memory.timer.tma = value,
+            0xFF07 => self.memory.timer.tac = value,
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
-            0xFF40 => self.memory.ppu.lcdc = value,
+            0xFF40 => self.memory.ppu.write_lcdc(value),
+            0xFF41 => self.memory.ppu.stat = value & 0x78, // ignore the coincidence flag
             0xFF42 => self.memory.ppu.scy = value,
             0xFF43 => self.memory.ppu.scx = value,
+            0xFF44 => {}
             0xFF45 => self.memory.ppu.lyc = value,
+            0xFF46 => {} // triggers dma transfer when value written here
             0xFF47 => self.memory.ppu.bgp = value,
-            0xFF4D => {
+            0xFF48 => self.memory.ppu.obp0 = value,
+            0xFF49 => self.memory.ppu.obp1 = value,
+            0xFF4A => self.memory.ppu.wy = value,
+            0xFF4B => self.memory.ppu.wx = value,
+            0xFF4D if self.is_cgb() => {
                 if value & 0x80 != 0 {
                     self.memory.key_register = (self.memory.key_register ^ 0x80) & 0x80;
                 } else {
                     self.memory.key_register = (self.memory.key_register & 0x80) | (value & 0x01);
                 }
             }
-            0xFF4F => self.memory.ppu.vram.bank_swap(value),
+            0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank_swap(value),
             0xFF50 => {
                 if value.mask(0x01) != 0 {
                     self.boot_status = BootStatus::Complete;
                 }
             }
+            0xFF70 if self.is_cgb() => {
+                self.memory.svbk_register = value;
+            }
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize] = value,
-            0xFEA0..=0xFEFF | 0xFF00..=0xFF7F => {}
             0xFFFF => self.memory.interrupt_enable = value,
+            _ => eprintln!("The following address is not writable: {:04x}", address),
         }
     }
 

@@ -8,4 +8,6 @@ impl APU {
             wave_ram: vec![0u8; 16],
         }
     }
+
+    pub fn store(&mut self, value: u8) {}
 }
