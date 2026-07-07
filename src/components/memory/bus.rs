@@ -87,6 +87,18 @@ impl Bus {
             bank * (0xD000 - 0xC000) + offset
         }
     }
+
+    // transfer data from rom or ram
+    fn dma_transfer(&mut self, value: u8) {
+        let base_address = (value as u16) << 8;
+
+        for i in 0..0xA0u16 {
+            let byte = self.read(base_address + i);
+            self.memory.ppu.oam[i as usize] = byte;
+        }
+
+        self.memory.ppu.oam_dma = value;
+    }
 }
 
 impl AddressBus for Bus {
@@ -163,7 +175,7 @@ impl AddressBus for Bus {
             0xFF43 => self.memory.ppu.scx = value,
             0xFF44 => {}
             0xFF45 => self.memory.ppu.lyc = value,
-            0xFF46 => {} // triggers dma transfer when value written here
+            0xFF46 => self.dma_transfer(value),
             0xFF47 => self.memory.ppu.bgp = value,
             0xFF48 => self.memory.ppu.obp0 = value,
             0xFF49 => self.memory.ppu.obp1 = value,
