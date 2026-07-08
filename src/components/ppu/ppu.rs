@@ -74,7 +74,7 @@ impl VRam {
     }
 
     pub fn bank_swap(&mut self, value: u8) {
-        self.bank = value;
+        self.bank = value & 0x01;
     }
 }
 

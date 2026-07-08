@@ -38,7 +38,7 @@ impl Timer {
 
             // Falling edge occurs if the timer enabled, the previous div and target bit is 1
             // and current div and target bit is 0
-            if timer_enabled && (previous_div & target_bit == 1) && (self.div & target_bit == 0) {
+            if timer_enabled && (previous_div & target_bit != 0) && (self.div & target_bit == 0) {
                 let (result, overflowed) = self.tima.overflowing_add(1);
 
                 if overflowed {

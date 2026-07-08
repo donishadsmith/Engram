@@ -25,7 +25,13 @@ pub trait AddressBus {
 
     fn write(&mut self, address: u16, value: u8);
 
-    fn pending_interrupt(&self) -> u8;
+    fn pending_interrupt(&self) -> u8 {
+        0
+    }
+
+    fn perform_speed_switch(&mut self) -> bool {
+        false
+    }
 }
 
 //http://gameboy.mongenel.com/dmg/asmmemmap.html
@@ -83,7 +89,7 @@ impl Bus {
             offset + (0xD000 - 0xC000)
         } else {
             // https://gbdev.io/pandocs/CGB_Registers.html?highlight=cgb%20mode
-            let bank = (self.memory.svbk_register & 0x07).min(1) as usize;
+            let bank = (self.memory.svbk_register & 0x07).max(1) as usize;
             bank * (0xD000 - 0xC000) + offset
         }
     }
@@ -152,9 +158,11 @@ impl AddressBus for Bus {
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.write(address, value),
             0x8000..=0x9FFF => self.memory.ppu.vram.write(address, value),
-            0xC000..=0xDFFF => self.memory.wram[(address - 0xC000) as usize] = value,
-            0xE000..=0xFDFF => self.memory.wram[(address - 0xE000) as usize] = value,
-            0xFF00 => self.memory.joypad.select = value & 0x30,
+            0xC000..=0xDFFF | 0xE000..=0xFDFF => {
+                let index = self.get_wram_index(address);
+                self.memory.wram[index] = value
+            }
+            0xFF00 => self.memory.joypad.select = (value | 0xC0) & 0x30,
             0xFF01 => self.memory.serial_data = value,
             0xFF02 => {
                 if value == 0x81 {
@@ -182,11 +190,7 @@ impl AddressBus for Bus {
             0xFF4A => self.memory.ppu.wy = value,
             0xFF4B => self.memory.ppu.wx = value,
             0xFF4D if self.is_cgb() => {
-                if value & 0x80 != 0 {
-                    self.memory.key_register = (self.memory.key_register ^ 0x80) & 0x80;
-                } else {
-                    self.memory.key_register = (self.memory.key_register & 0x80) | (value & 0x01);
-                }
+                self.memory.key_register = (self.memory.key_register & 0x80) | (value & 0x01);
             }
             0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank_swap(value),
             0xFF50 => {
@@ -205,5 +209,15 @@ impl AddressBus for Bus {
 
     fn pending_interrupt(&self) -> u8 {
         self.read(0xFF0F).mask(self.read(0xFFFF)).mask(0x1F)
+    }
+
+    fn perform_speed_switch(&mut self) -> bool {
+        if self.is_cgb() && self.memory.key_register & 0x01 != 0 {
+            self.memory.key_register ^= 0x80;
+            self.memory.key_register &= !0x01;
+            true
+        } else {
+            false
+        }
     }
 }

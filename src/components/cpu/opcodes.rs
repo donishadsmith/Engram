@@ -176,9 +176,7 @@ where
                 }
             }
             0x10 => {
-                if self.bus.read(0xFF4D) & 0x01 != 0 {
-                    self.bus.write(0xFF4D, 0x80);
-                }
+                self.bus.perform_speed_switch();
 
                 self.fetch_byte();
             }
@@ -911,10 +909,6 @@ impl AddressBus for TestBus {
 
     fn write(&mut self, address: u16, value: u8) {
         self.ram[address as usize] = value;
-    }
-
-    fn pending_interrupt(&self) -> u8 {
-        0
     }
 }
 

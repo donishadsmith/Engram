@@ -1,17 +1,16 @@
 // https://gbdev.io/pandocs/Joypad_Input.html
 
 use crate::components::cpu::core::InterruptMode;
-use macroquad::input::{KeyCode, is_key_down};
 
-const KEYMAP: [(KeyCode, JoypadButton); 8] = [
-    (KeyCode::W, JoypadButton::DPad(DPadButton::Up)),
-    (KeyCode::A, JoypadButton::DPad(DPadButton::Left)),
-    (KeyCode::S, JoypadButton::DPad(DPadButton::Down)),
-    (KeyCode::D, JoypadButton::DPad(DPadButton::Right)),
-    (KeyCode::K, JoypadButton::Action(ActionButton::A)),
-    (KeyCode::L, JoypadButton::Action(ActionButton::B)),
-    (KeyCode::I, JoypadButton::Action(ActionButton::Start)),
-    (KeyCode::P, JoypadButton::Action(ActionButton::Select)),
+const BUTTONS: [JoypadButton; 8] = [
+    JoypadButton::DPad(DPadButton::Up),
+    JoypadButton::DPad(DPadButton::Left),
+    JoypadButton::DPad(DPadButton::Down),
+    JoypadButton::DPad(DPadButton::Right),
+    JoypadButton::Action(ActionButton::A),
+    JoypadButton::Action(ActionButton::B),
+    JoypadButton::Action(ActionButton::Start),
+    JoypadButton::Action(ActionButton::Select),
 ];
 
 #[derive(Clone, Copy)]
@@ -63,31 +62,36 @@ impl Joypad {
     }
 
     pub fn read(&self) -> u8 {
-        let mut result = 0xC0 | self.select | 0x0F;
+        let mut matrix = 0xC0 | (self.select & 0x30) | 0x0F;
 
         if self.select & 0x10 == 0 {
-            result &= 0xF0 | self.dpad;
-        }
-        if self.select & 0x20 == 0 {
-            result &= 0xF0 | self.buttons;
+            matrix &= 0xF0 | self.dpad;
         }
 
-        result
+        if self.select & 0x20 == 0 {
+            matrix &= 0xF0 | self.buttons;
+        }
+
+        matrix
     }
 
-    pub fn listen(&mut self, interrupt_flag: &mut u8) {
-        for (key, button) in KEYMAP {
+    pub fn poll(&mut self, pressed_key: [bool; 8], interrupt_flag: &mut u8) {
+        for (index, &button) in BUTTONS.iter().enumerate() {
+            let selected = match button {
+                JoypadButton::DPad(_) => self.select & 0x10 == 0,
+                JoypadButton::Action(_) => self.select & 0x20 == 0,
+            };
+
             let group = match button {
                 JoypadButton::DPad(_) => &mut self.dpad,
                 JoypadButton::Action(_) => &mut self.buttons,
             };
 
             let bit = 1 << button.bit();
-            if is_key_down(key) {
-                if *group & bit != 0 {
+            if pressed_key[index] {
+                if *group & bit != 0 && selected {
                     *interrupt_flag |= InterruptMode::Joypad.mask();
                 }
-
                 *group &= !bit;
             } else {
                 *group |= bit;

@@ -21,15 +21,18 @@ impl GameBoy {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, pressed_key: [bool; 8]) {
         let mut remaining_cycles = T_CYCLES_PER_FRAME_DOUBLE;
 
         while remaining_cycles > 0 {
-            let mut cpu_t_cycles = (self.cpu.cycle() as u32) * 4;
+            let timer_t_cycles = (self.cpu.cycle() as u32) * 4;
 
-            if self.cpu.bus.memory.key_register & 0x80 == 0 {
-                cpu_t_cycles *= 2;
-            }
+            let double_speed = self.cpu.bus.memory.key_register & 0x80 != 0;
+            let cpu_t_cycles = if double_speed {
+                timer_t_cycles
+            } else {
+                timer_t_cycles * 2
+            };
 
             let ppu_t_cycles = cpu_t_cycles / 2;
 
@@ -43,9 +46,15 @@ impl GameBoy {
                 .bus
                 .memory
                 .timer
-                .tick(ppu_t_cycles, &mut self.cpu.bus.memory.interrupt_flag);
+                .tick(timer_t_cycles, &mut self.cpu.bus.memory.interrupt_flag);
 
             remaining_cycles = remaining_cycles.saturating_sub(cpu_t_cycles);
         }
+
+        self.cpu
+            .bus
+            .memory
+            .joypad
+            .poll(pressed_key, &mut self.cpu.bus.memory.interrupt_flag);
     }
 }
