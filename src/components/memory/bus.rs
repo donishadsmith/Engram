@@ -1,3 +1,5 @@
+// https://gbdev.io/pandocs/Memory_Map.html
+// https://gekkio.fi/files/gb-docs/gbctr.pdf
 use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
     cpu::core::{ByteOps8, InterruptMode},
@@ -121,6 +123,7 @@ impl AddressBus for Bus {
             }
             0xFF00 => self.memory.joypad.read(),
             0xFF01 => self.memory.serial_data,
+            0xFF02 => self.memory.serial_control | 0x7E,
             0xFF04 => (self.memory.timer.div >> 8) as u8,
             0xFF05 => self.memory.timer.tima,
             0xFF06 => self.memory.timer.tma,
@@ -128,6 +131,7 @@ impl AddressBus for Bus {
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
             0xFEA0..=0xFEFF => 0xFF,
             0xFF0F => self.memory.interrupt_flag | 0xE0,
+            //0xFF10..=0xFF26 => self.memory.apu.read((address - 0xFF10) as usize),
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize],
             0xFF40 => self.memory.ppu.lcdc,
             0xFF41 => {
@@ -144,7 +148,22 @@ impl AddressBus for Bus {
             0xFF49 => self.memory.ppu.obp1,
             0xFF4A => self.memory.ppu.wy,
             0xFF4B => self.memory.ppu.wx,
-            0xFF4D => self.memory.key_register,
+            0xFF4D if self.is_cgb() => self.memory.key_register,
+            0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank | 0xFE,
+            0xFF55 if self.is_cgb() => 0xFF,
+            0xFF68 if self.is_cgb() => self.memory.ppu.bgpi | 0x40,
+            //0xFF69 if self.is_cgb() => {
+            //self.memory.ppu.bpcd[(self.memory.ppu.bgpi & 0x3F) as usize]
+            //}
+            //0xFF70 if self.is_cgb() => self.memory.svbk = value & 0x07,
+            //0xFF6A if self.is_cgb() => self.memory.ppu.ocps | 0x40,
+            //0xFF6B if self.is_cgb() => {
+            //self.memory.ppu.ocpd[(self.memory.ppu.ocps & 0x3F) as usize]
+            //}
+            //0xFF6C if self.is_cgb() => self.memory.ppu.opri | 0xFE,
+            //0xFF70 if self.is_cgb() => self.memory.svbk | 0xF8,
+            0xFF76 if self.is_cgb() => 0xFF, // pcm12
+            0xFF77 if self.is_cgb() => 0xFF, // pcm34
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
             0xFFFF => self.memory.interrupt_enable,
             _ => {
@@ -176,6 +195,7 @@ impl AddressBus for Bus {
             0xFF07 => self.memory.timer.tac = value,
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
+            0xFF10..=0xFF26 => self.memory.apu.write(address, value),
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
             0xFF40 => self.memory.ppu.write_lcdc(value),
             0xFF41 => self.memory.ppu.stat = value & 0x78, // ignore the coincidence flag

@@ -9,5 +9,9 @@ impl APU {
         }
     }
 
-    pub fn store(&mut self, value: u8) {}
+    pub fn read(&self, address: u16) {}
+
+    pub fn write(&mut self, address: u16, value: u8) {}
+
+    //(address - 0xFF10) as usize
 }

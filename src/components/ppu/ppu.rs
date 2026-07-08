@@ -42,9 +42,9 @@ enum Palette {
 }
 
 pub struct VRam {
-    bank: u8,
+    pub bank: u8,
     bank_size: u16,
-    memory: Vec<u8>,
+    pub memory: Vec<u8>,
 }
 
 impl VRam {
@@ -128,6 +128,7 @@ pub struct PPU {
     pub wy: u8,
     pub stat: u8,
     pub frame_ready: bool,
+    pub bgpi: u8,
     is_cgb: bool,
     pub viewport: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
 }
@@ -151,6 +152,7 @@ impl PPU {
             wy: 0x00,
             stat: 0x00,
             frame_ready: false,
+            bgpi: 0x00,
             is_cgb: is_cgb,
             viewport: [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
         }
