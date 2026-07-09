@@ -36,7 +36,4 @@ pub fn render_to_window(ppu: &PPU) {
             )
         }
     }
-
-    let screen = get_screen_data();
-    screen.export_png("tetris_title.png");
 }

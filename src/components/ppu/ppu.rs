@@ -100,7 +100,7 @@ impl Sprite {
 }
 
 struct LCDC {
-    enable_lcd: bool,
+    pub enable_lcd: bool,
     window_tile_map_select: u8,
     enable_window: bool,
     tile_data_select: u8,
@@ -200,6 +200,10 @@ impl PPU {
     }
 
     pub fn tick(&mut self, t_cycles: u32, interrupt_flag: &mut u8) {
+        if !LCDC::from_byte(self.lcdc).enable_lcd {
+            return;
+        }
+
         self.dots += t_cycles;
         while self.dots >= DOTS_PER_TCYCLE {
             self.dots -= DOTS_PER_TCYCLE;
