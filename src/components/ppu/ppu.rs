@@ -141,6 +141,14 @@ impl LCDC {
             0x9800
         }
     }
+
+    fn window_map_base(&self) -> u16 {
+        if self.window_tile_map_select != 0 {
+            0x9C00
+        } else {
+            0x9800
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -167,6 +175,7 @@ pub struct PPU {
     pub obp1: u8,
     pub wx: u8,
     pub wy: u8,
+    pub window_line: u8,
     pub stat: u8,
     pub stat_line: bool,
     pub frame_ready: bool,
@@ -192,6 +201,7 @@ impl PPU {
             obp1: 0x00,
             wx: 0x00,
             wy: 0x00,
+            window_line: 0,
             stat: 0x00,
             stat_line: false,
             frame_ready: false,
@@ -219,6 +229,7 @@ impl PPU {
 
             if self.ly == 144 {
                 *interrupt_flag |= InterruptMode::VBlank.mask();
+                self.window_line = 0;
                 self.frame_ready = true;
             }
         }
@@ -226,32 +237,58 @@ impl PPU {
 
     fn render_scanline(&mut self) {
         let lcdc_struct = LCDC::from_byte(self.lcdc);
-        let map_base = lcdc_struct.bg_map_base();
-
         let background_y = self.ly.wrapping_add(self.scy);
-        let tile_row = (background_y % 8) as u16;
+        let background_tile_row = (background_y % 8) as u16;
+
+        let mut window_rendered = false;
+
         let sprite_attributes = self.oam_search(lcdc_struct.sprite_size);
 
         let mut bg_indices = [0u8; SCREEN_WIDTH];
         for pixel in 0..SCREEN_WIDTH {
             let background_x = self.scx.wrapping_add(pixel as u8);
-            let map_cell = (background_y as u16 / 8) * 32 + (background_x as u16 / 8);
-            let tile_index = self.vram.read(map_base + map_cell);
-            let current_tile_address =
-                lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
-            let column = background_x % 8;
-            // Get the bit position by subtracting seven, the column goes from right to left
-            // from most to least significant bit, so flip
-            let bit = 7 - column;
-            let color_index = self.get_color_index(
-                bit as u16,
-                current_tile_address,
-                lcdc_struct.enable_bg_and_window,
-            );
+            let window_origin = self.wx.wrapping_sub(7) as i16;
+            let render_window = lcdc_struct.enable_window
+                && lcdc_struct.enable_bg_and_window
+                && self.ly >= self.wy
+                && (pixel as i16) >= window_origin;
+
+            let color_index = if render_window {
+                window_rendered = true;
+                let window_column = (pixel as i16 - window_origin) as u16;
+                let map_cell = (self.window_line as u16 / 8) * 32 + (window_column as u16 / 8);
+                let tile_index = self.vram.read(lcdc_struct.window_map_base() + map_cell);
+                let current_tile_address = lcdc_struct.get_current_tile_address(tile_index)
+                    + (self.window_line as u16 % 8) * 2;
+                self.compute_color_index(
+                    7 - (window_column % 8),
+                    current_tile_address,
+                    lcdc_struct.enable_bg_and_window,
+                )
+            } else {
+                let map_cell = (background_y as u16 / 8) * 32 + (background_x as u16 / 8);
+                let tile_index = self.vram.read(lcdc_struct.bg_map_base() + map_cell);
+                let current_tile_address =
+                    lcdc_struct.get_current_tile_address(tile_index) + background_tile_row * 2;
+                let background_column = background_x % 8;
+                // Get the bit position by subtracting seven, the column goes from right to left
+                // from most to least significant bit, so flip
+                let bit = 7 - background_column;
+
+                self.compute_color_index(
+                    bit as u16,
+                    current_tile_address,
+                    lcdc_struct.enable_bg_and_window,
+                )
+            };
 
             bg_indices[pixel] = color_index;
             let shade = (self.bgp >> (color_index * 2)) & 0x03;
             self.viewport[self.ly as usize][pixel] = shade;
+        }
+
+        if window_rendered {
+            self.window_line += 1;
         }
 
         let sprite_row = |row: u16, flip: bool, sprite_size: u8| {
@@ -280,7 +317,11 @@ impl PPU {
                         .wrapping_add((sprite_attribute.tile_index as u16).wrapping_mul(16))
                         .wrapping_add(row * 2);
 
-                    let color_index = self.get_color_index(bit as u16, current_tile_address, true);
+                    let color_index =
+                        self.compute_color_index(bit as u16, current_tile_address, true);
+                    if color_index == 0 {
+                        continue;
+                    }
 
                     let pallette = if sprite_attribute.pallette_number == 0 {
                         self.obp0
@@ -311,7 +352,7 @@ impl PPU {
             .collect()
     }
 
-    fn get_color_index(&self, bit: u16, current_tile_address: u16, enable: bool) -> u8 {
+    fn compute_color_index(&self, bit: u16, current_tile_address: u16, enable: bool) -> u8 {
         let tile_data_low = self.vram.read(current_tile_address);
         let tile_data_high = self.vram.read(current_tile_address + 1);
         let color_index = if enable {
@@ -335,7 +376,7 @@ impl PPU {
         }
     }
 
-    fn update_stat_line(&mut self, interrupt_flag: &mut u8) {
+    pub fn update_stat_line(&mut self, interrupt_flag: &mut u8) {
         let mode = self.mode();
         let line = (mode == PPUMode::HBlank && self.stat.mask(0x08) != 0)
             || (mode == PPUMode::VBlank && self.stat.mask(0x10) != 0)

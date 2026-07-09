@@ -62,7 +62,7 @@ impl Bus {
             },
             // https://gbdev.gg8.se/wiki/articles/Gameboy_Bootstrap_ROM
             // The rom dump includes the 256 byte rom (0x0000-0x00FF) and the 1792 byte rom (0x0200-0x08FF)
-            CGBFlag::CBG => match address {
+            CGBFlag::CGB => match address {
                 0x0000..=0x00FF | 0x0200..=0x08FF => Some(CGB_BOOT[address as usize]),
                 _ => None,
             },
@@ -70,7 +70,7 @@ impl Bus {
     }
 
     fn is_cgb(&self) -> bool {
-        self.memory.cartridge.header.cgb_flag == CGBFlag::CBG
+        self.memory.cartridge.header.cgb_flag == CGBFlag::CGB
     }
 
     fn get_wram_index(&self, address: u16) -> usize {
@@ -129,7 +129,7 @@ impl AddressBus for Bus {
             0xFF04 => (self.memory.timer.div >> 8) as u8,
             0xFF05 => self.memory.timer.tima,
             0xFF06 => self.memory.timer.tma,
-            0xFF07 => self.memory.timer.tac | 0xF8,
+            0xFF07 => self.memory.timer.tac,
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
             0xFEA0..=0xFEFF => 0xFF,
             0xFF0F => self.memory.interrupt_flag | 0xE0,
@@ -138,7 +138,7 @@ impl AddressBus for Bus {
             0xFF40 => self.memory.ppu.lcdc,
             0xFF41 => {
                 let equal = ((self.memory.ppu.ly == self.memory.ppu.lyc) as u8) << 2;
-                0x80 | equal | (self.memory.ppu.mode() as u8)
+                0x80 | self.memory.ppu.stat | equal | self.memory.ppu.mode() as u8
             }
             0xFF42 => self.memory.ppu.scy,
             0xFF43 => self.memory.ppu.scx,
@@ -187,24 +187,33 @@ impl AddressBus for Bus {
             0xFF01 => self.memory.serial_data = value,
             0xFF02 => {
                 if value == 0x81 {
-                    print!("{}", self.memory.serial_data as char);
                     self.memory.interrupt_flag |= InterruptMode::Serial.mask();
                 }
             }
             0xFF04 => self.memory.timer.div = 0,
             0xFF05 => self.memory.timer.tima = value,
             0xFF06 => self.memory.timer.tma = value,
-            0xFF07 => self.memory.timer.tac = value,
+            0xFF07 => self.memory.timer.tac = value & 0x07,
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF10..=0xFF26 => self.memory.apu.write(address, value),
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
             0xFF40 => self.memory.ppu.lcdc = value,
-            0xFF41 => self.memory.ppu.stat = value & 0x78, // ignore the coincidence flag
+            0xFF41 => {
+                self.memory.ppu.stat = value & 0x78;
+                self.memory
+                    .ppu
+                    .update_stat_line(&mut self.memory.interrupt_flag);
+            }
             0xFF42 => self.memory.ppu.scy = value,
             0xFF43 => self.memory.ppu.scx = value,
             0xFF44 => {}
-            0xFF45 => self.memory.ppu.lyc = value,
+            0xFF45 => {
+                self.memory.ppu.lyc = value;
+                self.memory
+                    .ppu
+                    .update_stat_line(&mut self.memory.interrupt_flag);
+            }
             0xFF46 => self.dma_transfer(value),
             0xFF47 => self.memory.ppu.bgp = value,
             0xFF48 => self.memory.ppu.obp0 = value,

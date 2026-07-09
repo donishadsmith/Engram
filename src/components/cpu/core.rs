@@ -413,7 +413,7 @@ impl Registers {
                 instruction_register: None,
             },
 
-            CGBFlag::CBG => Self {
+            CGBFlag::CGB => Self {
                 a: 0x11,
                 f: StatusFlag::Z.u8(),
                 b: 0x00,

@@ -57,4 +57,17 @@ impl GameBoy {
             .joypad
             .poll(pressed_key, &mut self.cpu.bus.memory.interrupt_flag);
     }
+
+    pub fn save(&self) -> Result<(), std::io::Error> {
+        self.cpu.bus.memory.cartridge.write_sav()?;
+
+        Ok(())
+    }
+
+    pub fn ram_changed(&mut self) -> bool {
+        let updated_ram = self.cpu.bus.memory.cartridge.mbc.ram_changed().clone();
+        *self.cpu.bus.memory.cartridge.mbc.ram_changed() = false;
+
+        updated_ram
+    }
 }

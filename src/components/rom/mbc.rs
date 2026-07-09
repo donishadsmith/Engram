@@ -27,16 +27,23 @@ pub mod prelude {
         fn ram_size(&self) -> usize {
             self.get_ram().len() * 1024
         }
+
+        fn ram_changed(&mut self) -> &mut bool;
     }
 
     pub struct RomOnly {
         rom: Vec<u8>,
         ram: Vec<u8>,
+        ram_updated: bool,
     }
 
     impl RomOnly {
         pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
-            Self { rom, ram }
+            Self {
+                rom,
+                ram,
+                ram_updated: false,
+            }
         }
     }
 
@@ -54,6 +61,10 @@ pub mod prelude {
         fn get_ram(&self) -> &[u8] {
             &self.ram
         }
+
+        fn ram_changed(&mut self) -> &mut bool {
+            &mut self.ram_updated
+        }
     }
 
     // https://gbdev.io/pandocs/MBC1.html; theres a 5 + a 2 bit register for this
@@ -64,6 +75,7 @@ pub mod prelude {
         register_2bit: u8,
         mode: bool,
         ram_enabled: bool,
+        ram_updated: bool,
     }
 
     impl MBC1 {
@@ -75,6 +87,7 @@ pub mod prelude {
                 register_2bit: 0,
                 mode: false,
                 ram_enabled: false,
+                ram_updated: false,
             }
         }
 
@@ -127,6 +140,7 @@ pub mod prelude {
                     if !self.ram.is_empty() && self.ram_enabled {
                         let index = self.ram_index(address);
                         self.ram[index] = value;
+                        self.ram_updated = true;
                     }
                 }
                 _ => {}
@@ -140,6 +154,10 @@ pub mod prelude {
         fn get_ram(&self) -> &[u8] {
             &self.ram
         }
+
+        fn ram_changed(&mut self) -> &mut bool {
+            &mut self.ram_updated
+        }
     }
 
     pub struct MBC2 {
@@ -147,6 +165,7 @@ pub mod prelude {
         ram: Vec<u8>,
         rom_bank: usize,
         ram_bank: usize,
+        ram_updated: bool,
     }
 
     impl MBC2 {
@@ -156,6 +175,7 @@ pub mod prelude {
                 ram,
                 rom_bank: 0,
                 ram_bank: 0,
+                ram_updated: false,
             }
         }
     }
@@ -196,13 +216,19 @@ pub mod prelude {
         fn get_ram(&self) -> &[u8] {
             &self.ram
         }
+
+        fn ram_changed(&mut self) -> &mut bool {
+            &mut self.ram_updated
+        }
     }
 
+    // For clock the plan will be to intercept with unix timestamp
     pub struct MBC3 {
         rom: Vec<u8>,
         ram: Vec<u8>,
         rom_bank: usize,
         ram_bank: usize,
+        ram_updated: bool,
     }
 
     impl MBC3 {
@@ -212,6 +238,7 @@ pub mod prelude {
                 ram,
                 rom_bank: 0,
                 ram_bank: 0,
+                ram_updated: false,
             }
         }
     }
@@ -252,6 +279,10 @@ pub mod prelude {
         fn get_ram(&self) -> &[u8] {
             &self.ram
         }
+
+        fn ram_changed(&mut self) -> &mut bool {
+            &mut self.ram_updated
+        }
     }
 
     pub struct MBC5 {
@@ -259,6 +290,7 @@ pub mod prelude {
         ram: Vec<u8>,
         rom_bank: usize,
         ram_bank: usize,
+        ram_updated: bool,
     }
 
     impl MBC5 {
@@ -268,6 +300,7 @@ pub mod prelude {
                 ram,
                 rom_bank: 0,
                 ram_bank: 0,
+                ram_updated: false,
             }
         }
     }
@@ -307,6 +340,10 @@ pub mod prelude {
 
         fn get_ram(&self) -> &[u8] {
             &self.ram
+        }
+
+        fn ram_changed(&mut self) -> &mut bool {
+            &mut self.ram_updated
         }
     }
 }

@@ -64,21 +64,21 @@ impl MBCType {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CGBFlag {
-    CBG,
+    CGB,
     DMG,
 }
 
 impl CGBFlag {
     fn byte_to_id(rom: &[u8]) -> Self {
         match rom[0x0143] {
-            0x80 | 0xC0 => CGBFlag::CBG,
+            0x80 | 0xC0 => CGBFlag::CGB,
             _ => CGBFlag::DMG,
         }
     }
 
     pub fn to_str(&self) -> &str {
         match self {
-            CGBFlag::CBG => "Color",
+            CGBFlag::CGB => "Color",
             CGBFlag::DMG => "Monochrome",
         }
     }

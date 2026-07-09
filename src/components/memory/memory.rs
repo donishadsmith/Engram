@@ -38,8 +38,8 @@ pub struct Memory {
 
 impl Memory {
     pub fn new(cartridge: Cartridge) -> Self {
-        let cbg_flag = cartridge.header.cgb_flag;
-        let wram_size = if cbg_flag == CGBFlag::CBG {
+        let cgb_flag = cartridge.header.cgb_flag;
+        let wram_size = if cgb_flag == CGBFlag::CGB {
             0x8000
         } else {
             0x2000
@@ -48,7 +48,7 @@ impl Memory {
         Self {
             cartridge,
             wram: vec![0u8; wram_size],
-            ppu: PPU::new(cbg_flag == CGBFlag::CBG),
+            ppu: PPU::new(cgb_flag == CGBFlag::CGB),
             apu: APU::new(),
             timer: Timer::new(),
             joypad: Joypad::new(),
