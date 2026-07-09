@@ -107,6 +107,8 @@ impl Bus {
 
         self.memory.ppu.oam_dma = value;
     }
+
+    // VRAM DMA was on gameboy color
 }
 
 impl AddressBus for Bus {
@@ -197,7 +199,7 @@ impl AddressBus for Bus {
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF10..=0xFF26 => self.memory.apu.write(address, value),
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
-            0xFF40 => self.memory.ppu.write_lcdc(value),
+            0xFF40 => self.memory.ppu.lcdc = value,
             0xFF41 => self.memory.ppu.stat = value & 0x78, // ignore the coincidence flag
             0xFF42 => self.memory.ppu.scy = value,
             0xFF43 => self.memory.ppu.scx = value,
