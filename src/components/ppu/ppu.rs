@@ -78,7 +78,7 @@ impl VRam {
 struct Sprite {
     pub position_y: i16,
     pub position_x: i16,
-    pub tile: u8,
+    pub tile_index: u8,
     pub priority: bool,
     pub flip_y: bool,
     pub flip_x: bool,
@@ -90,7 +90,7 @@ impl Sprite {
         Self {
             position_y: bytes[0] as i16 - 16,
             position_x: bytes[1] as i16 - 8,
-            tile: bytes[2],
+            tile_index: bytes[2],
             priority: bytes[3].mask(0x80) != 0,
             flip_y: bytes[3].mask(0x40) != 0,
             flip_x: bytes[3].mask(0x20) != 0,
@@ -124,13 +124,13 @@ impl LCDC {
         }
     }
 
-    fn get_current_tile_address(&self, tile_number: u8) -> u16 {
+    fn get_current_tile_address(&self, tile_index: u8) -> u16 {
         if self.tile_data_select == 1 {
             let base: u16 = 0x8000;
-            base.wrapping_add((tile_number as u16).wrapping_mul(16))
+            base.wrapping_add((tile_index as u16).wrapping_mul(16))
         } else {
             let base: u16 = 0x9000;
-            base.wrapping_add((tile_number.i16() as u16).wrapping_mul(16))
+            base.wrapping_add((tile_index.i16() as u16).wrapping_mul(16))
         }
     }
 
@@ -168,6 +168,7 @@ pub struct PPU {
     pub wx: u8,
     pub wy: u8,
     pub stat: u8,
+    pub stat_line: bool,
     pub frame_ready: bool,
     pub bgpi: u8,
     is_cgb: bool,
@@ -192,6 +193,7 @@ impl PPU {
             wx: 0x00,
             wy: 0x00,
             stat: 0x00,
+            stat_line: false,
             frame_ready: false,
             bgpi: 0x00,
             is_cgb: is_cgb,
@@ -213,6 +215,7 @@ impl PPU {
             }
 
             self.ly = (self.ly + 1) % 154;
+            self.update_stat_line(interrupt_flag);
 
             if self.ly == 144 {
                 *interrupt_flag |= InterruptMode::VBlank.mask();
@@ -227,24 +230,71 @@ impl PPU {
 
         let background_y = self.ly.wrapping_add(self.scy);
         let tile_row = (background_y % 8) as u16;
-        let mut sprites = self.oam_search(lcdc_struct.sprite_size);
+        let sprite_attributes = self.oam_search(lcdc_struct.sprite_size);
 
+        let mut bg_indices = [0u8; SCREEN_WIDTH];
         for pixel in 0..SCREEN_WIDTH {
             let background_x = self.scx.wrapping_add(pixel as u8);
             let map_cell = (background_y as u16 / 8) * 32 + (background_x as u16 / 8);
-            let tile_number = self.vram.read(map_base + map_cell);
+            let tile_index = self.vram.read(map_base + map_cell);
             let current_tile_address =
-                lcdc_struct.get_current_tile_address(tile_number) + tile_row * 2;
-            let tile_data_low = self.vram.read(current_tile_address);
-            let tile_data_high = self.vram.read(current_tile_address + 1);
+                lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
             let column = background_x % 8;
             // Get the bit position by subtracting seven, the column goes from right to left
             // from most to least significant bit, so flip
             let bit = 7 - column;
-            let color_index =
-                ((tile_data_high >> bit) & 0x01) << 1 | ((tile_data_low >> bit) & 0x01);
+            let color_index = self.get_color_index(
+                bit as u16,
+                current_tile_address,
+                lcdc_struct.enable_bg_and_window,
+            );
+
+            bg_indices[pixel] = color_index;
             let shade = (self.bgp >> (color_index * 2)) & 0x03;
             self.viewport[self.ly as usize][pixel] = shade;
+        }
+
+        let sprite_row = |row: u16, flip: bool, sprite_size: u8| {
+            if flip {
+                (sprite_size as u16 - 1) - row
+            } else {
+                row
+            }
+        };
+
+        let base_adress = 0x8000u16;
+        for sprite_attribute in &sprite_attributes {
+            if lcdc_struct.enable_sprite {
+                for x in sprite_attribute.position_x.max(0)
+                    ..(sprite_attribute.position_x + 8).min(SCREEN_WIDTH as i16)
+                {
+                    let sprite_column = x - sprite_attribute.position_x;
+                    let bit = if sprite_attribute.flip_x {
+                        sprite_column
+                    } else {
+                        7 - sprite_column
+                    };
+                    let mut row = (self.ly as i16 - sprite_attribute.position_y) as u16;
+                    row = sprite_row(row, sprite_attribute.flip_y, lcdc_struct.sprite_size);
+                    let current_tile_address = base_adress
+                        .wrapping_add((sprite_attribute.tile_index as u16).wrapping_mul(16))
+                        .wrapping_add(row * 2);
+
+                    let color_index = self.get_color_index(bit as u16, current_tile_address, true);
+
+                    let pallette = if sprite_attribute.pallette_number == 0 {
+                        self.obp0
+                    } else {
+                        self.obp1
+                    };
+
+                    let shade = (pallette >> (color_index * 2)) & 0x03;
+
+                    if !sprite_attribute.priority || bg_indices[x as usize] == 0 {
+                        self.viewport[self.ly as usize][x as usize] = shade
+                    }
+                }
+            }
         }
     }
 
@@ -261,6 +311,18 @@ impl PPU {
             .collect()
     }
 
+    fn get_color_index(&self, bit: u16, current_tile_address: u16, enable: bool) -> u8 {
+        let tile_data_low = self.vram.read(current_tile_address);
+        let tile_data_high = self.vram.read(current_tile_address + 1);
+        let color_index = if enable {
+            ((tile_data_high >> bit) & 0x01) << 1 | ((tile_data_low >> bit) & 0x01)
+        } else {
+            0
+        };
+
+        color_index
+    }
+
     pub fn mode(&self) -> PPUMode {
         if self.ly >= 144 {
             return PPUMode::VBlank;
@@ -273,5 +335,17 @@ impl PPU {
         }
     }
 
-    pub fn get_pallete_number(&self) {}
+    fn update_stat_line(&mut self, interrupt_flag: &mut u8) {
+        let mode = self.mode();
+        let line = (mode == PPUMode::HBlank && self.stat.mask(0x08) != 0)
+            || (mode == PPUMode::VBlank && self.stat.mask(0x10) != 0)
+            || (mode == PPUMode::OAMSearch && self.stat.mask(0x20) != 0)
+            || (self.ly == self.lyc && self.stat.mask(0x40) != 0);
+
+        if line && !self.stat_line {
+            *interrupt_flag |= InterruptMode::Stat.mask();
+        }
+
+        self.stat_line = line;
+    }
 }
