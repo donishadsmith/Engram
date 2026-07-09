@@ -1,4 +1,4 @@
-use gameboy_emulator::components::{gameboy::GameBoy, rom::cartridge::Cartridge};
+use engram::components::{gameboy::GameBoy, rom::cartridge::Cartridge};
 use std::path::PathBuf;
 
 fn run_blargg_cpu_rom(rom: &str) {

@@ -29,18 +29,14 @@
 
     0x8800 - 0x8FFF shared by two tile sets
 */
+
+// First get the DMG working first, then extend to color.
 use crate::components::cpu::core::{ByteOps8, InterruptMode};
 
 pub const SCREEN_WIDTH: usize = 160;
 pub const SCREEN_HEIGHT: usize = 144;
 
 const DOTS_PER_TCYCLE: u32 = 456;
-const STARTING_TILE_DATA_ADDRESS: u16 = 0x8000;
-
-enum Palette {
-    DMG {},
-    CGB {},
-}
 
 pub struct VRam {
     pub bank: u8,
@@ -131,10 +127,10 @@ impl LCDC {
     fn get_current_tile_address(&self, tile_number: u8) -> u16 {
         if self.tile_data_select == 1 {
             let base: u16 = 0x8000;
-            base.wrapping_add((tile_number as u16) * 16)
+            base.wrapping_add((tile_number as u16).wrapping_mul(16))
         } else {
             let base: u16 = 0x9000;
-            base.wrapping_add(tile_number.i16() as u16 * 16)
+            base.wrapping_add((tile_number.i16() as u16).wrapping_mul(16))
         }
     }
 
@@ -238,6 +234,13 @@ impl PPU {
             let tile_data_low = self.vram.read(current_tile_address);
             let tile_data_high = self.vram.read(current_tile_address + 1);
             let column = background_x % 8;
+            // Get the bit position by subtracting seven, the column goes from right to left
+            // from most to least significant bit, so flip
+            let bit = 7 - column;
+            let color_index =
+                ((tile_data_high >> bit) & 0x01) << 1 | ((tile_data_low >> bit) & 0x01);
+            let shade = (self.bgp >> (color_index * 2)) & 0x03;
+            self.viewport[self.ly as usize][pixel] = shade;
         }
     }
 

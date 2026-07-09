@@ -7,7 +7,7 @@ const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 // https://www.zilog.com/docs/z80/um0080.pdf
 
 pub struct GameBoy {
-    cpu: CPU<Bus>,
+    pub cpu: CPU<Bus>,
 }
 
 impl GameBoy {
