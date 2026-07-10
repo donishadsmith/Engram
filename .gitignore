@@ -5,3 +5,4 @@
 # These roms should be fine though
 !tests/gb-test-roms/**/*.gb
 Cargo.lock
+*.sav
