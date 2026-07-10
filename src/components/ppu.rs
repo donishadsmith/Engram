@@ -355,7 +355,8 @@ impl PPU {
     fn oam_search(&self, sprite_size: u8) -> Vec<SpriteAttribute> {
         // Each scanline can have up to 10 sprites, first
         // identify the sprites with a y coordinate overlapping with the scanline
-        let mut sprite_attributes:Vec<SpriteAttribute> = self.oam
+        let mut sprite_attributes: Vec<SpriteAttribute> = self
+            .oam
             .chunks(4)
             .map(SpriteAttribute::from_oam)
             .filter(|s| {
