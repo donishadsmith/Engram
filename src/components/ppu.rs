@@ -182,6 +182,7 @@ pub struct PPU {
     pub stat_line: bool,
     pub frame_ready: bool,
     pub bgpi: u8,
+    pub previous_mode: PPUMode,
     is_cgb: bool,
     pub viewport: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
 }
@@ -208,6 +209,7 @@ impl PPU {
             stat_line: false,
             frame_ready: false,
             bgpi: 0x00,
+            previous_mode: PPUMode::OAMSearch,
             is_cgb: is_cgb,
             viewport: [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
         }
@@ -219,6 +221,13 @@ impl PPU {
         }
 
         self.dots += t_cycles;
+
+        let current_mode = self.mode();
+        if current_mode != self.previous_mode {
+            self.previous_mode = current_mode;
+            self.update_stat_line(interrupt_flag);
+        }
+
         while self.dots >= DOTS_PER_TCYCLE {
             self.dots -= DOTS_PER_TCYCLE;
 
@@ -228,6 +237,8 @@ impl PPU {
 
             self.ly = (self.ly + 1) % 154;
             self.update_stat_line(interrupt_flag);
+
+            self.previous_mode = self.mode();
 
             if self.ly == 144 {
                 *interrupt_flag |= InterruptMode::VBlank.mask();
@@ -244,14 +255,7 @@ impl PPU {
 
         let mut window_rendered = false;
 
-        let mut sprite_attributes = self.oam_search(lcdc_struct.sprite_size);
-
-        // Sprite sorting different for color
-        // For DMG sort in descending order for lowest coordinate sprite to always be rendered last
-
-        if !self.is_cgb {
-            sprite_attributes.sort_by_key(|s| std::cmp::Reverse(s.position_x));
-        }
+        let sprite_attributes = self.oam_search(lcdc_struct.sprite_size);
 
         let mut bg_indices = [0u8; SCREEN_WIDTH];
         for pixel in 0..SCREEN_WIDTH {
@@ -351,14 +355,24 @@ impl PPU {
     fn oam_search(&self, sprite_size: u8) -> Vec<SpriteAttribute> {
         // Each scanline can have up to 10 sprites, first
         // identify the sprites with a y coordinate overlapping with the scanline
-        self.oam
+        let mut sprite_attributes:Vec<SpriteAttribute> = self.oam
             .chunks(4)
             .map(SpriteAttribute::from_oam)
             .filter(|s| {
                 (s.position_y..(s.position_y + sprite_size as i16)).contains(&(self.ly as i16))
             })
             .take(10)
-            .collect()
+            .collect();
+
+        // Sprite sorting different for color
+        // For DMG sort in descending order for lowest coordinate sprite to always be rendered last
+        if !self.is_cgb {
+            sprite_attributes.sort_by(|a, b| b.position_x.cmp(&a.position_x));
+        } else {
+            sprite_attributes.reverse()
+        }
+
+        sprite_attributes
     }
 
     fn compute_color_index(&self, bit: u16, current_tile_address: u16, enable: bool) -> u8 {
@@ -379,14 +393,14 @@ impl PPU {
         }
 
         match self.dots {
-            0..=80 => PPUMode::OAMSearch,
-            81..=252 => PPUMode::PixelTransfer,
+            0..=79 => PPUMode::OAMSearch,
+            8..=251 => PPUMode::PixelTransfer,
             _ => PPUMode::HBlank,
         }
     }
 
     pub fn update_stat_line(&mut self, interrupt_flag: &mut u8) {
-        let mode = self.mode();
+        let mode: PPUMode = self.mode();
         let line = (mode == PPUMode::HBlank && self.stat.mask(0x08) != 0)
             || (mode == PPUMode::VBlank && self.stat.mask(0x10) != 0)
             || (mode == PPUMode::OAMSearch && self.stat.mask(0x20) != 0)
