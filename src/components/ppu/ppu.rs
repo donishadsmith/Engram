@@ -82,7 +82,7 @@ struct Sprite {
     pub priority: bool,
     pub flip_y: bool,
     pub flip_x: bool,
-    pub pallette_number: u8,
+    pub palette_number: u8,
 }
 
 impl Sprite {
@@ -94,7 +94,7 @@ impl Sprite {
             priority: bytes[3].mask(0x80) != 0,
             flip_y: bytes[3].mask(0x40) != 0,
             flip_x: bytes[3].mask(0x20) != 0,
-            pallette_number: bytes[3].mask(0x10),
+            palette_number: bytes[3].mask(0x10),
         }
     }
 }
@@ -323,13 +323,13 @@ impl PPU {
                         continue;
                     }
 
-                    let pallette = if sprite_attribute.pallette_number == 0 {
+                    let palette = if sprite_attribute.palette_number == 0 {
                         self.obp0
                     } else {
                         self.obp1
                     };
 
-                    let shade = (pallette >> (color_index * 2)) & 0x03;
+                    let shade = (palette >> (color_index * 2)) & 0x03;
 
                     if !sprite_attribute.priority || bg_indices[x as usize] == 0 {
                         self.viewport[self.ly as usize][x as usize] = shade

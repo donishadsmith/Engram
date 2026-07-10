@@ -18,8 +18,9 @@ pub fn file_dialog() -> Option<PathBuf> {
         .pick_file()
 }
 
+// Come back to this, for now everything runs smoothly
 pub async fn fps_lock(frame_start_time: Instant) {
-    let frame_duration = Duration::from_secs_f64(1.0 / 60.0);
+    let frame_duration = Duration::from_secs_f64(1.0 / 59.7275);
 
     let elapsed_time = frame_start_time.elapsed();
     if elapsed_time < frame_duration {
