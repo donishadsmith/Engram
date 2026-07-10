@@ -1,4 +1,4 @@
-use crate::components::ppu::ppu::{PPU, SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::components::ppu::{PPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use macroquad::prelude::*;
 
 use macroquad::prelude::Color;

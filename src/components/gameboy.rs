@@ -58,7 +58,7 @@ impl GameBoy {
             .poll(pressed_key, &mut self.cpu.bus.memory.interrupt_flag);
     }
 
-    pub fn save(&self) -> Result<(), std::io::Error> {
+    pub fn battery_save(&self) -> Result<(), std::io::Error> {
         self.cpu.bus.memory.cartridge.write_sav()?;
 
         Ok(())
@@ -69,5 +69,11 @@ impl GameBoy {
         *self.cpu.bus.memory.cartridge.mbc.ram_changed() = false;
 
         updated_ram
+    }
+}
+
+impl Drop for GameBoy {
+    fn drop(&mut self) {
+        let _ = self.battery_save();
     }
 }

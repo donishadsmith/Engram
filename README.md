@@ -21,3 +21,5 @@ A gameboy emulator that is still a work-in-progress.
 | Enter       | Start  |
 | Right Shift | Select |
 | Esc         | Quit   |
+
+`S` key to dump data in sram to a .sav file for ROMs that are battery-backed.

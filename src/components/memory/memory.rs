@@ -1,7 +1,7 @@
 use crate::components::{
     apu::channels::APU,
     joypad::Joypad,
-    ppu::ppu::PPU,
+    ppu::PPU,
     rom::cartridge::{CGBFlag, Cartridge},
     timer::Timer,
 };

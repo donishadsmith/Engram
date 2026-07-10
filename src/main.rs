@@ -35,7 +35,7 @@ async fn main() -> Result<(), std::io::Error> {
         let frame_start_time = Instant::now();
 
         if is_key_pressed(KeyCode::Escape) {
-            gameboy.save()?;
+            gameboy.battery_save()?;
             break;
         }
 
@@ -44,8 +44,8 @@ async fn main() -> Result<(), std::io::Error> {
 
         render_to_window(&gameboy.cpu.bus.memory.ppu);
 
-        if frame % 100000 == 0 && gameboy.ram_changed() {
-            gameboy.save()?;
+        if (frame % 100000 == 0 && gameboy.ram_changed()) || is_key_pressed(KeyCode::S) {
+            gameboy.battery_save()?;
             frame = 0;
         }
 
