@@ -3,6 +3,8 @@
     https://blog.tigris.fr/2019/09/15/writing-an-emulator-the-first-pixel/
     https://rylev.github.io/DMG-01/public/book/graphics/tile_ram.html
     https://imrannazar.com/series/gameboy-emulation-in-javascript/graphics
+    https://jsgroth.dev/blog/posts/game-boy-color/
+
     tiles are tiles: [[u8; 16]; 384], make up 384 * 16 = 6144 in vram
     byte pair for (tile N, row R) = base + N*16 + R*2, each row is 2 bytes
     Recall each byte has 8 bits, which is why they have "8 columns", each pixel
@@ -75,7 +77,7 @@ impl VRam {
     }
 }
 
-struct Sprite {
+struct SpriteAttribute {
     pub position_y: i16,
     pub position_x: i16,
     pub tile_index: u8,
@@ -85,7 +87,7 @@ struct Sprite {
     pub palette_number: u8,
 }
 
-impl Sprite {
+impl SpriteAttribute {
     pub fn from_oam(bytes: &[u8]) -> Self {
         Self {
             position_y: bytes[0] as i16 - 16,
@@ -242,7 +244,14 @@ impl PPU {
 
         let mut window_rendered = false;
 
-        let sprite_attributes = self.oam_search(lcdc_struct.sprite_size);
+        let mut sprite_attributes = self.oam_search(lcdc_struct.sprite_size);
+
+        // Sprite sorting different for color
+        // For DMG sort in descending order for lowest coordinate sprite to always be rendered last
+
+        if !self.is_cgb {
+            sprite_attributes.sort_by_key(|s| std::cmp::Reverse(s.position_x));
+        }
 
         let mut bg_indices = [0u8; SCREEN_WIDTH];
         for pixel in 0..SCREEN_WIDTH {
@@ -339,12 +348,12 @@ impl PPU {
         }
     }
 
-    fn oam_search(&self, sprite_size: u8) -> Vec<Sprite> {
+    fn oam_search(&self, sprite_size: u8) -> Vec<SpriteAttribute> {
         // Each scanline can have up to 10 sprites, first
         // identify the sprites with a y coordinate overlapping with the scanline
         self.oam
             .chunks(4)
-            .map(Sprite::from_oam)
+            .map(SpriteAttribute::from_oam)
             .filter(|s| {
                 (s.position_y..(s.position_y + sprite_size as i16)).contains(&(self.ly as i16))
             })
