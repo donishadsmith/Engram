@@ -258,8 +258,10 @@ where
                 }
             }
             0x76 => {
-                if !self.interrupt.master_enable && self.bus.pending_interrupt() != 0 {
-                    self.halt_bug = true
+                if self.bus.pending_interrupt() != 0 {
+                    if !self.interrupt.master_enable {
+                        self.halt_bug = true;
+                    }
                 } else {
                     self.halted = true
                 }

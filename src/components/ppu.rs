@@ -32,6 +32,8 @@
     0x8800 - 0x8FFF shared by two tile sets
 */
 
+use macroquad::miniquad::gl::GL_FALSE;
+
 // First get the DMG working first, then extend to color.
 use crate::components::cpu::core::{ByteOps8, InterruptMode};
 
@@ -395,7 +397,7 @@ impl PPU {
 
         match self.dots {
             0..=79 => PPUMode::OAMSearch,
-            8..=251 => PPUMode::PixelTransfer,
+            80..=251 => PPUMode::PixelTransfer,
             _ => PPUMode::HBlank,
         }
     }
@@ -412,5 +414,17 @@ impl PPU {
         }
 
         self.stat_line = line;
+    }
+
+    pub fn write_lcdc(&mut self, value: u8) {
+        let lcd_was_on = self.lcdc & 0x80 != 0;
+        self.lcdc = value;
+        if lcd_was_on && self.lcdc & 0x80 == 0 {
+            self.ly = 0;
+            self.dots = 0;
+            self.window_line = 0;
+            self.previous_mode = PPUMode::HBlank;
+            self.stat_line = false;
+        }
     }
 }
