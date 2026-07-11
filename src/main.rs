@@ -39,7 +39,7 @@ async fn main() -> Result<(), std::io::Error> {
             break;
         }
 
-        if is_key_pressed(KeyCode::F1) {
+        if is_key_pressed(KeyCode::O) {
             gameboy.ppu_debug_dump();
         }
 
@@ -52,7 +52,7 @@ async fn main() -> Result<(), std::io::Error> {
 
         screen.draw();
 
-        if is_key_pressed(KeyCode::F2) {
+        if is_key_pressed(KeyCode::P) {
             get_screen_data().export_png("screenshot.png");
         }
 

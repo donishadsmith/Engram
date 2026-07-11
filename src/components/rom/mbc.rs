@@ -164,17 +164,23 @@ pub mod prelude {
         rom: Vec<u8>,
         ram: Vec<u8>,
         rom_bank: usize,
-        ram_bank: usize,
+        ram_enabled: bool,
         ram_updated: bool,
     }
 
     impl MBC2 {
+        const MBC2_RAM_SIZE: usize = 512;
+
         pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
+            let mut internal_ram = vec![0u8; Self::MBC2_RAM_SIZE];
+            let n = ram.len().min(Self::MBC2_RAM_SIZE);
+            internal_ram[..n].copy_from_slice(&ram[..n]);
+
             Self {
                 rom,
-                ram,
+                ram: internal_ram,
                 rom_bank: 0,
-                ram_bank: 0,
+                ram_enabled: false,
                 ram_updated: false,
             }
         }
@@ -189,11 +195,10 @@ pub mod prelude {
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => {
-                    if self.ram.is_empty() {
-                        0xFF
-                    } else {
-                        self.ram[address as usize - 0xA000]
+                    if !self.ram_enabled {
+                        return 0xFF;
                     }
+                    self.ram[(address & 0x1FF) as usize] | 0xF0
                 }
                 _ => 0xFF,
             }
@@ -201,9 +206,20 @@ pub mod prelude {
 
         fn write(&mut self, address: u16, value: u8) {
             match address {
-                0x2000..=0x3FFF => {
-                    let bank = value.mask(0x1F) as usize;
-                    self.rom_bank = if bank == 0 { 1 } else { bank };
+                0x0000..=0x3FFF => {
+                    let bit = address & 0x0100;
+                    if bit == 0 {
+                        self.ram_enabled = value.mask(0x0F) == 0x0A;
+                    } else {
+                        self.rom_bank = value.mask(0x0F) as usize;
+                    }
+                }
+                0xA000..=0xBFFF => {
+                    if self.ram.is_empty() || !self.ram_enabled {
+                        return;
+                    }
+                    self.ram[(address & 0x1FF) as usize] = value & 0x0F;
+                    self.ram_updated = true;
                 }
                 _ => {}
             }
