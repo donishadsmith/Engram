@@ -6,8 +6,6 @@
 !tests/blargg/**/*.gb
 Cargo.lock
 *.sav
-*.sym
+tests/blargg/**/*source*
 *.s
-*.inc
-*.bin
-*linkfile*
+mooneye/
