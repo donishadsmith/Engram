@@ -3,8 +3,11 @@
 /roms
 *.gb
 # These roms should be fine though
-!tests/gb-test-roms/**/*.gb
+!tests/blargg/**/*.gb
 Cargo.lock
 *.sav
 *.sym
 *.s
+*.inc
+*.bin
+*linkfile*
