@@ -32,8 +32,6 @@
     0x8800 - 0x8FFF shared by two tile sets
 */
 
-use macroquad::miniquad::gl::GL_FALSE;
-
 // First get the DMG working first, then extend to color.
 use crate::components::cpu::core::{ByteOps8, InterruptMode};
 
