@@ -1,7 +1,14 @@
 use crate::components::ppu::{PPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use macroquad::prelude::*;
 
-const DMG_PALETTE: [[u8; 3]; 4] = [[255, 255, 255], [212, 212, 212], [168, 168, 168], [0, 0, 0]];
+const DEBUGGING_COLOR: [u8; 3] = [238, 75, 43];
+const DMG_PALETTE: [[u8; 3]; 5] = [
+    [255, 255, 255],
+    [212, 212, 212],
+    [168, 168, 168],
+    [0, 0, 0],
+    DEBUGGING_COLOR,
+];
 
 const BYTES_PER_PIXEL: usize = 4;
 

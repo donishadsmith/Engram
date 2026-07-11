@@ -95,7 +95,7 @@ impl SpriteAttribute {
             position_y: bytes[0] as i16 - 16,
             position_x: bytes[1] as i16 - 8,
             tile_index: bytes[2],
-            priority: bytes[3].mask(0x80) != 0,
+            priority: bytes[3].mask(0x80) == 0,
             flip_y: bytes[3].mask(0x40) != 0,
             flip_x: bytes[3].mask(0x20) != 0,
             palette_number: bytes[3].mask(0x10),
@@ -351,7 +351,7 @@ impl PPU {
 
                     let shade = (palette >> (color_index * 2)) & 0x03;
 
-                    if !sprite_attribute.priority || bg_indices[x as usize] == 0 {
+                    if sprite_attribute.priority || bg_indices[x as usize] == 0 {
                         self.viewport[self.ly as usize][x as usize] = shade
                     }
                 }
