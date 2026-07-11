@@ -12,14 +12,9 @@ const DMG_PALETTE: [[u8; 3]; 5] = [
 
 const BYTES_PER_PIXEL: usize = 4;
 
-const BLEND_CURRENT: u16 = 6;
-const BLEND_PREVIOUS: u16 = 4;
-const BLEND_TOTAL: u16 = BLEND_CURRENT + BLEND_PREVIOUS;
-
 pub struct Screen {
     texture: Texture2D,
     image: Image,
-    previous_frame: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
 }
 
 impl Screen {
@@ -31,33 +26,19 @@ impl Screen {
         };
         let texture = Texture2D::from_image(&image);
         texture.set_filter(FilterMode::Nearest);
-        Self {
-            texture,
-            image,
-            previous_frame: [[0; SCREEN_WIDTH]; SCREEN_HEIGHT],
-        }
+        Self { texture, image }
     }
 
     pub fn update(&mut self, ppu: &PPU) {
         for y in 0..SCREEN_HEIGHT {
             for x in 0..SCREEN_WIDTH {
-                let current_frame_pixel = DMG_PALETTE[ppu.viewport[y][x] as usize];
-                let previous_frame_pixel = DMG_PALETTE[self.previous_frame[y][x] as usize];
-
+                let color = DMG_PALETTE[ppu.viewport[y][x] as usize];
                 let index = (y * SCREEN_WIDTH + x) * BYTES_PER_PIXEL;
-
-                for channel in 0..3 {
-                    let blended_pixel = (current_frame_pixel[channel] as u16 * BLEND_CURRENT
-                        + previous_frame_pixel[channel] as u16 * BLEND_PREVIOUS)
-                        / BLEND_TOTAL;
-                    self.image.bytes[index + channel] = blended_pixel as u8;
-                }
-
+                self.image.bytes[index..index + 3].copy_from_slice(&color);
                 self.image.bytes[index + 3] = 255;
             }
         }
 
-        self.previous_frame = ppu.viewport;
         self.texture.update(&self.image);
     }
 

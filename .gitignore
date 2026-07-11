@@ -10,3 +10,4 @@ tests/blargg/**/*source*
 tests/blargg/*/source/
 *.s
 mooneye/
+ppu_registers.txt
