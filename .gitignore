@@ -6,3 +6,5 @@
 !tests/gb-test-roms/**/*.gb
 Cargo.lock
 *.sav
+*.sym
+*.s

@@ -25,7 +25,12 @@ impl GameBoy {
         let mut remaining_cycles = T_CYCLES_PER_FRAME_DOUBLE;
 
         while remaining_cycles > 0 {
-            let timer_t_cycles = (self.cpu.cycle() as u32) * 4;
+            let machine_cycles = self.cpu.cycle() as u32;
+            let timer_t_cycles = machine_cycles * 4;
+
+            for _ in 0..machine_cycles {
+                self.cpu.bus.dma_step();
+            }
 
             let double_speed = self.cpu.bus.memory.key_register & 0x80 != 0;
             let cpu_t_cycles = if double_speed {
@@ -69,6 +74,22 @@ impl GameBoy {
         *self.cpu.bus.memory.cartridge.mbc.ram_changed() = false;
 
         updated_ram
+    }
+
+    pub fn ppu_debug_dump(&self) {
+        let ppu = &self.cpu.bus.memory.ppu;
+        std::fs::write(
+            "ppu_registers.txt",
+            format!(
+                "lcdc={:02X} stat={:02X} scy={} scx={} wy={} wx={} bgp={:02X} ly={}",
+                ppu.lcdc, ppu.stat, ppu.scy, ppu.scx, ppu.wy, ppu.wx, ppu.bgp, ppu.ly
+            ),
+        )
+        .unwrap();
+    }
+
+    pub fn take_frame(&mut self) -> bool {
+        std::mem::take(&mut self.cpu.bus.memory.ppu.frame_ready)
     }
 }
 

@@ -759,7 +759,8 @@ where
 
         if self.halt_bug {
             self.halt_bug = false;
-            self.registers.program_counter.address = self.registers.program_counter.address.wrapping_sub(1);
+            self.registers.program_counter.address =
+                self.registers.program_counter.address.wrapping_sub(1);
         }
 
         self.call(interrupt_mode.to_address());

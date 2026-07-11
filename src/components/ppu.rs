@@ -80,18 +80,20 @@ impl VRam {
 }
 
 struct SpriteAttribute {
-    pub position_y: i16,
-    pub position_x: i16,
-    pub tile_index: u8,
-    pub priority: bool,
-    pub flip_y: bool,
-    pub flip_x: bool,
-    pub palette_number: u8,
+    oam_index: usize,
+    position_y: i16,
+    position_x: i16,
+    tile_index: u8,
+    priority: bool,
+    flip_y: bool,
+    flip_x: bool,
+    palette_number: u8,
 }
 
 impl SpriteAttribute {
-    pub fn from_oam(bytes: &[u8]) -> Self {
+    pub fn from_oam(oam_index: usize, bytes: &[u8]) -> Self {
         Self {
+            oam_index,
             position_y: bytes[0] as i16 - 16,
             position_x: bytes[1] as i16 - 8,
             tile_index: bytes[2],
@@ -262,7 +264,7 @@ impl PPU {
         let mut bg_indices = [0u8; SCREEN_WIDTH];
         for pixel in 0..SCREEN_WIDTH {
             let background_x = self.scx.wrapping_add(pixel as u8);
-            let window_origin = self.wx.wrapping_sub(7) as i16;
+            let window_origin = self.wx as i16 - 7;
             let render_window = lcdc_struct.enable_window
                 && lcdc_struct.enable_bg_and_window
                 && self.ly >= self.wy
@@ -327,9 +329,14 @@ impl PPU {
                         7 - sprite_column
                     };
                     let mut row = (self.ly as i16 - sprite_attribute.position_y) as u16;
+                    let tile_index = if lcdc_struct.sprite_size == 16 {
+                        sprite_attribute.tile_index & 0xFE
+                    } else {
+                        sprite_attribute.tile_index
+                    };
                     row = sprite_row(row, sprite_attribute.flip_y, lcdc_struct.sprite_size);
                     let current_tile_address = base_adress
-                        .wrapping_add((sprite_attribute.tile_index as u16).wrapping_mul(16))
+                        .wrapping_add((tile_index as u16).wrapping_mul(16))
                         .wrapping_add(row * 2);
 
                     let color_index =
@@ -360,7 +367,8 @@ impl PPU {
         let mut sprite_attributes: Vec<SpriteAttribute> = self
             .oam
             .chunks(4)
-            .map(SpriteAttribute::from_oam)
+            .enumerate()
+            .map(|(i, bytes)| SpriteAttribute::from_oam(i, bytes))
             .filter(|s| {
                 (s.position_y..(s.position_y + sprite_size as i16)).contains(&(self.ly as i16))
             })
@@ -370,9 +378,13 @@ impl PPU {
         // Sprite sorting different for color
         // For DMG sort in descending order for lowest coordinate sprite to always be rendered last
         if !self.is_cgb {
-            sprite_attributes.sort_by(|a, b| b.position_x.cmp(&a.position_x));
+            sprite_attributes.sort_by(|a, b| {
+                b.position_x
+                    .cmp(&a.position_x)
+                    .then(b.oam_index.cmp(&a.oam_index))
+            });
         } else {
-            sprite_attributes.reverse()
+            sprite_attributes.reverse();
         }
 
         sprite_attributes

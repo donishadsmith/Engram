@@ -5,7 +5,8 @@ A gameboy emulator that is still a work-in-progress.
 <p align="center">
   <img src="assets/tetris.png" width="250" height="250">
   <img src="assets/loz.png" width="250" height="250">
-  <img src="assets/more_loz.png" width="250" height="190">
+  <img src="assets/kirby.png" width="250" height="250">
+  <img src="assets/mario.png" width="250" height="250">
 </p>
 
 ## Controls

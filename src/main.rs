@@ -7,7 +7,7 @@
 
 use engram::{
     components::{gameboy::GameBoy, rom::cartridge::Cartridge},
-    render::render_to_window,
+    render::Screen,
     utils::{file_dialog, fps_lock},
 };
 use macroquad::prelude::*;
@@ -29,7 +29,7 @@ async fn main() -> Result<(), std::io::Error> {
     let rom = file_dialog();
     let cartridge = Cartridge::load(rom)?;
     let mut gameboy = GameBoy::boot(cartridge);
-    let mut frame = 0;
+    let mut screen = Screen::new();
 
     loop {
         let frame_start_time = Instant::now();
@@ -39,17 +39,22 @@ async fn main() -> Result<(), std::io::Error> {
             break;
         }
 
+        if is_key_pressed(KeyCode::F1) {
+            gameboy.ppu_debug_dump();
+        }
+
         let pressed = KEYMAP.map(is_key_down);
         gameboy.run(pressed);
 
-        render_to_window(&gameboy.cpu.bus.memory.ppu);
-
-        if (frame % 100000 == 0 && gameboy.ram_changed()) || is_key_pressed(KeyCode::S) {
-            gameboy.battery_save()?;
-            frame = 0;
+        if gameboy.take_frame() {
+            screen.update(&gameboy.cpu.bus.memory.ppu);
         }
 
-        frame += 1;
+        screen.draw();
+
+        if is_key_pressed(KeyCode::F2) {
+            get_screen_data().export_png("screenshot.png");
+        }
 
         fps_lock(frame_start_time).await;
     }

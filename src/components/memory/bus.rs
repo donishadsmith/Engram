@@ -22,6 +22,13 @@ impl BootStatus {
     }
 }
 
+pub struct DMAState {
+    in_progress: bool,
+    source_address: u16,
+    offset: u16,
+    delay: u8,
+}
+
 pub trait AddressBus {
     fn read(&self, address: u16) -> u8;
 
@@ -40,6 +47,7 @@ pub trait AddressBus {
 pub struct Bus {
     pub memory: Memory,
     boot_status: BootStatus,
+    pub dma: DMAState,
 }
 
 impl Bus {
@@ -47,6 +55,12 @@ impl Bus {
         Self {
             memory: Memory::new(cartridge),
             boot_status: BootStatus::Incomplete,
+            dma: DMAState {
+                in_progress: false,
+                source_address: 0x00,
+                offset: 0,
+                delay: 0,
+            },
         }
     }
 
@@ -98,14 +112,45 @@ impl Bus {
 
     // transfer data from rom or ram
     fn dma_transfer(&mut self, value: u8) {
-        let base_address = (value as u16) << 8;
+        self.dma = DMAState {
+            in_progress: true,
+            source_address: (value as u16) << 8,
+            offset: 0,
+            delay: 1,
+        };
+        self.memory.ppu.oam_dma = value;
+    }
 
-        for i in 0..0xA0u16 {
-            let byte = self.read(base_address + i);
-            self.memory.ppu.oam[i as usize] = byte;
+    fn dma_read(&self, address: u16) -> u8 {
+        match address {
+            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.read(address),
+            0x8000..=0x9FFF => self.memory.ppu.vram.read(address),
+            0xC000..=0xFFFF => {
+                self.memory.wram[self.get_wram_index(if address >= 0xE000 {
+                    0xC000 + (address & 0x1FFF)
+                } else {
+                    address
+                })]
+            }
+        }
+    }
+
+    // supposed to be 160 m cycles and 160 bytes, its literally a byte per cycle
+    pub fn dma_step(&mut self) {
+        if !self.dma.in_progress {
+            return;
+        }
+        if self.dma.delay > 0 {
+            self.dma.delay -= 1;
+            return;
         }
 
-        self.memory.ppu.oam_dma = value;
+        let byte = self.dma_read(self.dma.source_address + self.dma.offset);
+        self.memory.ppu.oam[self.dma.offset as usize] = byte;
+        self.dma.offset += 1;
+        if self.dma.offset == 160 {
+            self.dma.in_progress = false;
+        }
     }
 
     // VRAM DMA was on gameboy color
@@ -113,6 +158,10 @@ impl Bus {
 
 impl AddressBus for Bus {
     fn read(&self, address: u16) -> u8 {
+        if self.dma.in_progress && self.dma.delay == 0 && address < 0xFF00 {
+            return 0xFF;
+        }
+
         if let Some(byte) = self.boot_rom_read(address) {
             return byte;
         }
@@ -176,6 +225,10 @@ impl AddressBus for Bus {
     }
 
     fn write(&mut self, address: u16, value: u8) {
+        if self.dma.in_progress && self.dma.delay == 0 && address < 0xFF00 {
+            return;
+        }
+
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.write(address, value),
             0x8000..=0x9FFF => self.memory.ppu.vram.write(address, value),
