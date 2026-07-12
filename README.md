@@ -8,6 +8,7 @@ A gameboy emulator that is still a work-in-progress.
   <img src="assets/kirby.png" width="250" height="250">
   <img src="assets/mario.png" width="250" height="250">
   <img src="assets/f1.png" width="250" height="250">
+  <img src="assets/pkmn.png" width="250" height="250">
 </p>
 
 ## Controls

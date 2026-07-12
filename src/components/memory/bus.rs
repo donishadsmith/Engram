@@ -140,6 +140,7 @@ impl Bus {
         if !self.dma.in_progress {
             return;
         }
+
         if self.dma.delay > 0 {
             self.dma.delay -= 1;
             return;
@@ -251,12 +252,12 @@ impl AddressBus for Bus {
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF10..=0xFF26 => self.memory.apu.write(address, value),
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
-            0xFF40 => self.memory.ppu.write_lcdc(value),
+            0xFF40 => self.memory.ppu.lcdc = value,
             0xFF41 => {
                 self.memory.ppu.stat = value & 0x78;
                 self.memory
                     .ppu
-                    .update_stat_line(&mut self.memory.interrupt_flag);
+                    .update_stat_interrupt_line(&mut self.memory.interrupt_flag);
             }
             0xFF42 => self.memory.ppu.scy = value,
             0xFF43 => self.memory.ppu.scx = value,
@@ -265,7 +266,7 @@ impl AddressBus for Bus {
                 self.memory.ppu.lyc = value;
                 self.memory
                     .ppu
-                    .update_stat_line(&mut self.memory.interrupt_flag);
+                    .update_stat_interrupt_line(&mut self.memory.interrupt_flag);
             }
             0xFF46 => self.dma_transfer(value),
             0xFF47 => self.memory.ppu.bgp = value,

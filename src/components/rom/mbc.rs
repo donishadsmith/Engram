@@ -1,5 +1,3 @@
-// TODO: currently placeholder logic for mbc1-5 logic
-
 pub mod prelude {
     use crate::components::cpu::core::ByteOps8;
 
@@ -120,7 +118,8 @@ pub mod prelude {
                     if self.ram.is_empty() || !self.ram_enabled {
                         0xFF
                     } else {
-                        self.ram[self.ram_index(address)]
+                        let index = self.ram_index(address);
+                        self.ram[index]
                     }
                 }
                 _ => 0xFF,
@@ -238,13 +237,25 @@ pub mod prelude {
         }
     }
 
+    struct RTCRegister {
+        seconds: u8,
+        minutes: u8,
+        hours: u8,
+        dl: u8,
+        dh: u8,
+    }
+
     // For clock the plan will be to intercept with unix timestamp
     pub struct MBC3 {
         rom: Vec<u8>,
         ram: Vec<u8>,
-        rom_bank: usize,
+        register_7bit: u8,
         ram_bank: usize,
+        ram_enabled: bool,
         ram_updated: bool,
+        rtc_register: u8,
+        current_bank_value: u8,
+        timer_enabled: bool,
     }
 
     impl MBC3 {
@@ -252,10 +263,22 @@ pub mod prelude {
             Self {
                 rom,
                 ram,
-                rom_bank: 0,
+                register_7bit: 0,
                 ram_bank: 0,
                 ram_updated: false,
+                ram_enabled: false,
+                rtc_register: 0,
+                current_bank_value: 0,
+                timer_enabled: false,
             }
+        }
+
+        fn rom_bank(&self) -> usize {
+            self.register_7bit as usize
+        }
+
+        fn ram_index(&self, address: u16) -> usize {
+            (self.ram_bank * 0x2000 + (address as usize - 0xA000)) % self.ram.len()
         }
     }
 
@@ -264,14 +287,22 @@ pub mod prelude {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
                 0x4000..=0x7FFF => {
-                    let offset = self.rom_bank.max(1) * 0x4000 + (address as usize - 0x4000);
+                    let offset = self.rom_bank().max(1) * 0x4000 + (address as usize - 0x4000);
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => {
-                    if self.ram.is_empty() {
-                        0xFF
+                    if self.current_bank_value <= 7 {
+                        if self.ram.is_empty() || !self.ram_enabled {
+                            0xFF
+                        } else {
+                            self.ram[self.ram_index(address)]
+                        }
                     } else {
-                        self.ram[address as usize - 0xA000]
+                        if self.timer_enabled {
+                            return 0xFF;
+                        } else {
+                            return 0xFF;
+                        }
                     }
                 }
                 _ => 0xFF,
@@ -280,10 +311,33 @@ pub mod prelude {
 
         fn write(&mut self, address: u16, value: u8) {
             match address {
-                0x2000..=0x3FFF => {
-                    let bank = value.mask(0x1F) as usize;
-                    self.rom_bank = if bank == 0 { 1 } else { bank };
+                0x0000..=0x1FFF => {
+                    if value.mask(0x0F) == 0x0A {
+                        self.ram_enabled = true;
+                        self.timer_enabled = true;
+                    }
                 }
+                0x2000..=0x3FFF => {
+                    let bits = value.mask(0x7F);
+                    self.register_7bit = if bits == 0 { 1 } else { bits };
+                }
+                0x4000..=0x5FFF => {
+                    self.current_bank_value = value.mask(0x7F);
+                    if self.current_bank_value <= 7 {
+                        self.ram_bank = self.current_bank_value as usize;
+                    } else {
+                        self.rtc_register = self.current_bank_value as u8;
+                    }
+                }
+                0xA000..=0xBFFF => {
+                    if self.current_bank_value <= 7 && !self.ram.is_empty() && self.ram_enabled {
+                        let index = self.ram_index(address);
+                        self.ram[index] = value;
+                        self.ram_updated = true;
+                    }
+                    // 0x08..=0x0C RTC stuff later
+                }
+                0x6000..=0x7FFF => {} // latch clock stuff
                 _ => {}
             }
         }
@@ -304,8 +358,10 @@ pub mod prelude {
     pub struct MBC5 {
         rom: Vec<u8>,
         ram: Vec<u8>,
-        rom_bank: usize,
+        register_8bit: u8,
+        register_1bit: u8,
         ram_bank: usize,
+        ram_enabled: bool,
         ram_updated: bool,
     }
 
@@ -314,10 +370,21 @@ pub mod prelude {
             Self {
                 rom,
                 ram,
-                rom_bank: 0,
+                register_8bit: 0,
+                register_1bit: 0,
                 ram_bank: 0,
+                ram_enabled: false,
                 ram_updated: false,
             }
+        }
+
+        fn rom_bank(&self) -> usize {
+            let bit = self.register_1bit as u16;
+            (bit << 8).wrapping_add(self.register_8bit as u16) as usize
+        }
+
+        fn ram_index(&self, address: u16) -> usize {
+            (self.ram_bank * 0x2000 + (address as usize - 0xA000)) % self.ram.len()
         }
     }
 
@@ -326,14 +393,14 @@ pub mod prelude {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
                 0x4000..=0x7FFF => {
-                    let offset = self.rom_bank.max(1) * 0x4000 + (address as usize - 0x4000);
+                    let offset = self.rom_bank() * 0x4000 + (address as usize - 0x4000);
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => {
-                    if self.ram.is_empty() {
+                    if self.ram.is_empty() || !self.ram_enabled {
                         0xFF
                     } else {
-                        self.ram[address as usize - 0xA000]
+                        self.ram[self.ram_index(address)]
                     }
                 }
                 _ => 0xFF,
@@ -342,9 +409,16 @@ pub mod prelude {
 
         fn write(&mut self, address: u16, value: u8) {
             match address {
-                0x2000..=0x3FFF => {
-                    let bank = value.mask(0x1F) as usize;
-                    self.rom_bank = if bank == 0 { 1 } else { bank };
+                0x0000..=0x1FFF => self.ram_enabled = value.mask(0x0F) == 0x0A,
+                0x2000..=0x2FFF => self.register_8bit = value,
+                0x3000..=0x3FFF => self.register_1bit = value.mask(0x01),
+                0x4000..=0x5FFF => self.ram_bank = (value & 0x0F) as usize,
+                0xA000..=0xBFFF => {
+                    if !self.ram.is_empty() && self.ram_enabled {
+                        let index = self.ram_index(address);
+                        self.ram[index] = value;
+                        self.ram_updated = true;
+                    }
                 }
                 _ => {}
             }

@@ -89,7 +89,7 @@ struct SpriteAttribute {
 }
 
 impl SpriteAttribute {
-    pub fn from_oam(oam_index: usize, bytes: &[u8]) -> Self {
+    pub fn from_oam(oam_index: usize, bytes: &[u8], is_cgb: bool) -> Self {
         Self {
             oam_index,
             position_y: bytes[0] as i16 - 16,
@@ -98,7 +98,11 @@ impl SpriteAttribute {
             priority: bytes[3].mask(0x80) == 0,
             flip_y: bytes[3].mask(0x40) != 0,
             flip_x: bytes[3].mask(0x20) != 0,
-            palette_number: bytes[3].mask(0x10),
+            palette_number: if !is_cgb {
+                bytes[3].mask(0x10)
+            } else {
+                bytes[3].mask(0x07)
+            },
         }
     }
 }
@@ -181,10 +185,10 @@ pub struct PPU {
     pub wy: u8,
     pub window_line: u8,
     pub stat: u8,
-    pub stat_line: bool,
+    pub stat_interrupt_line: bool,
     pub frame_ready: bool,
     pub bgpi: u8,
-    pub previous_mode: PPUMode,
+    pub mode: PPUMode,
     is_cgb: bool,
     pub viewport: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
 }
@@ -208,10 +212,10 @@ impl PPU {
             wy: 0x00,
             window_line: 0,
             stat: 0x00,
-            stat_line: false,
+            stat_interrupt_line: false,
             frame_ready: false,
             bgpi: 0x00,
-            previous_mode: PPUMode::OAMSearch,
+            mode: PPUMode::OAMSearch,
             is_cgb: is_cgb,
             viewport: [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
         }
@@ -225,9 +229,12 @@ impl PPU {
         self.dots += t_cycles;
 
         let current_mode = self.mode();
-        if current_mode != self.previous_mode {
-            self.previous_mode = current_mode;
-            self.update_stat_line(interrupt_flag);
+        if current_mode != self.mode {
+            self.mode = current_mode;
+            // Game that heavily relies on the stat interrupt
+            // is F1 race. When not done, the track is a static
+            // V shape. Creates the movement effect
+            self.update_stat_interrupt_line(interrupt_flag);
         }
 
         while self.dots >= DOTS_PER_TCYCLE {
@@ -238,9 +245,9 @@ impl PPU {
             }
 
             self.ly = (self.ly + 1) % 154;
-            self.update_stat_line(interrupt_flag);
+            self.update_stat_interrupt_line(interrupt_flag);
 
-            self.previous_mode = self.mode();
+            self.mode = self.mode();
 
             if self.ly == 144 {
                 *interrupt_flag |= InterruptMode::VBlank.mask();
@@ -343,13 +350,9 @@ impl PPU {
                         continue;
                     }
 
-                    let palette = if sprite_attribute.palette_number == 0 {
-                        self.obp0
-                    } else {
-                        self.obp1
-                    };
-
-                    let shade = (palette >> (color_index * 2)) & 0x03;
+                    let shade = (self.select_object_palette(sprite_attribute.palette_number)
+                        >> (color_index * 2))
+                        & 0x03;
 
                     if sprite_attribute.priority || bg_indices[x as usize] == 0 {
                         self.viewport[self.ly as usize][x as usize] = shade
@@ -366,7 +369,7 @@ impl PPU {
             .oam
             .chunks(4)
             .enumerate()
-            .map(|(i, bytes)| SpriteAttribute::from_oam(i, bytes))
+            .map(|(i, bytes)| SpriteAttribute::from_oam(i, bytes, self.is_cgb))
             .filter(|s| {
                 (s.position_y..(s.position_y + sprite_size as i16)).contains(&(self.ly as i16))
             })
@@ -386,6 +389,14 @@ impl PPU {
         }
 
         sprite_attributes
+    }
+
+    fn select_object_palette(&self, palette_number: u8) -> u8 {
+        match palette_number {
+            0 => self.obp0,
+            1 => self.obp1,
+            _ => unreachable!(),
+        }
     }
 
     fn compute_color_index(&self, bit: u16, current_tile_address: u16, enable: bool) -> u8 {
@@ -412,29 +423,18 @@ impl PPU {
         }
     }
 
-    pub fn update_stat_line(&mut self, interrupt_flag: &mut u8) {
+    // Future reference: https://alfaexploit.com/en/posts/gameboy_dev04/
+    pub fn update_stat_interrupt_line(&mut self, interrupt_flag: &mut u8) {
         let mode: PPUMode = self.mode();
-        let line = (mode == PPUMode::HBlank && self.stat.mask(0x08) != 0)
+        let interrupt_line = (mode == PPUMode::HBlank && self.stat.mask(0x08) != 0)
             || (mode == PPUMode::VBlank && self.stat.mask(0x10) != 0)
             || (mode == PPUMode::OAMSearch && self.stat.mask(0x20) != 0)
             || (self.ly == self.lyc && self.stat.mask(0x40) != 0);
 
-        if line && !self.stat_line {
+        if interrupt_line && !self.stat_interrupt_line {
             *interrupt_flag |= InterruptMode::Stat.mask();
         }
 
-        self.stat_line = line;
-    }
-
-    pub fn write_lcdc(&mut self, value: u8) {
-        let lcd_was_on = self.lcdc & 0x80 != 0;
-        self.lcdc = value;
-        if lcd_was_on && self.lcdc & 0x80 == 0 {
-            self.ly = 0;
-            self.dots = 0;
-            self.window_line = 0;
-            self.previous_mode = PPUMode::HBlank;
-            self.stat_line = false;
-        }
+        self.stat_interrupt_line = interrupt_line;
     }
 }
