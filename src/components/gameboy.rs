@@ -29,7 +29,7 @@ impl GameBoy {
             let timer_t_cycles = machine_cycles * 4;
 
             for _ in 0..machine_cycles {
-                self.cpu.bus.dma_step();
+                self.cpu.bus.oam_dma_step();
             }
 
             let double_speed = self.cpu.bus.memory.key_register & 0x80 != 0;
@@ -46,6 +46,8 @@ impl GameBoy {
                 .memory
                 .ppu
                 .tick(ppu_t_cycles, &mut self.cpu.bus.memory.interrupt_flag);
+
+            self.cpu.bus.hblank_dma_step();
 
             self.cpu
                 .bus

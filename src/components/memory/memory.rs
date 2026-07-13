@@ -34,6 +34,7 @@ pub struct Memory {
     pub serial_control: u8,
     pub key_register: u8,
     pub svbk_register: u8,
+    pub hdma_registers: [u8; 5],
 }
 
 impl Memory {
@@ -59,6 +60,7 @@ impl Memory {
             serial_control: 0,
             key_register: 0,
             svbk_register: 0,
+            hdma_registers: [0; 5],
         }
     }
 }

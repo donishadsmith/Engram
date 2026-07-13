@@ -2,8 +2,9 @@
 // https://gekkio.fi/files/gb-docs/gbctr.pdf
 use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
-    cpu::core::{ByteOps8, InterruptMode},
+    cpu::core::InterruptMode,
     memory::memory::Memory,
+    ppu::ColorPaletteRegisterType,
     rom::cartridge::{CGBFlag, Cartridge},
 };
 
@@ -22,11 +23,19 @@ impl BootStatus {
     }
 }
 
-pub struct DMAState {
+pub struct OAMDMAState {
     in_progress: bool,
     source_address: u16,
     offset: u16,
     delay: u8,
+}
+
+pub struct VRAMDMAState {
+    in_progress: bool,
+    source_address: u16,
+    offset: usize,
+    blocks_remaining: usize,
+    mode: u8,
 }
 
 pub trait AddressBus {
@@ -47,7 +56,8 @@ pub trait AddressBus {
 pub struct Bus {
     pub memory: Memory,
     boot_status: BootStatus,
-    pub dma: DMAState,
+    pub oam_dma: OAMDMAState,
+    pub vram_dma: VRAMDMAState,
 }
 
 impl Bus {
@@ -55,11 +65,18 @@ impl Bus {
         Self {
             memory: Memory::new(cartridge),
             boot_status: BootStatus::Incomplete,
-            dma: DMAState {
+            oam_dma: OAMDMAState {
                 in_progress: false,
                 source_address: 0x00,
                 offset: 0,
                 delay: 0,
+            },
+            vram_dma: VRAMDMAState {
+                in_progress: false,
+                source_address: 0,
+                offset: 0,
+                blocks_remaining: 0,
+                mode: 0,
             },
         }
     }
@@ -111,8 +128,8 @@ impl Bus {
     }
 
     // transfer data from rom or ram
-    fn dma_transfer(&mut self, value: u8) {
-        self.dma = DMAState {
+    fn oam_dma_transfer(&mut self, value: u8) {
+        self.oam_dma = OAMDMAState {
             in_progress: true,
             source_address: (value as u16) << 8,
             offset: 0,
@@ -121,7 +138,7 @@ impl Bus {
         self.memory.ppu.oam_dma = value;
     }
 
-    fn dma_read(&self, address: u16) -> u8 {
+    fn oam_dma_read(&self, address: u16) -> u8 {
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.read(address),
             0x8000..=0x9FFF => self.memory.ppu.vram.read(address),
@@ -136,30 +153,100 @@ impl Bus {
     }
 
     // supposed to be 160 m cycles and 160 bytes, its literally a byte per cycle
-    pub fn dma_step(&mut self) {
-        if !self.dma.in_progress {
+    pub fn oam_dma_step(&mut self) {
+        if !self.oam_dma.in_progress {
             return;
         }
 
-        if self.dma.delay > 0 {
-            self.dma.delay -= 1;
+        if self.oam_dma.delay > 0 {
+            self.oam_dma.delay -= 1;
             return;
         }
 
-        let byte = self.dma_read(self.dma.source_address + self.dma.offset);
-        self.memory.ppu.oam[self.dma.offset as usize] = byte;
-        self.dma.offset += 1;
-        if self.dma.offset == 160 {
-            self.dma.in_progress = false;
+        let byte = self.oam_dma_read(self.oam_dma.source_address + self.oam_dma.offset);
+        self.memory.ppu.oam[self.oam_dma.offset as usize] = byte;
+        self.oam_dma.offset += 1;
+        if self.oam_dma.offset == 160 {
+            self.oam_dma.in_progress = false;
         }
     }
 
-    // VRAM DMA was on gameboy color
+    fn initiate_vram_dma_transfer(&mut self, value: u8) {
+        let mode = value & 0x80;
+        if self.vram_dma.in_progress {
+            if mode == 0 {
+                self.vram_dma.in_progress = false;
+            }
+
+            return;
+        }
+
+        let source_address =
+            ((self.memory.hdma_registers[0] as u16) << 8) | self.memory.hdma_registers[1] as u16;
+        let offset = (((self.memory.hdma_registers[2] as u16) << 8)
+            | self.memory.hdma_registers[3] as u16) as usize;
+        let blocks_remaining = ((value & 0x7F) as usize) + 1;
+
+        self.vram_dma = VRAMDMAState {
+            in_progress: true,
+            source_address,
+            offset,
+            mode,
+            blocks_remaining,
+        };
+        if self.vram_dma.mode == 0 {
+            self.general_purpose_dma_transfer();
+        }
+    }
+
+    // VRAM DMA was on gameboy color, meant to transfer tile data, attributes, etc quicker
+    // https://gbdev.io/pandocs/CGB_Registers.html
+    fn general_purpose_dma_transfer(&mut self) {
+        for i in 0..self.vram_dma.blocks_remaining * 16 {
+            if self.vram_dma.offset + i > 0x1FFF {
+                self.vram_dma.in_progress = false;
+                return;
+            }
+
+            let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16));
+            let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
+            self.memory.ppu.vram.write(destination_address, byte);
+        }
+
+        self.vram_dma.in_progress = false;
+    }
+
+    pub fn hblank_dma_step(&mut self) {
+        let entered = std::mem::take(&mut self.memory.ppu.entered_hblank);
+        if !self.vram_dma.in_progress || self.vram_dma.mode == 0 || !entered {
+            return;
+        }
+
+        for i in 0..16 {
+            // add check in case something is off and needs debugging
+            if self.vram_dma.offset + i > 0x1FFF {
+                self.vram_dma.in_progress = false;
+                return;
+            }
+
+            let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16));
+            let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
+            self.memory.ppu.vram.write(destination_address, byte);
+        }
+
+        self.vram_dma.source_address += 16;
+        self.vram_dma.offset += 16;
+        self.vram_dma.blocks_remaining -= 1;
+
+        if self.vram_dma.blocks_remaining == 0 {
+            self.vram_dma.in_progress = false;
+        }
+    }
 }
 
 impl AddressBus for Bus {
     fn read(&self, address: u16) -> u8 {
-        if self.dma.in_progress && self.dma.delay == 0 && address < 0xFF00 {
+        if self.oam_dma.in_progress && self.oam_dma.delay == 0 && address < 0xFF00 {
             return 0xFF;
         }
 
@@ -188,7 +275,7 @@ impl AddressBus for Bus {
             0xFF40 => self.memory.ppu.lcdc,
             0xFF41 => {
                 let equal = ((self.memory.ppu.ly == self.memory.ppu.lyc) as u8) << 2;
-                0x80 | self.memory.ppu.stat | equal | self.memory.ppu.mode() as u8
+                0x80 | self.memory.ppu.stat | equal | self.memory.ppu.current_mode() as u8
             }
             0xFF42 => self.memory.ppu.scy,
             0xFF43 => self.memory.ppu.scx,
@@ -196,26 +283,38 @@ impl AddressBus for Bus {
             0xFF45 => self.memory.ppu.lyc,
             0xFF46 => self.memory.ppu.oam_dma,
             0xFF47 => self.memory.ppu.bgp,
-            0xFF48 => self.memory.ppu.obp0,
-            0xFF49 => self.memory.ppu.obp1,
+            0xFF48 => self.memory.ppu.monochrome_color_ram[0],
+            0xFF49 => self.memory.ppu.monochrome_color_ram[1],
             0xFF4A => self.memory.ppu.wy,
             0xFF4B => self.memory.ppu.wx,
             0xFF4D if self.is_cgb() => self.memory.key_register,
             0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank | 0xFE,
-            0xFF55 if self.is_cgb() => 0xFF,
-            0xFF68 if self.is_cgb() => self.memory.ppu.bgpi | 0x40,
-            //0xFF69 if self.is_cgb() => {
-            //self.memory.ppu.bpcd[(self.memory.ppu.bgpi & 0x3F) as usize]
-            //}
-            //0xFF70 if self.is_cgb() => self.memory.svbk = value & 0x07,
-            //0xFF6A if self.is_cgb() => self.memory.ppu.ocps | 0x40,
-            //0xFF6B if self.is_cgb() => {
-            //self.memory.ppu.ocpd[(self.memory.ppu.ocps & 0x3F) as usize]
-            //}
-            //0xFF6C if self.is_cgb() => self.memory.ppu.opri | 0xFE,
-            //0xFF70 if self.is_cgb() => self.memory.svbk | 0xF8,
-            0xFF76 if self.is_cgb() => 0xFF, // pcm12
-            0xFF77 if self.is_cgb() => 0xFF, // pcm34
+            0xFF51..=0xFF54 if self.is_cgb() => 0xFF,
+            0xFF55 if self.is_cgb() => {
+                if self.vram_dma.in_progress {
+                    (self.vram_dma.blocks_remaining as u8 - 1) & 0x7F
+                } else {
+                    0xFF
+                }
+            }
+            0xFF68 if self.is_cgb() => self
+                .memory
+                .ppu
+                .read_color_palette_register(ColorPaletteRegisterType::Background),
+            0xFF69 if self.is_cgb() => self
+                .memory
+                .ppu
+                .read_color_palette_data(ColorPaletteRegisterType::Background),
+            0xFF6A if self.is_cgb() => self
+                .memory
+                .ppu
+                .read_color_palette_register(ColorPaletteRegisterType::Object),
+            0xFF6B if self.is_cgb() => self
+                .memory
+                .ppu
+                .read_color_palette_data(ColorPaletteRegisterType::Object),
+            0xFF6C if self.is_cgb() => self.memory.ppu.opri & 0x01,
+            0xFF70 if self.is_cgb() => (self.memory.svbk_register | 0xF8) & 0x07,
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
             0xFFFF => self.memory.interrupt_enable,
             _ => {
@@ -226,7 +325,7 @@ impl AddressBus for Bus {
     }
 
     fn write(&mut self, address: u16, value: u8) {
-        if self.dma.in_progress && self.dma.delay == 0 && address < 0xFF00 {
+        if self.oam_dma.in_progress && self.oam_dma.delay == 0 && address < 0xFF00 {
             return;
         }
 
@@ -268,10 +367,10 @@ impl AddressBus for Bus {
                     .ppu
                     .update_stat_interrupt_line(&mut self.memory.interrupt_flag);
             }
-            0xFF46 => self.dma_transfer(value),
+            0xFF46 => self.oam_dma_transfer(value),
             0xFF47 => self.memory.ppu.bgp = value,
-            0xFF48 => self.memory.ppu.obp0 = value,
-            0xFF49 => self.memory.ppu.obp1 = value,
+            0xFF48 => self.memory.ppu.monochrome_color_ram[0] = value,
+            0xFF49 => self.memory.ppu.monochrome_color_ram[1] = value,
             0xFF4A => self.memory.ppu.wy = value,
             0xFF4B => self.memory.ppu.wx = value,
             0xFF4D if self.is_cgb() => {
@@ -283,6 +382,22 @@ impl AddressBus for Bus {
                     self.boot_status = BootStatus::Complete;
                 }
             }
+            0xFF51 if self.is_cgb() => self.memory.hdma_registers[0] = value,
+            0xFF52 if self.is_cgb() => self.memory.hdma_registers[1] = value & 0xF0,
+            0xFF53 if self.is_cgb() => self.memory.hdma_registers[2] = value & 0x1F,
+            0xFF54 if self.is_cgb() => self.memory.hdma_registers[3] = value & 0xF0,
+            0xFF55 if self.is_cgb() => self.initiate_vram_dma_transfer(value),
+            0xFF68 if self.is_cgb() => self.memory.ppu.bgpi = value,
+            0xFF69 if self.is_cgb() => self
+                .memory
+                .ppu
+                .write_color_palette_data(value, ColorPaletteRegisterType::Background),
+            0xFF6A if self.is_cgb() => self.memory.ppu.obpi = value,
+            0xFF6B if self.is_cgb() => self
+                .memory
+                .ppu
+                .write_color_palette_data(value, ColorPaletteRegisterType::Object),
+            0xFF6C if self.is_cgb() => self.memory.ppu.opri = value,
             0xFF70 if self.is_cgb() => {
                 self.memory.svbk_register = value;
             }

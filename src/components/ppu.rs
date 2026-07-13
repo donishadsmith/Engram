@@ -40,6 +40,12 @@ pub const SCREEN_HEIGHT: usize = 144;
 
 const DOTS_PER_TCYCLE: u32 = 456;
 
+#[derive(Clone, Copy)]
+pub enum ColorPaletteRegisterType {
+    Background,
+    Object,
+}
+
 pub struct VRam {
     pub bank: u8,
     bank_size: u16,
@@ -74,6 +80,27 @@ impl VRam {
 
     pub fn bank_swap(&mut self, value: u8) {
         self.bank = value & 0x01;
+    }
+}
+
+// For color only
+struct ColorBackgroundAttributes {
+    priority: bool,
+    y_flip: bool,
+    x_flip: bool,
+    bank: u8,
+    color_palette: u8,
+}
+
+impl ColorBackgroundAttributes {
+    fn from_byte(byte: u8) -> Self {
+        Self {
+            priority: byte & 0x80 != 0,
+            y_flip: byte & 0x40 != 0,
+            x_flip: byte & 0x20 != 0,
+            bank: byte & 0x08,
+            color_palette: byte & 0x07,
+        }
     }
 }
 
@@ -179,8 +206,7 @@ pub struct PPU {
     pub scx: u8,
     pub oam_dma: u8,
     pub bgp: u8,
-    pub obp0: u8,
-    pub obp1: u8,
+    pub monochrome_color_ram: [u8; 2],
     pub wx: u8,
     pub wy: u8,
     pub window_line: u8,
@@ -188,9 +214,14 @@ pub struct PPU {
     pub stat_interrupt_line: bool,
     pub frame_ready: bool,
     pub bgpi: u8,
-    pub mode: PPUMode,
+    pub obpi: u8,
+    pub opri: u8,
+    pub bg_palette_ram: [u8; 64],
+    pub obj_palette_ram: [u8; 64],
+    pub current_mode: PPUMode,
+    pub entered_hblank: bool,
     is_cgb: bool,
-    pub viewport: [[u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+    pub viewport: [[u16; SCREEN_WIDTH]; SCREEN_HEIGHT],
 }
 
 impl PPU {
@@ -201,23 +232,27 @@ impl PPU {
             oam: vec![0u8; 0x00A0],
             ly: 0,
             lyc: 0,
-            lcdc: 0x00,
-            scy: 0x00,
-            scx: 0x00,
-            oam_dma: 0x00,
-            bgp: 0x00,
-            obp0: 0x00,
-            obp1: 0x00,
-            wx: 0x00,
-            wy: 0x00,
+            lcdc: 0,
+            scy: 0,
+            scx: 0,
+            oam_dma: 0,
+            bgp: 0,
+            monochrome_color_ram: [0; 2],
+            wx: 0,
+            wy: 0,
             window_line: 0,
             stat: 0x00,
             stat_interrupt_line: false,
             frame_ready: false,
-            bgpi: 0x00,
-            mode: PPUMode::OAMSearch,
+            bgpi: 0,
+            obpi: 0,
+            opri: 0,
+            bg_palette_ram: [0xFF; 64],
+            obj_palette_ram: [0xFF; 64],
+            current_mode: PPUMode::OAMSearch,
+            entered_hblank: false,
             is_cgb: is_cgb,
-            viewport: [[0u8; SCREEN_WIDTH]; SCREEN_HEIGHT],
+            viewport: [[0u16; SCREEN_WIDTH]; SCREEN_HEIGHT],
         }
     }
 
@@ -228,9 +263,13 @@ impl PPU {
 
         self.dots += t_cycles;
 
-        let current_mode = self.mode();
-        if current_mode != self.mode {
-            self.mode = current_mode;
+        let current_mode = self.current_mode();
+        if current_mode != self.current_mode {
+            if current_mode == PPUMode::HBlank && self.current_mode != PPUMode::HBlank {
+                self.entered_hblank = true;
+            }
+
+            self.current_mode = current_mode;
             // Game that heavily relies on the stat interrupt
             // is F1 race. When not done, the track is a static
             // V shape. Creates the movement effect
@@ -247,7 +286,7 @@ impl PPU {
             self.ly = (self.ly + 1) % 154;
             self.update_stat_interrupt_line(interrupt_flag);
 
-            self.mode = self.mode();
+            self.current_mode = self.current_mode();
 
             if self.ly == 144 {
                 *interrupt_flag |= InterruptMode::VBlank.mask();
@@ -306,7 +345,7 @@ impl PPU {
 
             bg_indices[pixel] = color_index;
             let shade = (self.bgp >> (color_index * 2)) & 0x03;
-            self.viewport[self.ly as usize][pixel] = shade;
+            self.viewport[self.ly as usize][pixel] = shade as u16;
         }
 
         if window_rendered {
@@ -355,7 +394,7 @@ impl PPU {
                         & 0x03;
 
                     if sprite_attribute.priority || bg_indices[x as usize] == 0 {
-                        self.viewport[self.ly as usize][x as usize] = shade
+                        self.viewport[self.ly as usize][x as usize] = shade as u16
                     }
                 }
             }
@@ -393,8 +432,8 @@ impl PPU {
 
     fn select_object_palette(&self, palette_number: u8) -> u8 {
         match palette_number {
-            0 => self.obp0,
-            _ => self.obp1,
+            0 => self.monochrome_color_ram[0],
+            _ => self.monochrome_color_ram[1],
         }
     }
 
@@ -410,7 +449,7 @@ impl PPU {
         color_index
     }
 
-    pub fn mode(&self) -> PPUMode {
+    pub fn current_mode(&self) -> PPUMode {
         if self.ly >= 144 {
             return PPUMode::VBlank;
         }
@@ -424,7 +463,7 @@ impl PPU {
 
     // Future reference: https://alfaexploit.com/en/posts/gameboy_dev04/
     pub fn update_stat_interrupt_line(&mut self, interrupt_flag: &mut u8) {
-        let mode: PPUMode = self.mode();
+        let mode: PPUMode = self.current_mode();
         let interrupt_line = mode == PPUMode::HBlank && (self.stat & 0x08) != 0
             || (mode == PPUMode::VBlank && (self.stat & 0x10) != 0)
             || (mode == PPUMode::OAMSearch && (self.stat & 0x20) != 0)
@@ -435,5 +474,59 @@ impl PPU {
         }
 
         self.stat_interrupt_line = interrupt_line;
+    }
+
+    pub fn read_color_palette_index(&self, palette: ColorPaletteRegisterType) -> u8 {
+        match palette {
+            ColorPaletteRegisterType::Background => self.bgpi & 0x3F,
+            ColorPaletteRegisterType::Object => self.obpi & 0x3F,
+        }
+    }
+
+    pub fn read_color_palette_register(&self, palette: ColorPaletteRegisterType) -> u8 {
+        match palette {
+            ColorPaletteRegisterType::Background => self.bgpi | 0x40,
+            ColorPaletteRegisterType::Object => self.obpi | 0x40,
+        }
+    }
+
+    pub fn read_color_palette_data(&self, palette: ColorPaletteRegisterType) -> u8 {
+        match palette {
+            ColorPaletteRegisterType::Background => {
+                let index = (self.read_color_palette_index(palette)) as usize;
+                self.bg_palette_ram[index]
+            }
+            ColorPaletteRegisterType::Object => {
+                let index = (self.read_color_palette_index(palette)) as usize;
+                self.obj_palette_ram[index]
+            }
+        }
+    }
+
+    pub fn write_color_palette_data(&mut self, value: u8, palette: ColorPaletteRegisterType) {
+        match palette {
+            ColorPaletteRegisterType::Background => {
+                let index = (self.read_color_palette_index(palette)) as usize;
+                self.bg_palette_ram[index] = value;
+            }
+            ColorPaletteRegisterType::Object => {
+                let index = (self.read_color_palette_index(palette)) as usize;
+                self.obj_palette_ram[index] = value;
+            }
+        }
+
+        self.increment_color_palette_index(palette);
+    }
+
+    pub fn increment_color_palette_index(&mut self, palette: ColorPaletteRegisterType) {
+        let selected_palette = match palette {
+            ColorPaletteRegisterType::Background => &mut self.bgpi,
+            ColorPaletteRegisterType::Object => &mut self.obpi,
+        };
+
+        if *selected_palette & 0x80 != 0 {
+            let incremented_address = ((*selected_palette & 0x3F) + 1) % 64;
+            *selected_palette = *selected_palette & 0x80 | incremented_address;
+        }
     }
 }
