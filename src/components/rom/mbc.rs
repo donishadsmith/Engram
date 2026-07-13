@@ -1,5 +1,5 @@
 pub mod prelude {
-    use crate::components::{cpu::core::ByteOps8, rom::cartridge::MBCType};
+    use crate::components::rom::cartridge::MBCType;
     use chrono::Utc;
 
     pub trait MBC {
