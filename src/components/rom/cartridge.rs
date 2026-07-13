@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use crate::components::rom::mbc::prelude::*;
 
 // "MBC3" in ASCII
-const MAGIC_NUMBER: [u8; 4] = [0x4D, 0x42, 0x43, 0x33];
-// magic number (4) + RTC state (18) = 22 bytes before the RAM data
-const SAV_HEADER_SIZE: usize = MAGIC_NUMBER.len() + RTCSaveState::BYTE_SIZE;
+const MAGIC_NUMBERS: [u8; 4] = [0x4D, 0x42, 0x43, 0x33];
+// 4 magic numebers for MBC3 with timer enabled + 18 RTC states = 22 bytes before the RAM save data
+const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RTCSaveState::BYTE_SIZE;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MBCType {
@@ -285,9 +285,9 @@ impl Cartridge {
         }
 
         let mut sav_buffer = std::fs::read(sav_path)?;
-        if sav_buffer.len() >= SAV_HEADER_SIZE && sav_buffer[0..4] == MAGIC_NUMBER {
+        if sav_buffer.len() >= SAV_HEADER_SIZE && sav_buffer[0..4] == MAGIC_NUMBERS {
             rtc_save_state = Some(RTCSaveState::from_bytes(
-                &sav_buffer[MAGIC_NUMBER.len()..SAV_HEADER_SIZE],
+                &sav_buffer[MAGIC_NUMBERS.len()..SAV_HEADER_SIZE],
             ));
 
             sav_buffer.drain(0..SAV_HEADER_SIZE);
@@ -308,7 +308,7 @@ impl Cartridge {
             Some(state) => {
                 let ram = self.mbc.get_ram();
                 let mut buffer = Vec::with_capacity(SAV_HEADER_SIZE + ram.len());
-                buffer.extend_from_slice(&MAGIC_NUMBER);
+                buffer.extend_from_slice(&MAGIC_NUMBERS);
                 buffer.extend_from_slice(&state.to_bytes());
                 buffer.extend_from_slice(ram);
 
