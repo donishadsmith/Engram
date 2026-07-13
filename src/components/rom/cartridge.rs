@@ -12,6 +12,11 @@ use std::path::PathBuf;
 
 use crate::components::rom::mbc::prelude::*;
 
+// "MBC3" in ASCII
+const MAGIC_NUMBER: [u8; 4] = [0x4D, 0x42, 0x43, 0x33];
+// magic number (4) + RTC state (18) = 22 bytes before the RAM data
+const SAV_HEADER_SIZE: usize = MAGIC_NUMBER.len() + RTCSaveState::BYTE_SIZE;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum MBCType {
     RomOnly,
@@ -50,12 +55,17 @@ impl MBCType {
         }
     }
 
-    pub fn to_struct(&self, rom: Vec<u8>, ram: Vec<u8>) -> Option<Box<dyn MBC>> {
+    pub fn to_struct(
+        &self,
+        rom: Vec<u8>,
+        ram: Vec<u8>,
+        rtc_save_state: Option<RTCSaveState>,
+    ) -> Option<Box<dyn MBC>> {
         match self {
             MBCType::RomOnly => Some(Box::new(RomOnly::new(rom, ram))),
             MBCType::MBC1 => Some(Box::new(MBC1::new(rom, ram))),
             MBCType::MBC2 => Some(Box::new(MBC2::new(rom, ram))),
-            MBCType::MBC3 => Some(Box::new(MBC3::new(rom, ram))),
+            MBCType::MBC3 => Some(Box::new(MBC3::new(rom, ram, rtc_save_state))),
             MBCType::MBC5 => Some(Box::new(MBC5::new(rom, ram))),
             MBCType::Unknown(_) => None,
         }
@@ -183,7 +193,7 @@ impl Header {
         32 * 1024 * (1usize << rom[0x0148] as usize)
     }
 
-    // 0148 — RAM size: 32 KiB * (1 << <value>)
+    // 0149 — RAM size
     fn ram_size(rom: &[u8]) -> usize {
         match rom[0x0149] {
             0x02 => 8 * 1024,   // 1 bank; bank size is multiple of 8
@@ -231,11 +241,10 @@ impl Cartridge {
         }
 
         let header = Header::new(&rom);
-        let mut ram = vec![0; header.ram_size];
         let sav_path = rom_path.with_extension("sav");
-        ram = Self::read_sav(ram, &sav_path)?;
+        let (ram, rtc_save_state) = Self::read_sav(&sav_path, &header)?;
 
-        let mbc = Self::get_mbc(&header, rom, ram)?;
+        let mbc = Self::get_mbc(&header, rom, ram, rtc_save_state)?;
 
         Ok(Self {
             header,
@@ -252,29 +261,60 @@ impl Cartridge {
         header: &Header,
         rom: Vec<u8>,
         ram: Vec<u8>,
+        rtc_save_state: Option<RTCSaveState>,
     ) -> Result<Box<dyn MBC>, std::io::Error> {
-        header.mbc_type.to_struct(rom, ram).ok_or_else(|| {
-            Self::error_message(
-                "Only MBC1, MBC2, MBC3, MBC5, and RomOnly are supported.".to_string(),
-            )
-        })
+        header
+            .mbc_type
+            .to_struct(rom, ram, rtc_save_state)
+            .ok_or_else(|| {
+                Self::error_message(
+                    "Only MBC1, MBC2, MBC3, MBC5, and RomOnly are supported.".to_string(),
+                )
+            })
     }
 
-    pub fn read_sav(mut ram: Vec<u8>, sav_path: &PathBuf) -> Result<Vec<u8>, std::io::Error> {
+    pub fn read_sav(
+        sav_path: &PathBuf,
+        header: &Header,
+    ) -> Result<(Vec<u8>, Option<RTCSaveState>), std::io::Error> {
+        let mut ram = vec![0; header.ram_size];
+        let mut rtc_save_state = None;
+
         if ram.is_empty() || !sav_path.exists() {
-            return Ok(ram);
+            return Ok((ram, rtc_save_state));
         }
 
-        let sav_buffer = std::fs::read(sav_path)?;
+        let mut sav_buffer = std::fs::read(sav_path)?;
+        if sav_buffer.len() >= SAV_HEADER_SIZE && sav_buffer[0..4] == MAGIC_NUMBER {
+            rtc_save_state = Some(RTCSaveState::from_bytes(
+                &sav_buffer[MAGIC_NUMBER.len()..SAV_HEADER_SIZE],
+            ));
+
+            sav_buffer.drain(0..SAV_HEADER_SIZE);
+        }
+
         let n = ram.len().min(sav_buffer.len());
         ram[..n].copy_from_slice(&sav_buffer[..n]);
 
-        Ok(ram)
+        Ok((ram, rtc_save_state))
     }
 
     pub fn write_sav(&self) -> Result<(), std::io::Error> {
-        if self.header.has_battery && !self.mbc.get_ram().is_empty() {
-            std::fs::write(&self.sav_path, self.mbc.get_ram())?;
+        if !self.header.has_battery || self.mbc.get_ram().is_empty() {
+            return Ok(());
+        }
+
+        match self.mbc.rtc_save_state() {
+            Some(state) => {
+                let ram = self.mbc.get_ram();
+                let mut buffer = Vec::with_capacity(SAV_HEADER_SIZE + ram.len());
+                buffer.extend_from_slice(&MAGIC_NUMBER);
+                buffer.extend_from_slice(&state.to_bytes());
+                buffer.extend_from_slice(ram);
+
+                std::fs::write(&self.sav_path, buffer)?;
+            }
+            None => std::fs::write(&self.sav_path, self.mbc.get_ram())?,
         }
 
         Ok(())
@@ -286,7 +326,7 @@ impl Cartridge {
         let ram = Vec::new();
         let header = Header::fake();
 
-        let mbc = Self::get_mbc(&header, rom, ram)?;
+        let mbc = Self::get_mbc(&header, rom, ram, None)?;
 
         Ok(Self {
             header: header,

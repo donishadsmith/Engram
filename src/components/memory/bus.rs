@@ -279,7 +279,7 @@ impl AddressBus for Bus {
             }
             0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank_swap(value),
             0xFF50 => {
-                if value.mask(0x01) != 0 {
+                if (value & 0x01) != 0 {
                     self.boot_status = BootStatus::Complete;
                 }
             }
@@ -293,7 +293,7 @@ impl AddressBus for Bus {
     }
 
     fn pending_interrupt(&self) -> u8 {
-        self.read(0xFF0F).mask(self.read(0xFFFF)).mask(0x1F)
+        (self.read(0xFF0F) & self.read(0xFFFF)) & 0x1F
     }
 
     fn perform_speed_switch(&mut self) -> bool {

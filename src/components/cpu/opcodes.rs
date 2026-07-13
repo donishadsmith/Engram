@@ -24,8 +24,8 @@ enum BitDirection {
 
 // https://archive.gbdev.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
 fn opcode_decoder(opcode: u8) -> (u8, u8, u8, u8, u8) {
-    let x = (opcode >> 6).mask(0x03); // category; the opcode's 1st octal digit (i.e. bits 7-6)
-    let y = (opcode >> 3).mask(0x07); // destination register; the opcode's 2nd octal digit (i.e. bits 5-3)
+    let x = (opcode >> 6) & 0x03; // category; the opcode's 1st octal digit (i.e. bits 7-6)
+    let y = (opcode >> 3) & 0x07; // destination register; the opcode's 2nd octal digit (i.e. bits 5-3)
     let z = opcode & 0x07; // source register; the opcode's 3rd octal digit (i.e. bits 2-0)
     let p = y >> 1; // 16 bit register pair; y rightshifted one position (i.e. bits 5-4)
     let q = y & 0x01; // boolean toggle; y modulo 2 (i.e. bit 3)
@@ -683,9 +683,9 @@ where
         let value = self.get_value_for_cb_op(z);
 
         let (result, carry) = if direction == BitDirection::Left {
-            (value.rotate_left(1), value.mask(0x80) != 0)
+            (value.rotate_left(1), (value & 0x80) != 0)
         } else {
-            (value.rotate_right(1), value.mask(0x01) != 0)
+            (value.rotate_right(1), (value & 0x01) != 0)
         };
 
         self.write_value_for_cb_op(z, result);
@@ -700,9 +700,9 @@ where
         let old_carry = self.registers.flag(StatusFlag::C) as u8;
 
         let (result, carry) = if direction == BitDirection::Left {
-            ((value << 1) | old_carry, value.mask(0x80) != 0)
+            ((value << 1) | old_carry, (value & 0x80) != 0)
         } else {
-            ((value >> 1) | (old_carry << 7), value.mask(0x01) != 0)
+            ((value >> 1) | (old_carry << 7), (value & 0x01) != 0)
         };
 
         self.write_value_for_cb_op(z, result);
@@ -715,9 +715,9 @@ where
         let value = self.get_value_for_cb_op(z);
 
         let (result, carry) = if direction == BitDirection::Left {
-            (value << 1, value.mask(0x80) != 0)
+            (value << 1, (value & 0x80) != 0)
         } else {
-            ((value >> 1) | value.mask(0x80), value.mask(0x01) != 0)
+            ((value >> 1) | (value & 0x80), (value & 0x01) != 0)
         };
 
         self.write_value_for_cb_op(z, result);
@@ -737,7 +737,7 @@ where
     fn srl(&mut self, z: u8) {
         // Shift right logical - bit 0 becomes carry, bit 7 becomes zero
         let value = self.get_value_for_cb_op(z);
-        let carry = value.mask(0x01) != 0;
+        let carry = (value & 0x01) != 0;
         let result = value >> 1;
 
         self.write_value_for_cb_op(z, result);
@@ -860,7 +860,7 @@ where
                 a = a.wrapping_add(0x60);
             }
 
-            if a.mask(0x0F) > 0x09 || half_carry {
+            if (a & 0x0F) > 0x09 || half_carry {
                 a = a.wrapping_add(0x06);
             }
         } else {

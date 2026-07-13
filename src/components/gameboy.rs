@@ -61,6 +61,8 @@ impl GameBoy {
             .memory
             .joypad
             .poll(pressed_key, &mut self.cpu.bus.memory.interrupt_flag);
+
+        self.cpu.bus.memory.cartridge.mbc.tick();
     }
 
     pub fn battery_save(&self) -> Result<(), std::io::Error> {

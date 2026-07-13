@@ -5,18 +5,12 @@ const STARTING_ADDRESS: u16 = 0x0000;
 pub trait ByteOps8 {
     fn set_bit(&self, mask: u8, flag: bool) -> u8;
 
-    fn mask(&self, hex: u8) -> u8;
-
     fn i16(&self) -> i16;
 }
 
 impl ByteOps8 for u8 {
     fn set_bit(&self, mask: u8, flag: bool) -> u8 {
         if flag { self | mask } else { self & !mask }
-    }
-
-    fn mask(&self, hex: u8) -> u8 {
-        self & hex
     }
 
     fn i16(&self) -> i16 {
@@ -217,11 +211,11 @@ pub enum ArithmeticOperation {
 }
 
 pub fn half_carry_add(a: u8, b: u8, carry: bool) -> bool {
-    a.mask(0x0F) + b.mask(0x0F) + carry as u8 > 0x0F
+    (a & 0x0F) + (b & 0x0F) + carry as u8 > 0x0F
 }
 
 pub fn half_carry_sub(a: u8, b: u8, carry: bool) -> bool {
-    a.mask(0x0F) < b.mask(0x0f) + carry as u8
+    (a & 0x0F) < (b & 0x0f) + carry as u8
 }
 
 impl ArithmeticOperation {

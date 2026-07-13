@@ -95,13 +95,13 @@ impl SpriteAttribute {
             position_y: bytes[0] as i16 - 16,
             position_x: bytes[1] as i16 - 8,
             tile_index: bytes[2],
-            priority: bytes[3].mask(0x80) == 0,
-            flip_y: bytes[3].mask(0x40) != 0,
-            flip_x: bytes[3].mask(0x20) != 0,
+            priority: (bytes[3] & 0x80) == 0,
+            flip_y: (bytes[3] & 0x40) != 0,
+            flip_x: (bytes[3] & 0x20) != 0,
             palette_number: if !is_cgb {
-                bytes[3].mask(0x10)
+                bytes[3] & 0x10
             } else {
-                bytes[3].mask(0x07)
+                bytes[3] & 0x07
             },
         }
     }
@@ -121,14 +121,14 @@ struct LCDC {
 impl LCDC {
     fn from_byte(byte: u8) -> Self {
         Self {
-            enable_lcd: byte.mask(0x80) != 0,
-            window_tile_map_select: byte.mask(0x40),
-            enable_window: byte.mask(0x20) != 0,
-            tile_data_select: byte.mask(0x10).min(1),
-            bg_tile_map_select: byte.mask(0x08).min(1),
-            sprite_size: if byte.mask(0x04) != 0 { 16 } else { 8 },
-            enable_sprite: byte.mask(0x02) != 0,
-            enable_bg_and_window: byte.mask(0x01) != 0,
+            enable_lcd: (byte & 0x80) != 0,
+            window_tile_map_select: byte & 0x40,
+            enable_window: (byte & 0x20) != 0,
+            tile_data_select: (byte & 0x10).min(1),
+            bg_tile_map_select: (byte & 0x08).min(1),
+            sprite_size: if (byte & 0x04) != 0 { 16 } else { 8 },
+            enable_sprite: (byte & 0x02) != 0,
+            enable_bg_and_window: (byte & 0x01) != 0,
         }
     }
 
@@ -394,8 +394,7 @@ impl PPU {
     fn select_object_palette(&self, palette_number: u8) -> u8 {
         match palette_number {
             0 => self.obp0,
-            1 => self.obp1,
-            _ => unreachable!(),
+            _ => self.obp1,
         }
     }
 
@@ -426,10 +425,10 @@ impl PPU {
     // Future reference: https://alfaexploit.com/en/posts/gameboy_dev04/
     pub fn update_stat_interrupt_line(&mut self, interrupt_flag: &mut u8) {
         let mode: PPUMode = self.mode();
-        let interrupt_line = (mode == PPUMode::HBlank && self.stat.mask(0x08) != 0)
-            || (mode == PPUMode::VBlank && self.stat.mask(0x10) != 0)
-            || (mode == PPUMode::OAMSearch && self.stat.mask(0x20) != 0)
-            || (self.ly == self.lyc && self.stat.mask(0x40) != 0);
+        let interrupt_line = mode == PPUMode::HBlank && (self.stat & 0x08) != 0
+            || (mode == PPUMode::VBlank && (self.stat & 0x10) != 0)
+            || (mode == PPUMode::OAMSearch && (self.stat & 0x20) != 0)
+            || (self.ly == self.lyc && (self.stat & 0x40) != 0);
 
         if interrupt_line && !self.stat_interrupt_line {
             *interrupt_flag |= InterruptMode::Stat.mask();
