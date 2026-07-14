@@ -99,7 +99,7 @@ impl GameBoy {
         std::fs::write(
             "ppu_registers.txt",
             format!(
-                "lcdc={:02X} stat={:02X} scy={} scx={} wy={} wx={} bgp={:02X} obp0={:02X} obp1={:02X} ly={} bgpi={:02X} obpi={:02X}\nBG CRAM:\n{}\nOBJ CRAM:\n{}\n",
+                "lcdc={:02X} stat={:02X} scy={} scx={} wy={} wx={} bgp={:02X} obp0={:02X} obp1={:02X} ly={} bgpi={:02X} obpi={:02X}\nBG CRAM:\n{}\nOBJ CRAM:\n{}",
                 ppu.lcdc,
                 ppu.stat,
                 ppu.scy,

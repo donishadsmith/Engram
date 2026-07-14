@@ -1,6 +1,6 @@
 # Engram
 
-A gameboy emulator that is still a work-in-progress.
+A gameboy emulator color that is still a work-in-progress and still needs an APU.
 
 <p align="center">
   <img src="assets/tony_hawk.png" width="250" height="250">

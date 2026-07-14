@@ -15,7 +15,7 @@
     456 dots per line, only 144 spent actually drawing anything
     0xFF42 is scroll y and 0xFF43 is scroll x, used as constants to move viewport
     background_y = ly + scroll_y; R = background_y % 8
-    background_x = ly + scroll_x
+    background_x = pixel + scroll_x
     N = map[(by / 8) * 32 + (bx / 8)], base-2
     32 in equation if
     by / 8 = by >> 3
@@ -30,6 +30,15 @@
     9000-97FF: Second part of tile set #2
 
     0x8800 - 0x8FFF shared by two tile sets
+
+    Basic instruction:
+
+    Lookup tilemap (1 byte): read the tile index for some grid cell from 0x9800+
+    Compute tile data address: tile_data_base + index * 16 + row + 2; each tile is 16 bytes (8 rows * 2 bytes)
+    Fetch the actual tile data (2 bytes): the two bitplane bytes for that row
+    Combine per-pixel for the color index for that pixel: for each of the 8 pixels, one bit from each byte becomes 2-bit color index
+    Take color index to pallete to get actual coolor data via the monochrome BGP register on DMG, or CRAM on GBC
+    For color, each pallette is 8 bytes and a each specific color uses 2 bytes
 */
 
 use crate::components::cpu::core::{ByteOps8, InterruptMode};
@@ -37,7 +46,7 @@ use crate::components::cpu::core::{ByteOps8, InterruptMode};
 pub const SCREEN_WIDTH: usize = 160;
 pub const SCREEN_HEIGHT: usize = 144;
 
-const DOTS_PER_TCYCLE: u32 = 456;
+const DOTS_PER_SCANLINE: u32 = 456;
 
 const DMG_SHADES: [u16; 4] = [0x7FFF, 0x56B5, 0x294A, 0x0000];
 
@@ -283,8 +292,8 @@ impl PPU {
             self.update_stat_interrupt_line(interrupt_flag);
         }
 
-        while self.dots >= DOTS_PER_TCYCLE {
-            self.dots -= DOTS_PER_TCYCLE;
+        while self.dots >= DOTS_PER_SCANLINE {
+            self.dots -= DOTS_PER_SCANLINE;
 
             if self.ly < 144 {
                 self.render_scanline();
@@ -327,7 +336,6 @@ impl PPU {
                 let window_column = (pixel as i16 - window_origin) as u16;
                 let map_cell = (self.window_line as u16 / 8) * 32 + (window_column / 8);
                 let map_address = lcdc_struct.window_map_base() + map_cell;
-                let tile_index = self.vram.read_banked(0, map_address);
 
                 let attributes = if self.is_cgb {
                     ColorBackgroundAttributes::from_byte(self.vram.read_banked(1, map_address))
@@ -346,6 +354,7 @@ impl PPU {
                     7 - (window_column % 8)
                 };
 
+                let tile_index = self.vram.read_banked(0, map_address);
                 let current_tile_address =
                     lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
                 let color_index =
@@ -354,7 +363,6 @@ impl PPU {
             } else {
                 let map_cell = (background_y as u16 / 8) * 32 + (background_x as u16 / 8);
                 let map_address = lcdc_struct.bg_map_base() + map_cell;
-                let tile_index = self.vram.read_banked(0, map_address);
 
                 let attributes = if self.is_cgb {
                     ColorBackgroundAttributes::from_byte(self.vram.read_banked(1, map_address))
@@ -373,6 +381,7 @@ impl PPU {
                     7 - background_column
                 };
 
+                let tile_index = self.vram.read_banked(0, map_address);
                 let current_tile_address =
                     lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
                 let color_index =
