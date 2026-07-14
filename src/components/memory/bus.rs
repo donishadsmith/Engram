@@ -14,15 +14,6 @@ pub enum BootStatus {
     Incomplete,
 }
 
-impl BootStatus {
-    fn to_str(self) -> &'static str {
-        match self {
-            BootStatus::Complete => "Boot Complete",
-            BootStatus::Incomplete => "Boot Incomplete",
-        }
-    }
-}
-
 pub struct OAMDMAState {
     in_progress: bool,
     source_address: u16,
@@ -274,8 +265,14 @@ impl AddressBus for Bus {
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize],
             0xFF40 => self.memory.ppu.lcdc,
             0xFF41 => {
+                let lcd_on = self.memory.ppu.lcdc & 0x80 != 0;
+                let mode = if lcd_on {
+                    self.memory.ppu.current_mode() as u8
+                } else {
+                    0
+                };
                 let equal = ((self.memory.ppu.ly == self.memory.ppu.lyc) as u8) << 2;
-                0x80 | self.memory.ppu.stat | equal | self.memory.ppu.current_mode() as u8
+                0x80 | self.memory.ppu.stat | equal | mode
             }
             0xFF42 => self.memory.ppu.scy,
             0xFF43 => self.memory.ppu.scx,
@@ -351,7 +348,7 @@ impl AddressBus for Bus {
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF10..=0xFF26 => self.memory.apu.write(address, value),
             0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
-            0xFF40 => self.memory.ppu.lcdc = value,
+            0xFF40 => self.memory.ppu.write_lcdc(value),
             0xFF41 => {
                 self.memory.ppu.stat = value & 0x78;
                 self.memory

@@ -60,13 +60,14 @@ impl MBCType {
         rom: Vec<u8>,
         ram: Vec<u8>,
         rtc_save_state: Option<RTCSaveState>,
+        has_rumble: bool,
     ) -> Option<Box<dyn MBC>> {
         match self {
             MBCType::RomOnly => Some(Box::new(RomOnly::new(rom, ram))),
             MBCType::MBC1 => Some(Box::new(MBC1::new(rom, ram))),
             MBCType::MBC2 => Some(Box::new(MBC2::new(rom, ram))),
             MBCType::MBC3 => Some(Box::new(MBC3::new(rom, ram, rtc_save_state))),
-            MBCType::MBC5 => Some(Box::new(MBC5::new(rom, ram))),
+            MBCType::MBC5 => Some(Box::new(MBC5::new(rom, ram, has_rumble))),
             MBCType::Unknown(_) => None,
         }
     }
@@ -83,13 +84,6 @@ impl CGBFlag {
         match rom[0x0143] {
             0x80 | 0xC0 => CGBFlag::CGB,
             _ => CGBFlag::DMG,
-        }
-    }
-
-    pub fn to_str(&self) -> &str {
-        match self {
-            CGBFlag::CGB => "Color",
-            CGBFlag::DMG => "Monochrome",
         }
     }
 }
@@ -263,9 +257,10 @@ impl Cartridge {
         ram: Vec<u8>,
         rtc_save_state: Option<RTCSaveState>,
     ) -> Result<Box<dyn MBC>, std::io::Error> {
+        let has_rumble = header.has_rumble;
         header
             .mbc_type
-            .to_struct(rom, ram, rtc_save_state)
+            .to_struct(rom, ram, rtc_save_state, has_rumble)
             .ok_or_else(|| {
                 Self::error_message(
                     "Only MBC1, MBC2, MBC3, MBC5, and RomOnly are supported.".to_string(),

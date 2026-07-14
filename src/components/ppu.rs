@@ -32,13 +32,14 @@
     0x8800 - 0x8FFF shared by two tile sets
 */
 
-// First get the DMG working first, then extend to color.
 use crate::components::cpu::core::{ByteOps8, InterruptMode};
 
 pub const SCREEN_WIDTH: usize = 160;
 pub const SCREEN_HEIGHT: usize = 144;
 
 const DOTS_PER_TCYCLE: u32 = 456;
+
+const DMG_SHADES: [u16; 4] = [0x7FFF, 0x56B5, 0x294A, 0x0000];
 
 #[derive(Clone, Copy)]
 pub enum ColorPaletteRegisterType {
@@ -81,30 +82,31 @@ impl VRam {
     pub fn bank_swap(&mut self, value: u8) {
         self.bank = value & 0x01;
     }
-}
 
-// For color only
+    pub fn read_banked(&self, bank: usize, address: u16) -> u8 {
+        self.memory[(address - 0x8000) as usize + bank * self.bank_size as usize]
+    }
+}
 struct ColorBackgroundAttributes {
-    priority: bool,
     y_flip: bool,
     x_flip: bool,
-    bank: u8,
+    bank: usize,
     color_palette: u8,
 }
 
 impl ColorBackgroundAttributes {
     fn from_byte(byte: u8) -> Self {
         Self {
-            priority: byte & 0x80 != 0,
             y_flip: byte & 0x40 != 0,
             x_flip: byte & 0x20 != 0,
-            bank: byte & 0x08,
+            bank: ((byte & 0x08) >> 3) as usize,
             color_palette: byte & 0x07,
         }
     }
 }
 
 struct SpriteAttribute {
+    bank: usize,
     oam_index: usize,
     position_y: i16,
     position_x: i16,
@@ -118,6 +120,11 @@ struct SpriteAttribute {
 impl SpriteAttribute {
     pub fn from_oam(oam_index: usize, bytes: &[u8], is_cgb: bool) -> Self {
         Self {
+            bank: if is_cgb {
+                ((bytes[3] & 0x08) >> 3) as usize
+            } else {
+                0
+            },
             oam_index,
             position_y: bytes[0] as i16 - 16,
             position_x: bytes[1] as i16 - 8,
@@ -251,7 +258,7 @@ impl PPU {
             obj_palette_ram: [0xFF; 64],
             current_mode: PPUMode::OAMSearch,
             entered_hblank: false,
-            is_cgb: is_cgb,
+            is_cgb,
             viewport: [[0u16; SCREEN_WIDTH]; SCREEN_HEIGHT],
         }
     }
@@ -304,6 +311,7 @@ impl PPU {
         let mut window_rendered = false;
 
         let sprite_attributes = self.oam_search(lcdc_struct.sprite_size);
+        let bg_enable = self.is_cgb || lcdc_struct.enable_bg_and_window;
 
         let mut bg_indices = [0u8; SCREEN_WIDTH];
         for pixel in 0..SCREEN_WIDTH {
@@ -314,38 +322,72 @@ impl PPU {
                 && self.ly >= self.wy
                 && (pixel as i16) >= window_origin;
 
-            let color_index = if render_window {
+            let (color_index, attributes) = if render_window {
                 window_rendered = true;
                 let window_column = (pixel as i16 - window_origin) as u16;
-                let map_cell = (self.window_line as u16 / 8) * 32 + (window_column as u16 / 8);
-                let tile_index = self.vram.read(lcdc_struct.window_map_base() + map_cell);
-                let current_tile_address = lcdc_struct.get_current_tile_address(tile_index)
-                    + (self.window_line as u16 % 8) * 2;
-                self.compute_color_index(
-                    7 - (window_column % 8),
-                    current_tile_address,
-                    lcdc_struct.enable_bg_and_window,
-                )
+                let map_cell = (self.window_line as u16 / 8) * 32 + (window_column / 8);
+                let map_address = lcdc_struct.window_map_base() + map_cell;
+                let tile_index = self.vram.read_banked(0, map_address);
+
+                let attributes = if self.is_cgb {
+                    ColorBackgroundAttributes::from_byte(self.vram.read_banked(1, map_address))
+                } else {
+                    ColorBackgroundAttributes::from_byte(0)
+                };
+
+                let tile_row = if attributes.y_flip {
+                    7 - (self.window_line as u16 % 8)
+                } else {
+                    self.window_line as u16 % 8
+                };
+                let bit = if attributes.x_flip {
+                    window_column % 8
+                } else {
+                    7 - (window_column % 8)
+                };
+
+                let current_tile_address =
+                    lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
+                let color_index =
+                    self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
+                (color_index, attributes)
             } else {
                 let map_cell = (background_y as u16 / 8) * 32 + (background_x as u16 / 8);
-                let tile_index = self.vram.read(lcdc_struct.bg_map_base() + map_cell);
-                let current_tile_address =
-                    lcdc_struct.get_current_tile_address(tile_index) + background_tile_row * 2;
-                let background_column = background_x % 8;
-                // Get the bit position by subtracting seven, the column goes from right to left
-                // from most to least significant bit, so flip
-                let bit = 7 - background_column;
+                let map_address = lcdc_struct.bg_map_base() + map_cell;
+                let tile_index = self.vram.read_banked(0, map_address);
 
-                self.compute_color_index(
-                    bit as u16,
-                    current_tile_address,
-                    lcdc_struct.enable_bg_and_window,
-                )
+                let attributes = if self.is_cgb {
+                    ColorBackgroundAttributes::from_byte(self.vram.read_banked(1, map_address))
+                } else {
+                    ColorBackgroundAttributes::from_byte(0)
+                };
+                let tile_row = if attributes.y_flip {
+                    7 - background_tile_row
+                } else {
+                    background_tile_row
+                };
+                let background_column = (background_x % 8) as u16;
+                let bit = if attributes.x_flip {
+                    background_column
+                } else {
+                    7 - background_column
+                };
+
+                let current_tile_address =
+                    lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
+                let color_index =
+                    self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
+                (color_index, attributes)
             };
 
             bg_indices[pixel] = color_index;
-            let shade = (self.bgp >> (color_index * 2)) & 0x03;
-            self.viewport[self.ly as usize][pixel] = shade as u16;
+
+            self.viewport[self.ly as usize][pixel] = if self.is_cgb {
+                cram_color(&self.bg_palette_ram, attributes.color_palette, color_index)
+            } else {
+                let shade = (self.bgp >> (color_index * 2)) & 0x03;
+                DMG_SHADES[shade as usize]
+            };
         }
 
         if window_rendered {
@@ -383,18 +425,32 @@ impl PPU {
                         .wrapping_add((tile_index as u16).wrapping_mul(16))
                         .wrapping_add(row * 2);
 
-                    let color_index =
-                        self.compute_color_index(bit as u16, current_tile_address, true);
+                    let color_index = self.compute_color_index(
+                        sprite_attribute.bank,
+                        bit as u16,
+                        current_tile_address,
+                        true,
+                    );
+
                     if color_index == 0 {
                         continue;
                     }
 
-                    let shade = (self.select_object_palette(sprite_attribute.palette_number)
-                        >> (color_index * 2))
-                        & 0x03;
+                    let color = if self.is_cgb {
+                        cram_color(
+                            &self.obj_palette_ram,
+                            sprite_attribute.palette_number,
+                            color_index,
+                        )
+                    } else {
+                        let dmg_palette =
+                            self.monochrome_object_palette(sprite_attribute.palette_number);
+                        let shade = (dmg_palette >> (color_index * 2)) & 0x03;
+                        DMG_SHADES[shade as usize]
+                    };
 
                     if sprite_attribute.priority || bg_indices[x as usize] == 0 {
-                        self.viewport[self.ly as usize][x as usize] = shade as u16
+                        self.viewport[self.ly as usize][x as usize] = color;
                     }
                 }
             }
@@ -415,9 +471,7 @@ impl PPU {
             .take(10)
             .collect();
 
-        // Sprite sorting different for color
-        // For DMG sort in descending order for lowest coordinate sprite to always be rendered last
-        if !self.is_cgb {
+        if !self.is_cgb || (self.opri & 0x01) != 0 {
             sprite_attributes.sort_by(|a, b| {
                 b.position_x
                     .cmp(&a.position_x)
@@ -430,16 +484,22 @@ impl PPU {
         sprite_attributes
     }
 
-    fn select_object_palette(&self, palette_number: u8) -> u8 {
+    fn monochrome_object_palette(&self, palette_number: u8) -> u8 {
         match palette_number {
             0 => self.monochrome_color_ram[0],
             _ => self.monochrome_color_ram[1],
         }
     }
 
-    fn compute_color_index(&self, bit: u16, current_tile_address: u16, enable: bool) -> u8 {
-        let tile_data_low = self.vram.read(current_tile_address);
-        let tile_data_high = self.vram.read(current_tile_address + 1);
+    fn compute_color_index(
+        &self,
+        bank: usize,
+        bit: u16,
+        current_tile_address: u16,
+        enable: bool,
+    ) -> u8 {
+        let tile_data_low = self.vram.read_banked(bank, current_tile_address);
+        let tile_data_high = self.vram.read_banked(bank, current_tile_address + 1);
         let color_index = if enable {
             ((tile_data_high >> bit) & 0x01) << 1 | ((tile_data_low >> bit) & 0x01)
         } else {
@@ -474,6 +534,18 @@ impl PPU {
         }
 
         self.stat_interrupt_line = interrupt_line;
+    }
+
+    pub fn write_lcdc(&mut self, value: u8) {
+        let lcd_was_on = self.lcdc & 0x80 != 0;
+        self.lcdc = value;
+        if lcd_was_on && self.lcdc & 0x80 == 0 {
+            self.ly = 0;
+            self.dots = 0;
+            self.window_line = 0;
+            self.current_mode = PPUMode::HBlank;
+            self.stat_interrupt_line = false;
+        }
     }
 
     pub fn read_color_palette_index(&self, palette: ColorPaletteRegisterType) -> u8 {
@@ -529,4 +601,12 @@ impl PPU {
             *selected_palette = *selected_palette & 0x80 | incremented_address;
         }
     }
+}
+
+fn cram_color(palette_ram: &[u8; 64], palette: u8, color_index: u8) -> u16 {
+    let base = palette as usize * 8 + color_index as usize * 2;
+    let color_data_low = palette_ram[base] as u16;
+    let color_data_high = (palette_ram[base + 1] as u16) << 8;
+
+    color_data_high | color_data_low
 }

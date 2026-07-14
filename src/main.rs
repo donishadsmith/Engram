@@ -14,12 +14,12 @@ use macroquad::prelude::*;
 use std::time::Instant;
 
 const KEYMAP: [KeyCode; 8] = [
-    KeyCode::Up,
-    KeyCode::Left,
-    KeyCode::Down,
-    KeyCode::Right,
-    KeyCode::Z,
-    KeyCode::X,
+    KeyCode::W,
+    KeyCode::A,
+    KeyCode::S,
+    KeyCode::D,
+    KeyCode::N,
+    KeyCode::M,
     KeyCode::Enter,
     KeyCode::RightShift,
 ];
@@ -39,7 +39,11 @@ async fn main() -> Result<(), std::io::Error> {
             break;
         }
 
-        if is_key_pressed(KeyCode::O) {
+        if is_key_pressed(KeyCode::F1) {
+            gameboy.battery_save()?;
+        }
+
+        if is_key_pressed(KeyCode::P) {
             gameboy.ppu_debug_dump();
         }
 
@@ -52,7 +56,7 @@ async fn main() -> Result<(), std::io::Error> {
 
         screen.draw();
 
-        if is_key_pressed(KeyCode::P) {
+        if is_key_pressed(KeyCode::O) {
             get_screen_data().export_png("screenshot.png");
         }
 

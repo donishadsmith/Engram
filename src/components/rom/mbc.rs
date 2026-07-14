@@ -614,10 +614,11 @@ pub mod prelude {
         ram_bank: usize,
         ram_enabled: bool,
         ram_updated: bool,
+        has_rumble: bool,
     }
 
     impl MBC5 {
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
+        pub fn new(rom: Vec<u8>, ram: Vec<u8>, has_rumble: bool) -> Self {
             Self {
                 rom,
                 ram,
@@ -626,6 +627,7 @@ pub mod prelude {
                 ram_bank: 0,
                 ram_enabled: false,
                 ram_updated: false,
+                has_rumble,
             }
         }
 
@@ -663,7 +665,13 @@ pub mod prelude {
                 0x0000..=0x1FFF => self.ram_enabled = (value & 0x0F) == 0x0A,
                 0x2000..=0x2FFF => self.register_8bit = value,
                 0x3000..=0x3FFF => self.register_1bit = value & 0x01,
-                0x4000..=0x5FFF => self.ram_bank = (value & 0x0F) as usize,
+                0x4000..=0x5FFF => {
+                    self.ram_bank = if self.has_rumble {
+                        (value & 0x07) as usize
+                    } else {
+                        (value & 0x0F) as usize
+                    }
+                }
                 0xA000..=0xBFFF => {
                     if !self.ram.is_empty() && self.ram_enabled {
                         let index = self.ram_index(address);

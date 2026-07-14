@@ -1,15 +1,6 @@
 use crate::components::ppu::{PPU, SCREEN_HEIGHT, SCREEN_WIDTH};
 use macroquad::prelude::*;
 
-const DEBUGGING_COLOR: [u8; 3] = [238, 75, 43];
-const DMG_PALETTE: [[u8; 3]; 5] = [
-    [255, 255, 255],
-    [212, 212, 212],
-    [168, 168, 168],
-    [0, 0, 0],
-    DEBUGGING_COLOR,
-];
-
 const BYTES_PER_PIXEL: usize = 4;
 
 pub struct Screen {
@@ -32,7 +23,7 @@ impl Screen {
     pub fn update(&mut self, ppu: &PPU) {
         for y in 0..SCREEN_HEIGHT {
             for x in 0..SCREEN_WIDTH {
-                let color = DMG_PALETTE[ppu.viewport[y][x] as usize];
+                let color = rgb555_to_rgb888(ppu.viewport[y][x]);
                 let index = (y * SCREEN_WIDTH + x) * BYTES_PER_PIXEL;
                 self.image.bytes[index..index + 3].copy_from_slice(&color);
                 self.image.bytes[index + 3] = 255;

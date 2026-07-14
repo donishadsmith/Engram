@@ -82,11 +82,38 @@ impl GameBoy {
 
     pub fn ppu_debug_dump(&self) {
         let ppu = &self.cpu.bus.memory.ppu;
+        let write_cram = |cram: &[u8]| {
+            cram.chunks(8)
+                .enumerate()
+                .map(|(i, pal)| {
+                    let colors: Vec<String> = pal
+                        .chunks(2)
+                        .map(|c| format!("{:04X}", u16::from_le_bytes([c[0], c[1]])))
+                        .collect();
+                    format!("  palette{}: {}", i, colors.join(" "))
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
         std::fs::write(
             "ppu_registers.txt",
             format!(
-                "lcdc={:02X} stat={:02X} scy={} scx={} wy={} wx={} bgp={:02X} ly={}",
-                ppu.lcdc, ppu.stat, ppu.scy, ppu.scx, ppu.wy, ppu.wx, ppu.bgp, ppu.ly
+                "lcdc={:02X} stat={:02X} scy={} scx={} wy={} wx={} bgp={:02X} obp0={:02X} obp1={:02X} ly={} bgpi={:02X} obpi={:02X}\nBG CRAM:\n{}\nOBJ CRAM:\n{}\n",
+                ppu.lcdc,
+                ppu.stat,
+                ppu.scy,
+                ppu.scx,
+                ppu.wy,
+                ppu.wx,
+                ppu.bgp,
+                ppu.monochrome_color_ram[0],
+                ppu.monochrome_color_ram[1],
+                ppu.ly,
+                ppu.bgpi,
+                ppu.obpi,
+                write_cram(&ppu.bg_palette_ram),
+                write_cram(&ppu.obj_palette_ram),
             ),
         )
         .unwrap();

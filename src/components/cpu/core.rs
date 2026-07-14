@@ -631,6 +631,7 @@ where
             halted: false,
             interrupt: Interrupt::new(),
         };
+
         cpu.fetch();
         cpu
     }
