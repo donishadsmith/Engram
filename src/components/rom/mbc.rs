@@ -1,3 +1,4 @@
+// TODO: Check if worth to consolidate some code
 pub mod prelude {
     use crate::components::rom::cartridge::MBCType;
     use chrono::Utc;
@@ -697,6 +698,107 @@ pub mod prelude {
 
         fn id(&self) -> MBCType {
             MBCType::MBC5
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum HuC1Mode {
+        RAM,
+        IR,
+    }
+
+    impl HuC1Mode {
+        fn select(value: u8) -> HuC1Mode {
+            if value & 0x0F == 0x0E {
+                HuC1Mode::IR
+            } else {
+                HuC1Mode::RAM
+            }
+        }
+    }
+
+    pub struct HuC1 {
+        rom: Vec<u8>,
+        ram: Vec<u8>,
+        ram_updated: bool,
+        mode: HuC1Mode,
+        rom_bank: usize,
+        ram_bank: usize,
+    }
+
+    impl HuC1 {
+        pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
+            Self {
+                rom,
+                ram,
+                ram_updated: false,
+                mode: HuC1Mode::RAM,
+                rom_bank: 1,
+                ram_bank: 0,
+            }
+        }
+
+        fn ram_index(&self, address: u16) -> usize {
+            (self.ram_bank * 0x2000 + (address as usize - 0xA000)) % self.ram.len()
+        }
+    }
+
+    impl MBC for HuC1 {
+        fn read(&self, address: u16) -> u8 {
+            match address {
+                0x0000..=0x3FFF => self.rom[address as usize],
+                0x4000..=0x7FFF => {
+                    let offset = self.rom_bank * 0x4000 + (address as usize - 0x4000);
+                    self.rom[offset % self.rom.len()]
+                }
+                0xA000..=0xBFFF => match self.mode {
+                    HuC1Mode::IR => 0xC0,
+                    HuC1Mode::RAM => {
+                        if self.ram.is_empty() {
+                            0xFF
+                        } else {
+                            self.ram[self.ram_index(address)]
+                        }
+                    }
+                },
+                _ => 0xFF,
+            }
+        }
+
+        fn write(&mut self, address: u16, value: u8) {
+            match address {
+                0x0000..=0x1FFF => self.mode = HuC1Mode::select(value),
+                0x2000..=0x3FFF => self.rom_bank = (value & 0x3F) as usize,
+                0x4000..=0x5FFF => self.ram_bank = (value & 0x03) as usize,
+                0x6000..=0x7FFF => {}
+                0xA000..=0xBFFF => match self.mode {
+                    HuC1Mode::RAM => {
+                        if !self.ram.is_empty() {
+                            let index = self.ram_index(address);
+                            self.ram[index] = value;
+                            self.ram_updated = true;
+                        }
+                    }
+                    HuC1Mode::IR => {}
+                },
+                _ => {}
+            }
+        }
+
+        fn get_rom(&self) -> &[u8] {
+            &self.rom
+        }
+
+        fn get_ram(&self) -> &[u8] {
+            &self.ram
+        }
+
+        fn ram_changed(&mut self) -> &mut bool {
+            &mut self.ram_updated
+        }
+
+        fn id(&self) -> MBCType {
+            MBCType::HuC1
         }
     }
 }

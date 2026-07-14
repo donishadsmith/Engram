@@ -24,6 +24,7 @@ pub enum MBCType {
     MBC2,
     MBC3,
     MBC5,
+    HuC1,
     Unknown(u8),
 }
 
@@ -35,23 +36,8 @@ impl MBCType {
             0x05 | 0x06 => MBCType::MBC2,
             0x0F..=0x13 => MBCType::MBC3,
             0x19..=0x1E => MBCType::MBC5,
-            /*
-                For now we will stick with these and maybe
-                implement others such as HuC3 later, a lot of
-                banks are chinese or japan exclusives or custom banks
-            */
+            0xFF => MBCType::HuC1,
             other => MBCType::Unknown(other),
-        }
-    }
-
-    pub fn to_str(&self) -> &str {
-        match self {
-            MBCType::RomOnly => "RomOnly",
-            MBCType::MBC1 => "MBC1",
-            MBCType::MBC2 => "MBC2",
-            MBCType::MBC3 => "MBC3",
-            MBCType::MBC5 => "MBC5",
-            MBCType::Unknown(_) => "Unknown",
         }
     }
 
@@ -68,6 +54,7 @@ impl MBCType {
             MBCType::MBC2 => Some(Box::new(MBC2::new(rom, ram))),
             MBCType::MBC3 => Some(Box::new(MBC3::new(rom, ram, rtc_save_state))),
             MBCType::MBC5 => Some(Box::new(MBC5::new(rom, ram, has_rumble))),
+            MBCType::HuC1 => Some(Box::new(HuC1::new(rom, ram))),
             MBCType::Unknown(_) => None,
         }
     }
