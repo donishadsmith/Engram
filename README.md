@@ -30,6 +30,8 @@ A gameboy emulator color that is still a work-in-progress and still needs an APU
 `F1` key to dump data in sram to a .sav file for ROMs that are battery-backed.
 
 ## Usage
+Either download the executable or clone the repository and run the following in a terminal:
+
 ``bash
 git clone https://github.com/donishadsmith/Engram
 cd Engram
