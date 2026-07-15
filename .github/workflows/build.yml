@@ -40,14 +40,14 @@ jobs:
 
       - name: Rename binary (Unix)
         if: matrix.runner != 'windows-latest'
-        run: mv target/release/gameboy_emulator target/release/gameboy_emulator-${{ matrix.target }}
+        run: mv target/release/engram target/release/engram-${{ matrix.target }}
 
       - name: Rename binary (Windows)
         if: matrix.runner == 'windows-latest'
         shell: bash
-        run: mv target/release/gameboy_emulator.exe target/release/gameboy_emulator-${{ matrix.target }}${{ matrix.ext }}
+        run: mv target/release/engram.exe target/release/engram-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Attach files to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/gameboy_emulator-${{ matrix.target }}${{ matrix.ext }}
+          files: target/release/engram-${{ matrix.target }}${{ matrix.ext }}
