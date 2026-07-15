@@ -28,6 +28,13 @@ jobs:
             ext: ''
     steps:
       - uses: actions/checkout@v6
+
+      - name: Install Libraries (Ubuntu)
+        if: matrix.runner == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install libwayland-dev libasound2-dev libudev-dev pkg-config
+
       - name: Build release
         run: cargo build --release
 
