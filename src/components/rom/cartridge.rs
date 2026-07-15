@@ -12,8 +12,8 @@ use std::path::PathBuf;
 
 use crate::components::rom::mbc::prelude::*;
 
-// "MBC3" in ASCII
-const MAGIC_NUMBERS: [u8; 4] = [0x4D, 0x42, 0x43, 0x33];
+// "RTC0" in ASCII
+const MAGIC_NUMBERS: [u8; 4] = [0x52, 0x54, 0x43, 0x30];
 // 4 magic numebers for MBC3 with timer enabled + 18 RTC states = 22 bytes before the RAM save data
 const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RTCSaveState::BYTE_SIZE;
 

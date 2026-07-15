@@ -1,3 +1,9 @@
+pub enum AudioPan {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy)]
 pub enum AudioChannel {
     Channel1,
     Channel2,
@@ -27,6 +33,28 @@ impl GlobalControl {
         };
 
         self.audio_on() && (self.nr52 & mask) != 0
+    }
+
+    pub fn panned_left(&self, channel: AudioChannel) -> bool {
+        let bit = match channel {
+            AudioChannel::Channel1 => 4,
+            AudioChannel::Channel2 => 5,
+            AudioChannel::Channel3 => 6,
+            AudioChannel::Channel4 => 7,
+        };
+
+        (self.nr51 >> bit) & 1 != 0
+    }
+
+    pub fn panned_right(&self, channel: AudioChannel) -> bool {
+        let bit = match channel {
+            AudioChannel::Channel1 => 0,
+            AudioChannel::Channel2 => 1,
+            AudioChannel::Channel3 => 2,
+            AudioChannel::Channel4 => 3,
+        };
+
+        (self.nr51 >> bit) & 1 != 0
     }
 }
 

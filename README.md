@@ -3,9 +3,11 @@
 A gameboy emulator color that is still a work-in-progress and still needs an APU.
 
 <p align="center">
-  <img src="assets/tony_hawk.png" width="250" height="250">
   <img src="assets/shantae.png" width="250" height="250">
+  <img src="assets/pkmn_day.png" width="250" height="250">
+  <img src="assets/pkmn_night.png" width="250" height="250">
   <img src="assets/pkmn_crystal.png" width="250" height="250">
+  <img src="assets/pkmn_pinball.png" width="250" height="250">
   <img src="assets/road_rash.png" width="250" height="250">
   <img src="assets/mario.png" width="250" height="250">
   <img src="assets/loz.png" width="250" height="250">
