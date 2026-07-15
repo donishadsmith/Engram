@@ -28,3 +28,10 @@ A gameboy emulator color that is still a work-in-progress and still needs an APU
 | Esc         | Quit   |
 
 `F1` key to dump data in sram to a .sav file for ROMs that are battery-backed.
+
+## Usage
+``bash
+git clone https://github.com/donishadsmith/Engram
+cd Engram
+cargo run
+``
