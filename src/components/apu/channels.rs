@@ -1,3 +1,5 @@
+// https://jsgroth.dev/blog/posts/gb-rewrite-apu/
+
 pub enum AudioPan {
     Left,
     Right,
@@ -11,12 +13,15 @@ pub enum AudioChannel {
     Channel4,
 }
 
-pub struct PulseChannel {}
+pub struct StereoVolume {
+    pub left: u8,
+    pub right: u8,
+}
 
 pub struct GlobalControl {
-    nr50: u8,
-    nr51: u8,
-    nr52: u8,
+    pub nr50: u8,
+    pub nr51: u8,
+    pub nr52: u8,
 }
 
 impl GlobalControl {
@@ -56,7 +61,27 @@ impl GlobalControl {
 
         (self.nr51 >> bit) & 1 != 0
     }
+
+    // Just gonna ignore VIN
+    pub fn volume(&self) -> StereoVolume {
+        StereoVolume {
+            left: (self.nr50 >> 4) & 0x07,
+            right: self.nr50 & 0x07,
+        }
+    }
 }
+
+pub struct FrameSequencerStep {
+    length_counter: u8,
+    sweep: u8,
+    envelope: u8,
+}
+
+pub struct FrameSequencer {
+    step: u8,
+}
+
+pub struct PulseChannel {}
 
 pub struct APU {
     pub wave_ram: Vec<u8>,
