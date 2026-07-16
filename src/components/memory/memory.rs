@@ -1,5 +1,5 @@
 use crate::components::{
-    apu::channels::APU,
+    apu::APU,
     joypad::Joypad,
     ppu::PPU,
     rom::cartridge::{CGBFlag, Cartridge},
