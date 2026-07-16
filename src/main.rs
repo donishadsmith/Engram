@@ -5,6 +5,8 @@
    - https://github.com/smparsons/retroboy
 */
 
+#![windows_subsystem = "windows"]
+
 use engram::{
     components::{gameboy::GameBoy, rom::cartridge::Cartridge},
     render::Screen,
