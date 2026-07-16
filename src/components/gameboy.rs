@@ -1,4 +1,8 @@
-use crate::components::{cpu::core::CPU, memory::bus::Bus, rom::cartridge::Cartridge};
+use crate::components::{
+    cpu::core::CPU,
+    memory::bus::{AddressBus, Bus},
+    rom::cartridge::Cartridge,
+};
 
 const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
@@ -49,11 +53,11 @@ impl GameBoy {
 
             self.cpu.bus.hblank_dma_step();
 
-            self.cpu
-                .bus
-                .memory
-                .timer
-                .tick(timer_t_cycles, &mut self.cpu.bus.memory.interrupt_flag);
+            self.cpu.bus.memory.timer.tick(
+                timer_t_cycles,
+                &mut self.cpu.bus.memory.interrupt_flag,
+                double_speed,
+            );
 
             remaining_cycles = remaining_cycles.saturating_sub(cpu_t_cycles);
         }

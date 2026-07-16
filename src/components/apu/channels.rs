@@ -1,4 +1,6 @@
 // https://jsgroth.dev/blog/posts/gb-rewrite-apu/
+// https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
+// https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 
 pub enum AudioPan {
     Left,
@@ -72,13 +74,27 @@ impl GlobalControl {
 }
 
 pub struct FrameSequencerStep {
-    length_counter: u8,
-    sweep: u8,
-    envelope: u8,
+    length_counter: bool,
+    sweep: bool,
+    envelope: bool,
 }
 
+// tick at 512 hz when div bit for goes from 1 -> 0
 pub struct FrameSequencer {
     step: u8,
+}
+
+impl FrameSequencer {
+    fn tick(&mut self) -> FrameSequencerStep {
+        let step = self.step;
+        self.step = (self.step + 1) & 0x07;
+
+        FrameSequencerStep {
+            length_counter: step & 0x01 == 0,
+            sweep: step == 0x02 || step == 0x06,
+            envelope: step == 0x07,
+        }
+    }
 }
 
 pub struct PulseChannel {}

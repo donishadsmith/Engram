@@ -7,6 +7,7 @@ pub struct Timer {
     pub tima: u8,
     pub tma: u8,
     pub tac: u8,
+    pub increase_div_apu_counter: bool,
 }
 
 impl Timer {
@@ -16,6 +17,7 @@ impl Timer {
             tima: 0,
             tma: 0,
             tac: 0,
+            increase_div_apu_counter: false,
         }
     }
 
@@ -28,7 +30,7 @@ impl Timer {
         }
     }
 
-    pub fn tick(&mut self, t_cycles: u32, interrupt_flag: &mut u8) {
+    pub fn tick(&mut self, t_cycles: u32, interrupt_flag: &mut u8, double_speed: bool) {
         let timer_enabled = self.tac & 0x04 != 0;
         let target_bit = self.target_div_bit();
 
@@ -49,6 +51,10 @@ impl Timer {
                     self.tima = result;
                 }
             }
+
+            let mask = if double_speed { 0x20 } else { 0x10 };
+            self.increase_div_apu_counter =
+                ((previous_div >> 8) & mask != 0) && ((self.div >> 8) & mask == 0);
         }
     }
 }

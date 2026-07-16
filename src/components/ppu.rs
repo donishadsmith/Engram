@@ -279,18 +279,7 @@ impl PPU {
 
         self.dots += t_cycles;
 
-        let current_mode = self.current_mode();
-        if current_mode != self.current_mode {
-            if current_mode == PPUMode::HBlank && self.current_mode != PPUMode::HBlank {
-                self.entered_hblank = true;
-            }
-
-            self.current_mode = current_mode;
-            // Game that heavily relies on the stat interrupt
-            // is F1 race. When not done, the track is a static
-            // V shape. Creates the movement effect
-            self.update_stat_interrupt_line(interrupt_flag);
-        }
+        self.update_mode(interrupt_flag);
 
         while self.dots >= DOTS_PER_SCANLINE {
             self.dots -= DOTS_PER_SCANLINE;
@@ -301,8 +290,6 @@ impl PPU {
 
             self.ly = (self.ly + 1) % 154;
             self.update_stat_interrupt_line(interrupt_flag);
-
-            self.current_mode = self.current_mode();
 
             if self.ly == 144 {
                 *interrupt_flag |= InterruptMode::VBlank.mask();
@@ -527,6 +514,21 @@ impl PPU {
             0..=79 => PPUMode::OAMSearch,
             80..=251 => PPUMode::PixelTransfer,
             _ => PPUMode::HBlank,
+        }
+    }
+
+    fn update_mode(&mut self, interrupt_flag: &mut u8) {
+        let current_mode = self.current_mode();
+        if current_mode != self.current_mode {
+            if current_mode == PPUMode::HBlank && self.current_mode != PPUMode::HBlank {
+                self.entered_hblank = true;
+            }
+
+            self.current_mode = current_mode;
+            // Game that heavily relies on the stat interrupt
+            // is F1 race. When not done, the track is a static
+            // V shape. Creates the movement effect
+            self.update_stat_interrupt_line(interrupt_flag);
         }
     }
 
