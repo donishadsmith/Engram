@@ -3,10 +3,10 @@
 use crate::components::cpu::interrupts::InterruptMode;
 
 pub struct Timer {
-    pub div: u16,
-    pub tima: u8,
-    pub tma: u8,
-    pub tac: u8,
+    div: u16,
+    tima: u8,
+    tma: u8,
+    tac: u8,
     pub increase_div_apu_counter: bool,
 }
 
@@ -55,6 +55,26 @@ impl Timer {
             let mask = if double_speed { 0x20 } else { 0x10 };
             self.increase_div_apu_counter =
                 ((previous_div >> 8) & mask != 0) && ((self.div >> 8) & mask == 0);
+        }
+    }
+
+    pub fn read_register(&self, address: u16) -> u8 {
+        match address {
+            0xFF04 => (self.div >> 8) as u8,
+            0xFF05 => self.tima,
+            0xFF06 => self.tma,
+            0xFF07 => self.tac,
+            _ => 0xFF,
+        }
+    }
+
+    pub fn write_register(&mut self, address: u16, value: u8) {
+        match address {
+            0xFF04 => self.div = 0,
+            0xFF05 => self.tima = value,
+            0xFF06 => self.tma = value,
+            0xFF07 => self.tac = value & 0x07,
+            _ => {}
         }
     }
 }

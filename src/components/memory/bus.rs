@@ -254,36 +254,12 @@ impl AddressBus for Bus {
             0xFF00 => self.memory.joypad.read(),
             0xFF01 => self.memory.serial_data,
             0xFF02 => self.memory.serial_control | 0x7E,
-            0xFF04 => (self.memory.timer.div >> 8) as u8,
-            0xFF05 => self.memory.timer.tima,
-            0xFF06 => self.memory.timer.tma,
-            0xFF07 => self.memory.timer.tac,
+            0xFF04..0xFF07 => self.memory.timer.read_register(address),
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
             0xFEA0..=0xFEFF => 0xFF,
-            0xFF0F => self.memory.interrupt_flag | 0xE0,
-            //0xFF10..=0xFF26 => Audio,
+            0xFF10..=0xFF26 => self.memory.apu.read_register(address),
             0xFF30..=0xFF3F => self.memory.apu.read_wram(address),
-            0xFF40 => self.memory.ppu.lcdc,
-            0xFF41 => {
-                let lcd_on = self.memory.ppu.lcdc & 0x80 != 0;
-                let mode = if lcd_on {
-                    self.memory.ppu.current_mode() as u8
-                } else {
-                    0
-                };
-                let equal = ((self.memory.ppu.ly == self.memory.ppu.lyc) as u8) << 2;
-                0x80 | self.memory.ppu.stat | equal | mode
-            }
-            0xFF42 => self.memory.ppu.scy,
-            0xFF43 => self.memory.ppu.scx,
-            0xFF44 => self.memory.ppu.ly,
-            0xFF45 => self.memory.ppu.lyc,
-            0xFF46 => self.memory.ppu.oam_dma,
-            0xFF47 => self.memory.ppu.bgp,
-            0xFF48 => self.memory.ppu.monochrome_color_ram[0],
-            0xFF49 => self.memory.ppu.monochrome_color_ram[1],
-            0xFF4A => self.memory.ppu.wy,
-            0xFF4B => self.memory.ppu.wx,
+            0xFF40..0xFF4B | 0xFF68..=0xFF6C => self.memory.ppu.read_register(address),
             0xFF4D if self.is_cgb() => self.memory.key_register,
             0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank | 0xFE,
             0xFF51..=0xFF54 if self.is_cgb() => 0xFF,
@@ -294,23 +270,6 @@ impl AddressBus for Bus {
                     0xFF
                 }
             }
-            0xFF68 if self.is_cgb() => self
-                .memory
-                .ppu
-                .read_color_palette_register(ColorPaletteRegisterType::Background),
-            0xFF69 if self.is_cgb() => self
-                .memory
-                .ppu
-                .read_color_palette_data(ColorPaletteRegisterType::Background),
-            0xFF6A if self.is_cgb() => self
-                .memory
-                .ppu
-                .read_color_palette_register(ColorPaletteRegisterType::Object),
-            0xFF6B if self.is_cgb() => self
-                .memory
-                .ppu
-                .read_color_palette_data(ColorPaletteRegisterType::Object),
-            0xFF6C if self.is_cgb() => self.memory.ppu.opri & 0x01,
             0xFF70 if self.is_cgb() => (self.memory.svbk_register | 0xF8) & 0x07,
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
             0xFFFF => self.memory.interrupt_enable,
@@ -337,36 +296,17 @@ impl AddressBus for Bus {
                     self.memory.interrupt_flag |= InterruptMode::Serial.mask();
                 }
             }
-            0xFF04 => self.memory.timer.div = 0,
-            0xFF05 => self.memory.timer.tima = value,
-            0xFF06 => self.memory.timer.tma = value,
-            0xFF07 => self.memory.timer.tac = value & 0x07,
+            0xFF04..0xFF07 => self.memory.timer.write_register(address, value),
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
-            //0xFF10..=0xFF26 => Audio,
+            0xFF10..=0xFF25 => self.memory.apu.write_register(address, value),
             0xFF30..=0xFF3F => self.memory.apu.write_wram(address, value),
-            0xFF40 => self.memory.ppu.write_lcdc(value),
-            0xFF41 => {
-                self.memory.ppu.stat = value & 0x78;
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF68..=0xFF6C => {
                 self.memory
                     .ppu
-                    .update_stat_interrupt_line(&mut self.memory.interrupt_flag);
-            }
-            0xFF42 => self.memory.ppu.scy = value,
-            0xFF43 => self.memory.ppu.scx = value,
-            0xFF44 => {}
-            0xFF45 => {
-                self.memory.ppu.lyc = value;
-                self.memory
-                    .ppu
-                    .update_stat_interrupt_line(&mut self.memory.interrupt_flag);
+                    .write_register(address, value, &mut self.memory.interrupt_flag)
             }
             0xFF46 => self.oam_dma_transfer(value),
-            0xFF47 => self.memory.ppu.bgp = value,
-            0xFF48 => self.memory.ppu.monochrome_color_ram[0] = value,
-            0xFF49 => self.memory.ppu.monochrome_color_ram[1] = value,
-            0xFF4A => self.memory.ppu.wy = value,
-            0xFF4B => self.memory.ppu.wx = value,
             0xFF4D if self.is_cgb() => {
                 self.memory.key_register = (self.memory.key_register & 0x80) | (value & 0x01);
             }
@@ -381,17 +321,6 @@ impl AddressBus for Bus {
             0xFF53 if self.is_cgb() => self.memory.hdma_registers[2] = value & 0x1F,
             0xFF54 if self.is_cgb() => self.memory.hdma_registers[3] = value & 0xF0,
             0xFF55 if self.is_cgb() => self.initiate_vram_dma_transfer(value),
-            0xFF68 if self.is_cgb() => self.memory.ppu.bgpi = value,
-            0xFF69 if self.is_cgb() => self
-                .memory
-                .ppu
-                .write_color_palette_data(value, ColorPaletteRegisterType::Background),
-            0xFF6A if self.is_cgb() => self.memory.ppu.obpi = value,
-            0xFF6B if self.is_cgb() => self
-                .memory
-                .ppu
-                .write_color_palette_data(value, ColorPaletteRegisterType::Object),
-            0xFF6C if self.is_cgb() => self.memory.ppu.opri = value,
             0xFF70 if self.is_cgb() => {
                 self.memory.svbk_register = value;
             }
