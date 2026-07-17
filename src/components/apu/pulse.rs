@@ -1,4 +1,7 @@
 // https://gbdev.io/pandocs/Power_Up_Sequence.html
+// https://www.reddit.com/r/EmuDev/comments/5gkwi5/gb_apu_sound_emulation/
+// https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
+// https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -77,12 +80,55 @@ impl Envelope {
     }
 }
 
+#[derive(Clone, Copy)]
+#[repr(u8)]
+enum SweepDirection {
+    Addition = 0,
+    Subtraction = 1,
+}
+
+impl SweepDirection {
+    fn from_register(value: u8) -> SweepDirection {
+        match (value >> 3) & 0x01 {
+            0 => SweepDirection::Addition,
+            1 => SweepDirection::Subtraction,
+            _ => unreachable!(),
+        }
+    }
+}
+
 struct Sweep {
     pace: u8,
+    shift: u8,
+    direction: SweepDirection,
+    timer: u8,
+    shadow_frequency: u16,
+    enabled: bool,
+}
+
+impl Sweep {
+    fn new() -> Self {
+        Self {
+            pace: 0,
+            shift: 0,
+            direction: SweepDirection::Addition,
+            timer: 0,
+            shadow_frequency: 0,
+            enabled: false,
+        }
+    }
+
+    fn calculate_frequency(&self) -> u16 {
+        let delta = self.shadow_frequency >> self.shift;
+        match self.direction {
+            SweepDirection::Addition => self.shadow_frequency + delta,
+            SweepDirection::Subtraction => self.shadow_frequency.wrapping_sub(delta),
+        }
+    }
 }
 
 pub struct PulseChannel {
-    enabled: bool,
+    pub enabled: bool,
     duty: DutyCycle,
     duty_position: u8,
     frequency_timer: u16,
@@ -110,7 +156,7 @@ impl PulseChannel {
 
     pub fn new_channel1() -> Self {
         let mut channel = Self::base();
-        channel.sweep = Some(Sweep { pace: 0 });
+        channel.sweep = Some(Sweep::new());
         channel.write_nrx1(0xBF);
         channel.write_nrx2(0xF3);
 
@@ -135,11 +181,7 @@ impl PulseChannel {
     }
 
     pub fn read_nrx2(&self) -> u8 {
-        let mut value = self.envelope.initial_volume << 4;
-        value |= self.envelope.direction as u8;
-        value |= self.envelope.period;
-
-        value
+        (self.envelope.initial_volume << 4) | self.envelope.direction as u8 | self.envelope.period
     }
 
     pub fn write_nrx2(&mut self, value: u8) {
@@ -178,11 +220,124 @@ impl PulseChannel {
             self.frequency_timer = (2048 - self.frequency_period) * 4;
             self.envelope.timer = self.envelope.period;
             self.envelope.current_volume = self.envelope.initial_volume;
+
+            if let Some(sweep) = self.sweep.as_mut() {
+                sweep.shadow_frequency = self.frequency_period;
+                sweep.timer = if sweep.pace == 0 { 8 } else { sweep.pace };
+                sweep.enabled = sweep.pace != 0 || sweep.shift != 0;
+
+                if sweep.shift != 0 && sweep.calculate_frequency() > 2047 {
+                    self.enabled = false;
+                }
+            }
         }
+    }
+
+    // Should only be used for channel 1 which should be set
+    pub fn read_nr10(&self) -> u8 {
+        let sweep = self.sweep.as_ref().unwrap();
+        0x80 | (sweep.pace << 4) | ((sweep.direction as u8) << 3) | sweep.shift
+    }
+
+    // Same here
+    pub fn write_nr10(&mut self, value: u8) {
+        let sweep = self.sweep.as_mut().unwrap();
+        sweep.pace = (value >> 4) & 0x07;
+        sweep.direction = SweepDirection::from_register(value);
+        sweep.shift = value & 0x07;
     }
 
     fn dac_enabled(&self) -> bool {
         self.envelope.initial_volume != 0
             || matches!(self.envelope.direction, EnvelopeDirection::Increment)
+    }
+
+    pub fn tick(&mut self) {
+        if self.frequency_timer > 0 {
+            self.frequency_timer -= 1;
+        }
+
+        if self.frequency_timer == 0 {
+            self.frequency_timer = (2048 - self.frequency_period) * 4;
+            self.duty_position = (self.duty_position + 1) & 0x07;
+        }
+    }
+
+    pub fn tick_length(&mut self, frame_sequencer_step_length: bool) {
+        if !frame_sequencer_step_length {
+            return;
+        }
+
+        if !(self.length_enabled && self.length_timer > 0) {
+            return;
+        }
+
+        self.length_timer -= 1;
+        if self.length_timer == 0 {
+            self.enabled = false
+        }
+    }
+
+    pub fn tick_envelope(&mut self, frame_sequencer_step_envelope: bool) {
+        if !frame_sequencer_step_envelope || self.envelope.period == 0 {
+            return;
+        }
+
+        if self.envelope.timer > 0 {
+            self.envelope.timer -= 1;
+        }
+
+        if self.envelope.timer == 0 {
+            self.envelope.timer = self.envelope.period;
+            self.envelope
+                .direction
+                .update_volume(&mut self.envelope.current_volume);
+        }
+    }
+
+    pub fn tick_sweep(&mut self, frame_sequencer_step_sweep: bool) {
+        if !frame_sequencer_step_sweep {
+            return;
+        }
+
+        let Some(sweep) = self.sweep.as_mut() else {
+            return;
+        };
+
+        if sweep.timer > 0 {
+            sweep.timer -= 1;
+        }
+
+        if sweep.timer > 0 {
+            return;
+        }
+
+        sweep.timer = if sweep.pace == 0 { 8 } else { sweep.pace };
+        if !sweep.enabled || sweep.pace == 0 {
+            return;
+        }
+
+        let new_frequency = sweep.calculate_frequency();
+        if new_frequency > 2047 {
+            self.enabled = false;
+            return;
+        }
+
+        if sweep.shift != 0 {
+            sweep.shadow_frequency = new_frequency;
+            self.frequency_period = new_frequency;
+
+            if sweep.calculate_frequency() > 2047 {
+                self.enabled = false;
+            }
+        }
+    }
+
+    pub fn sample(&self) -> u8 {
+        if self.enabled {
+            self.duty.multiplier(self.duty_position) * self.envelope.current_volume
+        } else {
+            0
+        }
     }
 }

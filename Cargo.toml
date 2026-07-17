@@ -4,12 +4,13 @@ version = "0.1.0-alpha.1"
 edition = "2024"
 
 [dependencies]
-rodio = "0.22"
 macroquad = { version = "0.4", default-features = false }
 spin_sleep = "1.0"
 rfd = "0.17"
 chrono = "0.4"
 rand = "0.10"
+cpal = "0.18.1"
+rtrb = "0.3.4"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

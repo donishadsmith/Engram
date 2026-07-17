@@ -8,6 +8,7 @@
 #![windows_subsystem = "windows"]
 
 use engram::{
+    audio::AudioOutput,
     components::{gameboy::GameBoy, rom::cartridge::Cartridge},
     render::Screen,
     utils::{file_dialog, fps_lock},
@@ -28,6 +29,7 @@ const KEYMAP: [KeyCode; 8] = [
 
 #[macroquad::main("Engram")]
 async fn main() -> Result<(), std::io::Error> {
+    let mut audio = AudioOutput::new();
     let rom = file_dialog();
     let cartridge = Cartridge::load(rom)?;
     let mut gameboy = GameBoy::boot(cartridge);
@@ -60,6 +62,10 @@ async fn main() -> Result<(), std::io::Error> {
 
         if is_key_pressed(KeyCode::O) {
             get_screen_data().export_png("screenshot.png");
+        }
+
+        for sample in gameboy.cpu.bus.memory.apu.sample_buffer.drain(..) {
+            let _ = audio.producer.push(sample);
         }
 
         fps_lock(frame_start_time).await;

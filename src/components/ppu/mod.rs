@@ -127,7 +127,7 @@ pub struct PPU {
     pub vram: VRam,
     pub oam: Vec<u8>,
     pub ly: u8, //scanline
-    pub lyc: u8,
+    lyc: u8,
     pub lcdc: u8,
     pub scy: u8,
     pub scx: u8,
@@ -136,13 +136,13 @@ pub struct PPU {
     pub monochrome_color_ram: [u8; 2],
     pub wx: u8,
     pub wy: u8,
-    pub window_line: u8,
+    window_line: u8,
     pub stat: u8,
-    pub stat_interrupt_line: bool,
+    stat_interrupt_line: bool,
     pub frame_ready: bool,
     pub bgpi: u8,
     pub obpi: u8,
-    pub opri: u8,
+    opri: u8,
     pub bg_palette_ram: [u8; 64],
     pub obj_palette_ram: [u8; 64],
     pub current_mode: PPUMode,
@@ -444,7 +444,7 @@ impl PPU {
     }
 
     // Future reference: https://alfaexploit.com/en/posts/gameboy_dev04/
-    pub fn update_stat_interrupt_line(&mut self, interrupt_flag: &mut u8) {
+    fn update_stat_interrupt_line(&mut self, interrupt_flag: &mut u8) {
         let mode: PPUMode = self.current_mode();
         let interrupt_line = mode == PPUMode::HBlank && (self.stat & 0x08) != 0
             || (mode == PPUMode::VBlank && (self.stat & 0x10) != 0)
@@ -458,7 +458,7 @@ impl PPU {
         self.stat_interrupt_line = interrupt_line;
     }
 
-    pub fn write_lcdc(&mut self, value: u8) {
+    fn write_lcdc(&mut self, value: u8) {
         let lcd_was_on = self.lcdc & 0x80 != 0;
         self.lcdc = value;
         if lcd_was_on && self.lcdc & 0x80 == 0 {
@@ -470,21 +470,21 @@ impl PPU {
         }
     }
 
-    pub fn read_color_palette_index(&self, palette: ColorPaletteRegisterType) -> u8 {
+    fn read_color_palette_index(&self, palette: ColorPaletteRegisterType) -> u8 {
         match palette {
             ColorPaletteRegisterType::Background => self.bgpi & 0x3F,
             ColorPaletteRegisterType::Object => self.obpi & 0x3F,
         }
     }
 
-    pub fn read_color_palette_register(&self, palette: ColorPaletteRegisterType) -> u8 {
+    fn read_color_palette_register(&self, palette: ColorPaletteRegisterType) -> u8 {
         match palette {
             ColorPaletteRegisterType::Background => self.bgpi | 0x40,
             ColorPaletteRegisterType::Object => self.obpi | 0x40,
         }
     }
 
-    pub fn read_color_palette_data(&self, palette: ColorPaletteRegisterType) -> u8 {
+    fn read_color_palette_data(&self, palette: ColorPaletteRegisterType) -> u8 {
         match palette {
             ColorPaletteRegisterType::Background => {
                 let index = (self.read_color_palette_index(palette)) as usize;
@@ -497,7 +497,7 @@ impl PPU {
         }
     }
 
-    pub fn write_color_palette_data(&mut self, value: u8, palette: ColorPaletteRegisterType) {
+    fn write_color_palette_data(&mut self, value: u8, palette: ColorPaletteRegisterType) {
         match palette {
             ColorPaletteRegisterType::Background => {
                 let index = (self.read_color_palette_index(palette)) as usize;
@@ -512,7 +512,7 @@ impl PPU {
         self.increment_color_palette_index(palette);
     }
 
-    pub fn increment_color_palette_index(&mut self, palette: ColorPaletteRegisterType) {
+    fn increment_color_palette_index(&mut self, palette: ColorPaletteRegisterType) {
         let selected_palette = match palette {
             ColorPaletteRegisterType::Background => &mut self.bgpi,
             ColorPaletteRegisterType::Object => &mut self.obpi,
@@ -521,6 +521,72 @@ impl PPU {
         if *selected_palette & 0x80 != 0 {
             let incremented_address = ((*selected_palette & 0x3F) + 1) % 64;
             *selected_palette = *selected_palette & 0x80 | incremented_address;
+        }
+    }
+
+    pub fn read_register(&self, address: u16) -> u8 {
+        match address {
+            0xFF40 => self.lcdc,
+            0xFF41 => {
+                let lcd_on = self.lcdc & 0x80 != 0;
+                let mode = if lcd_on { self.current_mode() as u8 } else { 0 };
+                let equal = ((self.ly == self.lyc) as u8) << 2;
+                0x80 | self.stat | equal | mode
+            }
+            0xFF42 => self.scy,
+            0xFF43 => self.scx,
+            0xFF44 => self.ly,
+            0xFF45 => self.lyc,
+            0xFF46 => self.oam_dma,
+            0xFF47 => self.bgp,
+            0xFF48 => self.monochrome_color_ram[0],
+            0xFF49 => self.monochrome_color_ram[1],
+            0xFF4A => self.wy,
+            0xFF4B => self.wx,
+            0xFF68 if self.is_cgb => {
+                self.read_color_palette_register(ColorPaletteRegisterType::Background)
+            }
+            0xFF69 if self.is_cgb => {
+                self.read_color_palette_data(ColorPaletteRegisterType::Background)
+            }
+            0xFF6A if self.is_cgb => {
+                self.read_color_palette_register(ColorPaletteRegisterType::Object)
+            }
+            0xFF6B if self.is_cgb => self.read_color_palette_data(ColorPaletteRegisterType::Object),
+            0xFF6C if self.is_cgb => self.opri & 0x01,
+            _ => 0xFF,
+        }
+    }
+
+    pub fn write_register(&mut self, address: u16, value: u8, interrupt_flag: &mut u8) {
+        match address {
+            0xFF40 => self.write_lcdc(value),
+            0xFF41 => {
+                self.stat = value & 0x78;
+                self.update_stat_interrupt_line(interrupt_flag);
+            }
+            0xFF42 => self.scy = value,
+            0xFF43 => self.scx = value,
+            0xFF44 => {}
+            0xFF45 => {
+                self.lyc = value;
+                self.update_stat_interrupt_line(interrupt_flag);
+            }
+            0xFF47 => self.bgp = value,
+            0xFF48 => self.monochrome_color_ram[0] = value,
+            0xFF49 => self.monochrome_color_ram[1] = value,
+            0xFF4A => self.wy = value,
+            0xFF4B => self.wx = value,
+            0xFF68 if self.is_cgb => self.bgpi = value,
+            0xFF69 if self.is_cgb => {
+                self.write_color_palette_data(value, ColorPaletteRegisterType::Background)
+            }
+            0xFF6A if self.is_cgb => self.obpi = value,
+            0xFF6B if self.is_cgb => {
+                self.write_color_palette_data(value, ColorPaletteRegisterType::Object)
+            }
+            0xFF6C if self.is_cgb => self.opri = value,
+            _ => {}
         }
     }
 }
