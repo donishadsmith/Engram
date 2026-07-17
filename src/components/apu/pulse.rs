@@ -1,3 +1,5 @@
+// https://gbdev.io/pandocs/Power_Up_Sequence.html
+
 #[derive(Clone, Copy)]
 #[repr(u8)]
 enum DutyCycle {
@@ -63,6 +65,18 @@ struct Envelope {
     timer: u8,
 }
 
+impl Envelope {
+    fn new() -> Self {
+        Self {
+            initial_volume: 0,
+            direction: EnvelopeDirection::Decrement,
+            current_volume: 0,
+            period: 0,
+            timer: 0,
+        }
+    }
+}
+
 struct Sweep {
     pace: u8,
 }
@@ -74,12 +88,43 @@ pub struct PulseChannel {
     frequency_timer: u16,
     length_timer: u8,
     length_enabled: bool,
-    frequency_period: u8,
+    frequency_period: u16,
     envelope: Envelope,
     sweep: Option<Sweep>,
 }
 
 impl PulseChannel {
+    fn base() -> Self {
+        Self {
+            enabled: false,
+            duty: DutyCycle::Duty12,
+            duty_position: 0,
+            frequency_timer: 0,
+            length_timer: 0,
+            length_enabled: false,
+            frequency_period: 0,
+            envelope: Envelope::new(),
+            sweep: None,
+        }
+    }
+
+    pub fn new_channel1() -> Self {
+        let mut channel = Self::base();
+        channel.sweep = Some(Sweep { pace: 0 });
+        channel.write_nrx1(0xBF);
+        channel.write_nrx2(0xF3);
+
+        channel
+    }
+
+    pub fn new_channel2() -> Self {
+        let mut channel = Self::base();
+        channel.write_nrx1(0x3F);
+        channel.write_nrx2(0x00);
+
+        channel
+    }
+
     pub fn read_nrx1(&self) -> u8 {
         (self.duty as u8) | 0x3F
     }
@@ -105,5 +150,39 @@ impl PulseChannel {
         if value & 0xF8 == 0 {
             self.enabled = false;
         }
+    }
+
+    pub fn read_nrx3(&self) -> u8 {
+        0xFF
+    }
+
+    pub fn write_nrx3(&mut self, value: u8) {
+        self.frequency_period = (self.frequency_period & 0x0700) | value as u16;
+    }
+
+    pub fn read_nrx4(&self) -> u8 {
+        if self.length_enabled { 0xFF } else { 0xBF }
+    }
+
+    pub fn write_nrx4(&mut self, value: u8) {
+        self.frequency_period = (self.frequency_period & 0x00FF) | (((value & 0x07) as u16) << 8);
+        self.length_enabled = (value & 0x40) != 0;
+
+        if (value >> 7) & 0x01 == 1 {
+            self.enabled = self.dac_enabled();
+
+            if self.length_timer == 0 {
+                self.length_timer = 64;
+            }
+
+            self.frequency_timer = (2048 - self.frequency_period) * 4;
+            self.envelope.timer = self.envelope.period;
+            self.envelope.current_volume = self.envelope.initial_volume;
+        }
+    }
+
+    fn dac_enabled(&self) -> bool {
+        self.envelope.initial_volume != 0
+            || matches!(self.envelope.direction, EnvelopeDirection::Increment)
     }
 }
