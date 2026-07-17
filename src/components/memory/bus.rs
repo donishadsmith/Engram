@@ -254,12 +254,12 @@ impl AddressBus for Bus {
             0xFF00 => self.memory.joypad.read(),
             0xFF01 => self.memory.serial_data,
             0xFF02 => self.memory.serial_control | 0x7E,
-            0xFF04..0xFF07 => self.memory.timer.read_register(address),
+            0xFF04..=0xFF07 => self.memory.timer.read_register(address),
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
             0xFEA0..=0xFEFF => 0xFF,
             0xFF10..=0xFF26 => self.memory.apu.read_register(address),
             0xFF30..=0xFF3F => self.memory.apu.read_wram(address),
-            0xFF40..0xFF4B | 0xFF68..=0xFF6C => self.memory.ppu.read_register(address),
+            0xFF40..=0xFF4B | 0xFF68..=0xFF6C => self.memory.ppu.read_register(address),
             0xFF4D if self.is_cgb() => self.memory.key_register,
             0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank | 0xFE,
             0xFF51..=0xFF54 if self.is_cgb() => 0xFF,
@@ -296,7 +296,7 @@ impl AddressBus for Bus {
                     self.memory.interrupt_flag |= InterruptMode::Serial.mask();
                 }
             }
-            0xFF04..0xFF07 => self.memory.timer.write_register(address, value),
+            0xFF04..=0xFF07 => self.memory.timer.write_register(address, value),
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
             0xFF10..=0xFF25 => self.memory.apu.write_register(address, value),
