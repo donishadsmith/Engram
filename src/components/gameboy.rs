@@ -56,7 +56,11 @@ impl GameBoy {
             );
 
             let increase_apu_div_counter = self.cpu.bus.memory.timer.increase_div_apu_counter;
-            self.cpu.bus.memory.apu.tick(increase_apu_div_counter);
+            self.cpu
+                .bus
+                .memory
+                .apu
+                .tick(ppu_t_cycles, increase_apu_div_counter);
 
             remaining_cycles = remaining_cycles.saturating_sub(cpu_t_cycles);
         }

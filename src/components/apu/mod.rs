@@ -146,15 +146,12 @@ impl APU {
         self.channel3.ram[(address - 0xFF30) as usize] = value
     }
 
-    pub fn tick(&mut self, increase_apu_div_counter: bool) {
+    pub fn tick(&mut self, t_cycles: u32, increase_apu_div_counter: bool) {
         let frame_sequencer_step = if increase_apu_div_counter {
             Some(self.frame_sequencer.tick())
         } else {
             None
         };
-
-        self.channel1.tick();
-        self.channel2.tick();
 
         if let Some(frame_sequencer_step) = frame_sequencer_step {
             self.channel1.tick_length(frame_sequencer_step.length);
@@ -164,11 +161,15 @@ impl APU {
             self.channel1.tick_sweep(frame_sequencer_step.sweep);
         }
 
-        self.sample_counter += 1;
-        if self.sample_counter >= 87 {
-            self.sample_counter = 0;
-            let sample = self.channel2.sample() as f32 / 15.0;
-            self.sample_buffer.push(sample);
+        for _ in 0..t_cycles {
+            self.channel1.tick();
+            self.channel2.tick();
+            self.sample_counter += 1;
+            if self.sample_counter >= 87 {
+                self.sample_counter = 0;
+                let sample = self.channel2.sample() as f32 / 15.0;
+                self.sample_buffer.push(sample);
+            }
         }
     }
 

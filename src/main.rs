@@ -8,13 +8,12 @@
 #![windows_subsystem = "windows"]
 
 use engram::{
-    audio::AudioOutput,
+    audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     components::{gameboy::GameBoy, rom::cartridge::Cartridge},
     render::Screen,
-    utils::{file_dialog, fps_lock},
+    utils::file_dialog,
 };
 use macroquad::prelude::*;
-use std::time::Instant;
 
 const KEYMAP: [KeyCode; 8] = [
     KeyCode::W,
@@ -36,8 +35,6 @@ async fn main() -> Result<(), std::io::Error> {
     let mut screen = Screen::new();
 
     loop {
-        let frame_start_time = Instant::now();
-
         if is_key_pressed(KeyCode::Escape) {
             gameboy.battery_save()?;
             break;
@@ -52,7 +49,13 @@ async fn main() -> Result<(), std::io::Error> {
         }
 
         let pressed = KEYMAP.map(is_key_down);
-        gameboy.run(pressed);
+
+        while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
+            gameboy.run(pressed);
+            for sample in gameboy.cpu.bus.memory.apu.sample_buffer.drain(..) {
+                let _ = audio.producer.push(sample);
+            }
+        }
 
         if gameboy.take_frame() {
             screen.update(&gameboy.cpu.bus.memory.ppu);
@@ -64,11 +67,7 @@ async fn main() -> Result<(), std::io::Error> {
             get_screen_data().export_png("screenshot.png");
         }
 
-        for sample in gameboy.cpu.bus.memory.apu.sample_buffer.drain(..) {
-            let _ = audio.producer.push(sample);
-        }
-
-        fps_lock(frame_start_time).await;
+        next_frame().await;
     }
 
     Ok(())
