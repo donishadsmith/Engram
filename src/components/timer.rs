@@ -1,6 +1,6 @@
 // Very clear instructions: https://github.com/Ashiepaws/GBEDG/blob/master/timers/index.md
 
-use crate::components::cpu::core::InterruptMode;
+use crate::components::cpu::interrupts::InterruptMode;
 
 pub struct Timer {
     pub div: u16,

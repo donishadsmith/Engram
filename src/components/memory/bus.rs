@@ -2,9 +2,9 @@
 // https://gekkio.fi/files/gb-docs/gbctr.pdf
 use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
-    cpu::core::InterruptMode,
+    cpu::interrupts::InterruptMode,
     memory::memory::Memory,
-    ppu::ColorPaletteRegisterType,
+    ppu::palette::ColorPaletteRegisterType,
     rom::cartridge::{CGBFlag, Cartridge},
 };
 
@@ -261,8 +261,8 @@ impl AddressBus for Bus {
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
             0xFEA0..=0xFEFF => 0xFF,
             0xFF0F => self.memory.interrupt_flag | 0xE0,
-            //0xFF10..=0xFF26 => self.memory.apu.read((address - 0xFF10) as usize),
-            0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize],
+            //0xFF10..=0xFF26 => Audio,
+            0xFF30..=0xFF3F => self.memory.apu.read_wram(address),
             0xFF40 => self.memory.ppu.lcdc,
             0xFF41 => {
                 let lcd_on = self.memory.ppu.lcdc & 0x80 != 0;
@@ -314,10 +314,7 @@ impl AddressBus for Bus {
             0xFF70 if self.is_cgb() => (self.memory.svbk_register | 0xF8) & 0x07,
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
             0xFFFF => self.memory.interrupt_enable,
-            _ => {
-                eprintln!("The following address is not readable: {:04x}", address);
-                0xFF
-            }
+            _ => 0xFF,
         }
     }
 
@@ -346,8 +343,8 @@ impl AddressBus for Bus {
             0xFF07 => self.memory.timer.tac = value & 0x07,
             0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.memory.interrupt_flag = value & 0x1F,
-            0xFF10..=0xFF26 => self.memory.apu.write(address, value),
-            0xFF30..=0xFF3F => self.memory.apu.wave_ram[(address - 0xFF30) as usize] = value,
+            //0xFF10..=0xFF26 => Audio,
+            0xFF30..=0xFF3F => self.memory.apu.write_wram(address, value),
             0xFF40 => self.memory.ppu.write_lcdc(value),
             0xFF41 => {
                 self.memory.ppu.stat = value & 0x78;
@@ -400,7 +397,7 @@ impl AddressBus for Bus {
             }
             0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize] = value,
             0xFFFF => self.memory.interrupt_enable = value,
-            _ => eprintln!("The following address is not writable: {:04x}", address),
+            _ => {}
         }
     }
 

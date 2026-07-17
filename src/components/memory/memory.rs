@@ -17,7 +17,6 @@ MemoryMap
 - 8 kb video ram/ 16 kb for gameboy color
 - 127 bytes of high ram - LD instructions
 - 160 bytes of oam - sprites
-
 */
 
 pub struct Memory {

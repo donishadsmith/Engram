@@ -1,13 +1,12 @@
 use crate::components::{
     cpu::{
-        core::{
-            ArithmeticOperation, BitwiseOperation, ByteOps8, CPU, FlagDelta, FlagType,
-            MergeByteOps, Register8Bits, Register16Bits, StatusFlag, half_carry_add,
-            half_carry_sub,
-        },
+        CPU, FlagDelta, FlagType, StatusFlag,
+        alu::{ArithmeticOperation, BitwiseOperation, half_carry_add, half_carry_sub},
         cycles::{PREFIX_CYCLES, UNPREFIX_CYCLES},
+        registers::{Register8Bits, Register16Bits},
     },
     memory::bus::AddressBus,
+    utils::{ByteOps8, MergeByteOps},
 };
 
 #[derive(PartialEq)]
@@ -917,7 +916,7 @@ impl AddressBus for TestBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::cpu::core::Registers;
+    use crate::components::cpu::registers::Registers;
 
     use serde::Deserialize;
 

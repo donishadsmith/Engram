@@ -1,23 +1,29 @@
+pub mod noise;
+pub mod pulse;
+pub mod wave;
+
+use crate::components::apu::wave::WaveChannel;
+
 // https://jsgroth.dev/blog/posts/gb-rewrite-apu/
 // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
-
+// https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence
 pub enum AudioPan {
     Left,
     Right,
 }
 
 #[derive(Clone, Copy)]
-pub enum AudioChannel {
+enum AudioChannel {
     Channel1,
     Channel2,
     Channel3,
     Channel4,
 }
 
-pub struct StereoVolume {
-    pub left: u8,
-    pub right: u8,
+struct StereoVolume {
+    left: u8,
+    right: u8,
 }
 
 pub struct GlobalControl {
@@ -27,11 +33,19 @@ pub struct GlobalControl {
 }
 
 impl GlobalControl {
-    pub fn audio_on(&self) -> bool {
+    fn new() -> Self {
+        Self {
+            nr50: 0x77,
+            nr51: 0xF3,
+            nr52: 0xF1,
+        }
+    }
+
+    fn audio_on(&self) -> bool {
         (self.nr52 & 0x80) != 0
     }
 
-    pub fn channel_on(&self, channel: AudioChannel) -> bool {
+    fn channel_on(&self, channel: AudioChannel) -> bool {
         let mask = match channel {
             AudioChannel::Channel1 => 0x01,
             AudioChannel::Channel2 => 0x02,
@@ -42,7 +56,7 @@ impl GlobalControl {
         self.audio_on() && (self.nr52 & mask) != 0
     }
 
-    pub fn panned_left(&self, channel: AudioChannel) -> bool {
+    fn panned_left(&self, channel: AudioChannel) -> bool {
         let bit = match channel {
             AudioChannel::Channel1 => 4,
             AudioChannel::Channel2 => 5,
@@ -53,7 +67,7 @@ impl GlobalControl {
         (self.nr51 >> bit) & 1 != 0
     }
 
-    pub fn panned_right(&self, channel: AudioChannel) -> bool {
+    fn panned_right(&self, channel: AudioChannel) -> bool {
         let bit = match channel {
             AudioChannel::Channel1 => 0,
             AudioChannel::Channel2 => 1,
@@ -65,7 +79,7 @@ impl GlobalControl {
     }
 
     // Just gonna ignore VIN
-    pub fn volume(&self) -> StereoVolume {
+    fn volume(&self) -> StereoVolume {
         StereoVolume {
             left: (self.nr50 >> 4) & 0x07,
             right: self.nr50 & 0x07,
@@ -73,44 +87,62 @@ impl GlobalControl {
     }
 }
 
-pub struct FrameSequencerStep {
-    length_counter: bool,
+struct FrameSequencerStep {
+    length: bool,
     sweep: bool,
     envelope: bool,
 }
 
 // tick at 512 hz when div bit for goes from 1 -> 0
-pub struct FrameSequencer {
+struct FrameSequencer {
     step: u8,
 }
 
 impl FrameSequencer {
+    fn new() -> Self {
+        Self { step: 0 }
+    }
+
     fn tick(&mut self) -> FrameSequencerStep {
         let step = self.step;
         self.step = (self.step + 1) & 0x07;
 
         FrameSequencerStep {
-            length_counter: step & 0x01 == 0,
+            length: step & 0x01 == 0,
             sweep: step == 0x02 || step == 0x06,
             envelope: step == 0x07,
         }
     }
 }
 
-pub struct PulseChannel {}
-
 pub struct APU {
-    pub wave_ram: Vec<u8>,
+    pub global_control: GlobalControl,
+    pub channel3: WaveChannel,
+    pub frame_sequencer: FrameSequencer,
 }
 
 impl APU {
     pub fn new() -> Self {
         Self {
-            wave_ram: vec![0u8; 16],
+            global_control: GlobalControl::new(),
+            channel3: WaveChannel::new(),
+            frame_sequencer: FrameSequencer::new(),
         }
     }
 
-    pub fn read(&self, address: u16) {}
+    pub fn read_wram(&self, address: u16) -> u8 {
+        self.channel3.ram[(address - 0xFF30) as usize]
+    }
 
-    pub fn write(&mut self, address: u16, value: u8) {}
+    pub fn write_wram(&mut self, address: u16, value: u8) {
+        self.channel3.ram[(address - 0xFF30) as usize] = value
+    }
+
+    pub fn tick(&mut self, increase_apu_div_counter: bool) {
+        let frame_sequencer_step = if increase_apu_div_counter {
+            Some(self.frame_sequencer.tick())
+        } else {
+            None
+        };
+    }
 }

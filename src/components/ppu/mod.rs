@@ -1,3 +1,18 @@
+pub mod attributes;
+pub mod palette;
+pub mod sprites;
+pub mod vram;
+
+use crate::components::{
+    cpu::interrupts::InterruptMode,
+    ppu::{
+        attributes::ColorBackgroundAttributes,
+        palette::{ColorPaletteRegisterType, DMG_SHADES, cram_color},
+        sprites::SpriteAttribute,
+        vram::VRam,
+    },
+    utils::ByteOps8,
+};
 /*
     https://github.com/Ashiepaws/GBEDG/blob/master/ppu/index.md
     https://blog.tigris.fr/2019/09/15/writing-an-emulator-the-first-pixel/
@@ -41,114 +56,10 @@
     For color, each pallette is 8 bytes and a each specific color uses 2 bytes
 */
 
-use crate::components::cpu::core::{ByteOps8, InterruptMode};
-
 pub const SCREEN_WIDTH: usize = 160;
 pub const SCREEN_HEIGHT: usize = 144;
 
 const DOTS_PER_SCANLINE: u32 = 456;
-
-const DMG_SHADES: [u16; 4] = [0x7FFF, 0x56B5, 0x294A, 0x0000];
-
-#[derive(Clone, Copy)]
-pub enum ColorPaletteRegisterType {
-    Background,
-    Object,
-}
-
-pub struct VRam {
-    pub bank: u8,
-    bank_size: u16,
-    pub memory: Vec<u8>,
-}
-
-impl VRam {
-    fn new(is_cgb: bool) -> Self {
-        Self {
-            bank: 0,
-            bank_size: 8 * 1024,
-            memory: vec![0u8; if is_cgb { 0x4000 } else { 0x2000 }],
-        }
-    }
-
-    fn index_adjustment(&self, address: u16) -> usize {
-        let index = (address - 0x8000) as usize;
-        let offset = ((self.bank as u16) * self.bank_size) as usize;
-
-        index + offset
-    }
-
-    pub fn read(&self, address: u16) -> u8 {
-        let index = self.index_adjustment(address);
-        self.memory[index]
-    }
-
-    pub fn write(&mut self, address: u16, value: u8) {
-        let index = self.index_adjustment(address);
-        self.memory[index] = value;
-    }
-
-    pub fn bank_swap(&mut self, value: u8) {
-        self.bank = value & 0x01;
-    }
-
-    pub fn read_banked(&self, bank: usize, address: u16) -> u8 {
-        self.memory[(address - 0x8000) as usize + bank * self.bank_size as usize]
-    }
-}
-struct ColorBackgroundAttributes {
-    y_flip: bool,
-    x_flip: bool,
-    bank: usize,
-    color_palette: u8,
-}
-
-impl ColorBackgroundAttributes {
-    fn from_byte(byte: u8) -> Self {
-        Self {
-            y_flip: byte & 0x40 != 0,
-            x_flip: byte & 0x20 != 0,
-            bank: ((byte & 0x08) >> 3) as usize,
-            color_palette: byte & 0x07,
-        }
-    }
-}
-
-struct SpriteAttribute {
-    bank: usize,
-    oam_index: usize,
-    position_y: i16,
-    position_x: i16,
-    tile_index: u8,
-    priority: bool,
-    flip_y: bool,
-    flip_x: bool,
-    palette_number: u8,
-}
-
-impl SpriteAttribute {
-    pub fn from_oam(oam_index: usize, bytes: &[u8], is_cgb: bool) -> Self {
-        Self {
-            bank: if is_cgb {
-                ((bytes[3] & 0x08) >> 3) as usize
-            } else {
-                0
-            },
-            oam_index,
-            position_y: bytes[0] as i16 - 16,
-            position_x: bytes[1] as i16 - 8,
-            tile_index: bytes[2],
-            priority: (bytes[3] & 0x80) == 0,
-            flip_y: (bytes[3] & 0x40) != 0,
-            flip_x: (bytes[3] & 0x20) != 0,
-            palette_number: if !is_cgb {
-                bytes[3] & 0x10
-            } else {
-                bytes[3] & 0x07
-            },
-        }
-    }
-}
 
 struct LCDC {
     pub enable_lcd: bool,
@@ -612,12 +523,4 @@ impl PPU {
             *selected_palette = *selected_palette & 0x80 | incremented_address;
         }
     }
-}
-
-fn cram_color(palette_ram: &[u8; 64], palette: u8, color_index: u8) -> u16 {
-    let base = palette as usize * 8 + color_index as usize * 2;
-    let color_data_low = palette_ram[base] as u16;
-    let color_data_high = (palette_ram[base + 1] as u16) << 8;
-
-    color_data_high | color_data_low
 }
