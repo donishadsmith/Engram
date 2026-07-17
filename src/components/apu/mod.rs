@@ -167,7 +167,7 @@ impl APU {
             self.sample_counter += 1;
             if self.sample_counter >= 87 {
                 self.sample_counter = 0;
-                let sample = self.channel2.sample() as f32 / 15.0;
+                let sample = (self.channel1.sample() as f32 + self.channel2.sample() as f32) / 30.0;
                 self.sample_buffer.push(sample);
             }
         }

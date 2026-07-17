@@ -1,6 +1,6 @@
 # Engram
 
-A gameboy emulator color that is still a work-in-progress and still needs an APU.
+A work-in-progress Game Boy and Game Boy Color emulator written in Rust. APU partially implemented but the pulse channels work so melodies and pitched effects play.
 
 <p align="center">
   <img src="assets/shantae.png" width="250" height="250">
