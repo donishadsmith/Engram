@@ -159,16 +159,23 @@ impl APU {
         if let Some(frame_sequencer_step) = frame_sequencer_step {
             self.channel1.tick_length(frame_sequencer_step.length);
             self.channel2.tick_length(frame_sequencer_step.length);
+            self.channel3.tick_length(frame_sequencer_step.length);
+
             self.channel1.tick_envelope(frame_sequencer_step.envelope);
             self.channel2.tick_envelope(frame_sequencer_step.envelope);
+
             self.channel1.tick_sweep(frame_sequencer_step.sweep);
         }
 
         for _ in 0..t_cycles {
             self.channel1.tick();
             self.channel2.tick();
+            self.channel3.tick();
 
-            let sample = (self.channel1.sample() as f64 + self.channel2.sample() as f64) / 30.0;
+            let sample = (self.channel1.sample() as f64
+                + self.channel2.sample() as f64
+                + self.channel3.sample() as f64)
+                / 45.0;
             self.low_pass_filter.collect_sample(sample);
 
             self.sample_counter += 1;
@@ -191,6 +198,11 @@ impl APU {
             0xFF17 => self.channel2.read_nrx2(),
             0xFF18 => self.channel2.read_nrx3(),
             0xFF19 => self.channel2.read_nrx4(),
+            0xFF1A => self.channel3.read_nr30(),
+            0xFF1B => self.channel3.read_nr31(),
+            0xFF1C => self.channel3.read_nr32(),
+            0xFF1D => self.channel3.read_nr33(),
+            0xFF1E => self.channel3.read_nr34(),
             0xFF24 => self.global_control.nr50,
             0xFF25 => self.global_control.nr51,
             0xFF26 => self.read_nr52(),
@@ -214,6 +226,11 @@ impl APU {
             0xFF17 => self.channel2.write_nrx2(value),
             0xFF18 => self.channel2.write_nrx3(value),
             0xFF19 => self.channel2.write_nrx4(value),
+            0xFF1A => self.channel3.write_nr30(value),
+            0xFF1B => self.channel3.write_nr31(value),
+            0xFF1C => self.channel3.write_nr32(value),
+            0xFF1D => self.channel3.write_nr33(value),
+            0xFF1E => self.channel3.write_nr34(value),
             0xFF26 => self.write_nr52(value),
             _ => {}
         }
@@ -224,11 +241,17 @@ impl APU {
         if self.global_control.audio_on() {
             value |= 0x80;
         }
+
         if self.channel1.enabled {
             value |= 0x01;
         }
+
         if self.channel2.enabled {
             value |= 0x02;
+        }
+
+        if self.channel3.enabled {
+            value |= 0x04;
         }
 
         value
