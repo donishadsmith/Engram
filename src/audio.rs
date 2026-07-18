@@ -7,7 +7,8 @@ pub const AUDIO_TARGET_OCCUPANCY: usize = 4096;
 
 pub struct AudioOutput {
     pub producer: Producer<f32>,
-    stream: cpal::Stream,
+    _stream: cpal::Stream,
+    pub sample_rate: u32,
 }
 
 impl AudioOutput {
@@ -39,6 +40,10 @@ impl AudioOutput {
 
         stream.play().unwrap();
 
-        Self { producer, stream }
+        Self {
+            producer,
+            _stream: stream,
+            sample_rate: config.sample_rate(),
+        }
     }
 }

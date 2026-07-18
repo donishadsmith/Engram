@@ -1,8 +1,9 @@
+pub mod fir;
 pub mod noise;
 pub mod pulse;
 pub mod wave;
 
-use {pulse::PulseChannel, wave::WaveChannel};
+use {fir::LowPassFilter, pulse::PulseChannel, wave::WaveChannel};
 
 // https://jsgroth.dev/blog/posts/gb-rewrite-apu/
 // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
@@ -123,6 +124,7 @@ pub struct APU {
     pub frame_sequencer: FrameSequencer,
     sample_counter: u32,
     pub sample_buffer: Vec<f32>,
+    low_pass_filter: LowPassFilter,
 }
 
 impl APU {
@@ -135,6 +137,7 @@ impl APU {
             frame_sequencer: FrameSequencer::new(),
             sample_counter: 0,
             sample_buffer: Vec::new(),
+            low_pass_filter: LowPassFilter::new(),
         }
     }
 
@@ -146,7 +149,7 @@ impl APU {
         self.channel3.ram[(address - 0xFF30) as usize] = value
     }
 
-    pub fn tick(&mut self, t_cycles: u32, increase_apu_div_counter: bool) {
+    pub fn tick(&mut self, t_cycles: u32, cycles_per_sample: u32, increase_apu_div_counter: bool) {
         let frame_sequencer_step = if increase_apu_div_counter {
             Some(self.frame_sequencer.tick())
         } else {
@@ -164,11 +167,15 @@ impl APU {
         for _ in 0..t_cycles {
             self.channel1.tick();
             self.channel2.tick();
+
+            let sample = (self.channel1.sample() as f64 + self.channel2.sample() as f64) / 30.0;
+            self.low_pass_filter.collect_sample(sample);
+
             self.sample_counter += 1;
-            if self.sample_counter >= 87 {
+            if self.sample_counter >= cycles_per_sample {
                 self.sample_counter = 0;
-                let sample = (self.channel1.sample() as f32 + self.channel2.sample() as f32) / 30.0;
-                self.sample_buffer.push(sample);
+                self.sample_buffer
+                    .push(self.low_pass_filter.convolve() as f32);
             }
         }
     }

@@ -26,6 +26,8 @@ const KEYMAP: [KeyCode; 8] = [
     KeyCode::RightShift,
 ];
 
+const GB_CLOCK_SPEED: u32 = 4194304;
+
 #[macroquad::main("Engram")]
 async fn main() -> Result<(), std::io::Error> {
     let mut audio = AudioOutput::new();
@@ -33,6 +35,8 @@ async fn main() -> Result<(), std::io::Error> {
     let cartridge = Cartridge::load(rom)?;
     let mut gameboy = GameBoy::boot(cartridge);
     let mut screen = Screen::new();
+
+    let cycles_per_sample = GB_CLOCK_SPEED / audio.sample_rate;
 
     loop {
         if is_key_pressed(KeyCode::Escape) {
@@ -51,7 +55,7 @@ async fn main() -> Result<(), std::io::Error> {
         let pressed = KEYMAP.map(is_key_down);
 
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
-            gameboy.run(pressed);
+            gameboy.run(pressed, cycles_per_sample);
             for sample in gameboy.cpu.bus.memory.apu.sample_buffer.drain(..) {
                 let _ = audio.producer.push(sample);
             }

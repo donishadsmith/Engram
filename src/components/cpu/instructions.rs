@@ -40,8 +40,6 @@ where
         let opcode = self.registers.instruction_register.unwrap();
         let base = UNPREFIX_CYCLES[opcode as usize];
 
-        //println!("{:02x}", opcode);
-
         // https://izik1.github.io/gbops/
         // https://gekkio.fi/files/gb-docs/gbctr.pdf
         match opcode {
