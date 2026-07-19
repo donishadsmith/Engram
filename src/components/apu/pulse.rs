@@ -3,6 +3,8 @@
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 
+use crate::components::apu::sound_control::{Envelope, EnvelopeDirection, Length};
+
 #[derive(Clone, Copy)]
 #[repr(u8)]
 enum DutyCycle {
@@ -32,51 +34,6 @@ impl DutyCycle {
         };
 
         waveform[current_phase as usize]
-    }
-}
-
-#[derive(Clone, Copy)]
-#[repr(u8)]
-enum EnvelopeDirection {
-    Decrement = 0b00000000,
-    Increment = 0b00001000,
-}
-
-impl EnvelopeDirection {
-    fn from_register(value: u8) -> EnvelopeDirection {
-        match (value >> 3) & 0x01 {
-            0 => EnvelopeDirection::Decrement,
-            1 => EnvelopeDirection::Increment,
-            _ => unreachable!(),
-        }
-    }
-
-    fn update_volume(self, current_volume: &mut u8) {
-        match self {
-            EnvelopeDirection::Decrement if *current_volume > 0 => *current_volume -= 1,
-            EnvelopeDirection::Increment if *current_volume < 15 => *current_volume += 1,
-            _ => {}
-        }
-    }
-}
-
-struct Envelope {
-    initial_volume: u8,
-    direction: EnvelopeDirection,
-    current_volume: u8,
-    period: u8,
-    timer: u8,
-}
-
-impl Envelope {
-    fn new() -> Self {
-        Self {
-            initial_volume: 0,
-            direction: EnvelopeDirection::Decrement,
-            current_volume: 0,
-            period: 0,
-            timer: 0,
-        }
     }
 }
 
@@ -132,10 +89,9 @@ pub struct PulseChannel {
     duty: DutyCycle,
     duty_position: u8,
     frequency_timer: u16,
-    length_timer: u8,
-    length_enabled: bool,
+    pub length: Length,
     frequency_period: u16,
-    envelope: Envelope,
+    pub envelope: Envelope,
     sweep: Option<Sweep>,
 }
 
@@ -146,8 +102,7 @@ impl PulseChannel {
             duty: DutyCycle::Duty12,
             duty_position: 0,
             frequency_timer: 0,
-            length_timer: 0,
-            length_enabled: false,
+            length: Length::new(),
             frequency_period: 0,
             envelope: Envelope::new(),
             sweep: None,
@@ -176,7 +131,7 @@ impl PulseChannel {
     }
 
     pub fn write_nrx1(&mut self, value: u8) {
-        self.length_timer = 64 - (value & 0x3F);
+        self.length.write(value);
         self.duty = DutyCycle::from_register(value);
     }
 
@@ -185,9 +140,7 @@ impl PulseChannel {
     }
 
     pub fn write_nrx2(&mut self, value: u8) {
-        self.envelope.initial_volume = value >> 4;
-        self.envelope.direction = EnvelopeDirection::from_register(value);
-        self.envelope.period = value & 0x07;
+        self.envelope.set(value);
 
         if value & 0xF8 == 0 {
             self.enabled = false;
@@ -203,18 +156,18 @@ impl PulseChannel {
     }
 
     pub fn read_nrx4(&self) -> u8 {
-        if self.length_enabled { 0xFF } else { 0xBF }
+        self.length.read()
     }
 
     pub fn write_nrx4(&mut self, value: u8) {
         self.frequency_period = (self.frequency_period & 0x00FF) | (((value & 0x07) as u16) << 8);
-        self.length_enabled = (value & 0x40) != 0;
+        self.length.enabled = (value & 0x40) != 0;
 
         if (value >> 7) & 0x01 == 1 {
             self.enabled = self.dac_enabled();
 
-            if self.length_timer == 0 {
-                self.length_timer = 64;
+            if self.length.timer == 0 {
+                self.length.timer = 64;
             }
 
             self.frequency_timer = (2048 - self.frequency_period) * 4;
@@ -260,38 +213,6 @@ impl PulseChannel {
         if self.frequency_timer == 0 {
             self.frequency_timer = (2048 - self.frequency_period) * 4;
             self.duty_position = (self.duty_position + 1) & 0x07;
-        }
-    }
-
-    pub fn tick_length(&mut self, frame_sequencer_step_length: bool) {
-        if !frame_sequencer_step_length {
-            return;
-        }
-
-        if !(self.length_enabled && self.length_timer > 0) {
-            return;
-        }
-
-        self.length_timer -= 1;
-        if self.length_timer == 0 {
-            self.enabled = false
-        }
-    }
-
-    pub fn tick_envelope(&mut self, frame_sequencer_step_envelope: bool) {
-        if !frame_sequencer_step_envelope || self.envelope.period == 0 {
-            return;
-        }
-
-        if self.envelope.timer > 0 {
-            self.envelope.timer -= 1;
-        }
-
-        if self.envelope.timer == 0 {
-            self.envelope.timer = self.envelope.period;
-            self.envelope
-                .direction
-                .update_volume(&mut self.envelope.current_volume);
         }
     }
 

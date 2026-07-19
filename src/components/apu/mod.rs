@@ -1,9 +1,13 @@
 pub mod fir;
 pub mod noise;
 pub mod pulse;
+pub mod sound_control;
 pub mod wave;
 
-use {fir::LowPassFilter, pulse::PulseChannel, wave::WaveChannel};
+use {
+    crate::components::apu::noise::NoiseChannel, fir::LowPassFilter, pulse::PulseChannel,
+    wave::WaveChannel,
+};
 
 // https://jsgroth.dev/blog/posts/gb-rewrite-apu/
 // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
@@ -121,6 +125,7 @@ pub struct APU {
     pub channel1: PulseChannel,
     pub channel2: PulseChannel,
     pub channel3: WaveChannel,
+    pub channel4: NoiseChannel,
     pub frame_sequencer: FrameSequencer,
     sample_counter: u32,
     pub sample_buffer: Vec<f32>,
@@ -134,6 +139,7 @@ impl APU {
             channel1: PulseChannel::new_channel1(),
             channel2: PulseChannel::new_channel2(),
             channel3: WaveChannel::new(),
+            channel4: NoiseChannel::new(),
             frame_sequencer: FrameSequencer::new(),
             sample_counter: 0,
             sample_buffer: Vec::new(),
@@ -157,12 +163,14 @@ impl APU {
         };
 
         if let Some(frame_sequencer_step) = frame_sequencer_step {
-            self.channel1.tick_length(frame_sequencer_step.length);
-            self.channel2.tick_length(frame_sequencer_step.length);
-            self.channel3.tick_length(frame_sequencer_step.length);
+            self.channel1.length.tick(frame_sequencer_step.length);
+            self.channel2.length.tick(frame_sequencer_step.length);
+            self.channel3.length.tick(frame_sequencer_step.length);
+            self.channel4.length.tick(frame_sequencer_step.length);
 
-            self.channel1.tick_envelope(frame_sequencer_step.envelope);
-            self.channel2.tick_envelope(frame_sequencer_step.envelope);
+            self.channel1.envelope.tick(frame_sequencer_step.envelope);
+            self.channel2.envelope.tick(frame_sequencer_step.envelope);
+            self.channel4.envelope.tick(frame_sequencer_step.envelope);
 
             self.channel1.tick_sweep(frame_sequencer_step.sweep);
         }
@@ -171,11 +179,22 @@ impl APU {
             self.channel1.tick();
             self.channel2.tick();
             self.channel3.tick();
+            self.channel4.tick();
 
+            /*
+               Crystal
+
+               Pulse 1: Lead melody, sound effects (i.e., chimes, dings, thuds)
+               Pulse 2: Lower melody
+               Pulse 1 + 2: Cries, interestingly removing 1 channel barely changes cries
+               Wave: Bass
+               Noise: White noise effects (attack hits)
+            */
             let sample = (self.channel1.sample() as f64
                 + self.channel2.sample() as f64
-                + self.channel3.sample() as f64)
-                / 45.0;
+                + self.channel3.sample() as f64
+                + self.channel4.sample() as f64)
+                / 60.0;
             self.low_pass_filter.collect_sample(sample);
 
             self.sample_counter += 1;
@@ -198,6 +217,10 @@ impl APU {
             0xFF17 => self.channel2.read_nrx2(),
             0xFF18 => self.channel2.read_nrx3(),
             0xFF19 => self.channel2.read_nrx4(),
+            0xFF20 => self.channel4.read_nr41(),
+            0xFF21 => self.channel4.read_nr42(),
+            0xFF22 => self.channel4.read_nr43(),
+            0xFF23 => self.channel4.read_nr44(),
             0xFF1A => self.channel3.read_nr30(),
             0xFF1B => self.channel3.read_nr31(),
             0xFF1C => self.channel3.read_nr32(),
@@ -226,6 +249,10 @@ impl APU {
             0xFF17 => self.channel2.write_nrx2(value),
             0xFF18 => self.channel2.write_nrx3(value),
             0xFF19 => self.channel2.write_nrx4(value),
+            0xFF20 => self.channel4.write_nr41(value),
+            0xFF21 => self.channel4.write_nr42(value),
+            0xFF22 => self.channel4.write_nr43(value),
+            0xFF23 => self.channel4.write_nr44(value),
             0xFF1A => self.channel3.write_nr30(value),
             0xFF1B => self.channel3.write_nr31(value),
             0xFF1C => self.channel3.write_nr32(value),
@@ -252,6 +279,10 @@ impl APU {
 
         if self.channel3.enabled {
             value |= 0x04;
+        }
+
+        if self.channel4.enabled {
+            value |= 0x08;
         }
 
         value

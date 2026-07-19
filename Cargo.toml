@@ -8,7 +8,6 @@ macroquad = { version = "0.4", default-features = false }
 spin_sleep = "1.0"
 rfd = "0.17"
 chrono = "0.4"
-rand = "0.10"
 cpal = "0.18.1"
 rtrb = "0.3.4"
 
