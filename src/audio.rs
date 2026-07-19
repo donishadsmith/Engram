@@ -1,3 +1,7 @@
+// https://www.codeslow.com/2019/02/mod-player-in-rust-part-3-audio-and.html?m=1
+// https://www.reddit.com/r/rust/comments/14zyo47/trying_to_create_a_simple_audio_app_getting_weird/
+// https://users.rust-lang.org/t/data-access-in-audio-callback/82701
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::{Producer, RingBuffer};
 
