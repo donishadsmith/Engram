@@ -221,6 +221,7 @@ impl PPU {
         let bg_enable = self.is_cgb || lcdc_struct.enable_bg_and_window;
 
         let mut bg_indices = [0u8; SCREEN_WIDTH];
+        let mut bg_priority = [false; SCREEN_WIDTH];
         for pixel in 0..SCREEN_WIDTH {
             let background_x = self.scx.wrapping_add(pixel as u8);
             let window_origin = self.wx as i16 - 7;
@@ -288,6 +289,7 @@ impl PPU {
             };
 
             bg_indices[pixel] = color_index;
+            bg_priority[pixel] = attributes.priority;
 
             self.viewport[self.ly as usize][pixel] = if self.is_cgb {
                 cram_color(&self.bg_palette_ram, attributes.color_palette, color_index)
@@ -356,7 +358,11 @@ impl PPU {
                         DMG_SHADES[shade as usize]
                     };
 
-                    if sprite_attribute.priority || bg_indices[x as usize] == 0 {
+                    let bg_priority = bg_indices[x as usize] != 0
+                        && lcdc_struct.enable_bg_and_window
+                        && (!sprite_attribute.priority || bg_priority[x as usize]);
+
+                    if !bg_priority {
                         self.viewport[self.ly as usize][x as usize] = color;
                     }
                 }

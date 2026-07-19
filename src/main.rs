@@ -20,8 +20,8 @@ const KEYMAP: [KeyCode; 8] = [
     KeyCode::A,
     KeyCode::S,
     KeyCode::D,
-    KeyCode::N,
-    KeyCode::M,
+    KeyCode::K,
+    KeyCode::L,
     KeyCode::Enter,
     KeyCode::RightShift,
 ];

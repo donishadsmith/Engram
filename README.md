@@ -21,8 +21,8 @@ A Game Boy Color emulator written in Rust.
 | A           | Left   |
 | S           | Down   |
 | D           | Right  |
-| N           | A      |
-| M           | B      |
+| K           | A      |
+| L           | B      |
 | Enter       | Start  |
 | Right Shift | Select |
 | Esc         | Quit   |
