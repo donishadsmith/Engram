@@ -4,7 +4,6 @@ use crate::components::{
     bootloader::{CGB_BOOT, DMG_BOOTIX},
     cpu::interrupts::InterruptMode,
     memory::memory::Memory,
-    ppu::palette::ColorPaletteRegisterType,
     rom::cartridge::{CGBFlag, Cartridge},
 };
 

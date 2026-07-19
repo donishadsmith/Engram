@@ -9,16 +9,21 @@ use {
     wave::WaveChannel,
 };
 
+/*
+    Crystal
+
+    Pulse 1: Lead melody, sound effects (i.e., chimes, dings, thuds)
+    Pulse 2: Lower melody
+    Pulse 1 + 2: Cries, interestingly removing 1 channel barely changes cries
+    Wave: Bass
+    Noise: White noise effects (attack hits)
+*/
+
 // https://jsgroth.dev/blog/posts/gb-rewrite-apu/
 // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence
-pub enum AudioPan {
-    Left,
-    Right,
-}
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum AudioChannel {
     Channel1,
     Channel2,
@@ -50,17 +55,6 @@ impl GlobalControl {
         (self.nr52 & 0x80) != 0
     }
 
-    fn channel_on(&self, channel: AudioChannel) -> bool {
-        let mask = match channel {
-            AudioChannel::Channel1 => 0x01,
-            AudioChannel::Channel2 => 0x02,
-            AudioChannel::Channel3 => 0x04,
-            AudioChannel::Channel4 => 0x08,
-        };
-
-        self.audio_on() && (self.nr52 & mask) != 0
-    }
-
     fn panned_left(&self, channel: AudioChannel) -> bool {
         let bit = match channel {
             AudioChannel::Channel1 => 4,
@@ -83,11 +77,14 @@ impl GlobalControl {
         (self.nr51 >> bit) & 1 != 0
     }
 
-    // Just gonna ignore VIN
+    // Just gonna ignore VIN for now
     fn volume(&self) -> StereoVolume {
+        let left = (self.nr50 >> 4) & 0x07;
+        let right = self.nr50 & 0x07;
+
         StereoVolume {
-            left: (self.nr50 >> 4) & 0x07,
-            right: self.nr50 & 0x07,
+            left: if left == 0 { 1 } else { left },
+            right: if right == 0 { 1 } else { right },
         }
     }
 }
@@ -129,7 +126,8 @@ pub struct APU {
     pub frame_sequencer: FrameSequencer,
     sample_counter: u32,
     pub sample_buffer: Vec<f32>,
-    low_pass_filter: LowPassFilter,
+    low_pass_left: LowPassFilter,
+    low_pass_right: LowPassFilter,
 }
 
 impl APU {
@@ -143,7 +141,8 @@ impl APU {
             frame_sequencer: FrameSequencer::new(),
             sample_counter: 0,
             sample_buffer: Vec::new(),
-            low_pass_filter: LowPassFilter::new(),
+            low_pass_left: LowPassFilter::new(),
+            low_pass_right: LowPassFilter::new(),
         }
     }
 
@@ -181,27 +180,43 @@ impl APU {
             self.channel3.tick();
             self.channel4.tick();
 
-            /*
-               Crystal
+            let channel1_sample = self.channel1.sample() as f64;
+            let channel2_sample = self.channel2.sample() as f64;
+            let channel3_sample = self.channel3.sample() as f64;
+            let channel4_sample = self.channel4.sample() as f64;
 
-               Pulse 1: Lead melody, sound effects (i.e., chimes, dings, thuds)
-               Pulse 2: Lower melody
-               Pulse 1 + 2: Cries, interestingly removing 1 channel barely changes cries
-               Wave: Bass
-               Noise: White noise effects (attack hits)
-            */
-            let sample = (self.channel1.sample() as f64
-                + self.channel2.sample() as f64
-                + self.channel3.sample() as f64
-                + self.channel4.sample() as f64)
-                / 60.0;
-            self.low_pass_filter.collect_sample(sample);
+            use AudioChannel::*;
+            let mut sample_left = 0.0;
+            let mut sample_right = 0.0;
+            for (channel, sample) in [
+                (Channel1, channel1_sample),
+                (Channel2, channel2_sample),
+                (Channel3, channel3_sample),
+                (Channel4, channel4_sample),
+            ] {
+                if self.global_control.panned_left(channel) {
+                    sample_left += sample;
+                }
+                if self.global_control.panned_right(channel) {
+                    sample_right += sample;
+                }
+            }
+
+            let stereo_volume = self.global_control.volume();
+            sample_left *= (stereo_volume.left + 1) as f64 / 8.0;
+            sample_right *= (stereo_volume.right + 1) as f64 / 8.0;
+
+            self.low_pass_left.collect_sample(sample_left / 60.0);
+            self.low_pass_right.collect_sample(sample_right / 60.0);
 
             self.sample_counter += 1;
             if self.sample_counter >= cycles_per_sample {
                 self.sample_counter = 0;
+
                 self.sample_buffer
-                    .push(self.low_pass_filter.convolve() as f32);
+                    .push(self.low_pass_left.convolve() as f32);
+                self.sample_buffer
+                    .push(self.low_pass_right.convolve() as f32);
             }
         }
     }
@@ -226,8 +241,8 @@ impl APU {
             0xFF1C => self.channel3.read_nr32(),
             0xFF1D => self.channel3.read_nr33(),
             0xFF1E => self.channel3.read_nr34(),
-            0xFF24 => self.global_control.nr50,
-            0xFF25 => self.global_control.nr51,
+            0xFF24 => self.read_nr50(),
+            0xFF25 => self.read_nr51(),
             0xFF26 => self.read_nr52(),
             _ => 0xFF,
         }
@@ -258,9 +273,27 @@ impl APU {
             0xFF1C => self.channel3.write_nr32(value),
             0xFF1D => self.channel3.write_nr33(value),
             0xFF1E => self.channel3.write_nr34(value),
+            0xFF24 => self.write_nr50(value),
+            0xFF25 => self.write_nr51(value),
             0xFF26 => self.write_nr52(value),
             _ => {}
         }
+    }
+
+    fn read_nr50(&self) -> u8 {
+        self.global_control.nr50
+    }
+
+    fn write_nr50(&mut self, value: u8) {
+        self.global_control.nr50 = value;
+    }
+
+    fn read_nr51(&self) -> u8 {
+        self.global_control.nr51
+    }
+
+    fn write_nr51(&mut self, value: u8) {
+        self.global_control.nr51 = value;
     }
 
     fn read_nr52(&self) -> u8 {

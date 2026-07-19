@@ -2,8 +2,9 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::{Producer, RingBuffer};
 
 // Audibly tested constants that don't result in popping
-pub const AUDIO_BUFFER_CAPACITY: usize = 8192;
-pub const AUDIO_TARGET_OCCUPANCY: usize = 4096;
+const BASE_AUDIO_TARGET_OCCUPANCY: usize = 4096;
+pub const AUDIO_TARGET_OCCUPANCY: usize = BASE_AUDIO_TARGET_OCCUPANCY * 2;
+pub const AUDIO_BUFFER_CAPACITY: usize = AUDIO_TARGET_OCCUPANCY * 2;
 
 pub struct AudioOutput {
     pub producer: Producer<f32>,
@@ -27,9 +28,20 @@ impl AudioOutput {
                 config.into(),
                 move |data: &mut [f32], _| {
                     for frame in data.chunks_mut(channels) {
-                        let sample = consumer.pop().unwrap_or(0.0);
-                        for out in frame.iter_mut() {
-                            *out = sample;
+                        let left = consumer.pop().unwrap_or(0.0);
+                        let right = consumer.pop().unwrap_or(0.0);
+                        for (i, out) in frame.iter_mut().enumerate() {
+                            *out = match i {
+                                0 => {
+                                    if channels == 1 {
+                                        (left + right) * 0.5
+                                    } else {
+                                        left
+                                    }
+                                }
+                                1 => right,
+                                _ => 0.0,
+                            };
                         }
                     }
                 },
