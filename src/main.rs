@@ -5,15 +5,16 @@
    - https://github.com/smparsons/retroboy
 */
 
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 
 use engram::{
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     components::{gameboy::GameBoy, rom::cartridge::Cartridge},
     render::Screen,
-    utils::file_dialog,
 };
 use macroquad::prelude::*;
+use rfd::FileDialog;
+use std::path::PathBuf;
 
 const KEYMAP: [KeyCode; 8] = [
     KeyCode::W,
@@ -27,6 +28,13 @@ const KEYMAP: [KeyCode; 8] = [
 ];
 
 const GB_CLOCK_SPEED: u32 = 4194304;
+
+pub fn file_dialog() -> Option<PathBuf> {
+    FileDialog::new()
+        .set_title("Select a GameBoy ROM file")
+        .add_filter("GameBoy Roms", &["gb", "gbc"])
+        .pick_file()
+}
 
 #[macroquad::main("Engram")]
 async fn main() -> Result<(), std::io::Error> {
@@ -48,12 +56,8 @@ async fn main() -> Result<(), std::io::Error> {
             gameboy.battery_save()?;
         }
 
-        if is_key_pressed(KeyCode::P) {
-            gameboy.ppu_debug_dump();
-        }
-
         let pressed = KEYMAP.map(is_key_down);
-
+        println!("{}", audio.producer.slots());
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             gameboy.run(pressed, cycles_per_sample);
             for sample in gameboy.cpu.bus.memory.apu.sample_buffer.drain(..) {

@@ -5,20 +5,23 @@ use crate::components::apu::sound_control::{Envelope, EnvelopeDirection, Length}
 
 struct LFSR {
     width: u8,
-    value: u16,
+    register: u16,
 }
 
 impl LFSR {
     fn new() -> Self {
-        Self { width: 0, value: 0 }
+        Self {
+            width: 0,
+            register: 0x0000,
+        }
     }
 
     fn step(&mut self) {
-        let feedback = (self.value ^ (self.value >> 1)) & 1;
-        self.value >>= 1;
-        self.value = (self.value & !(1 << 14)) | (feedback << 14);
+        let feedback = (self.register ^ (self.register >> 1)) & 1;
+        self.register >>= 1;
+        self.register = (self.register & !(1 << 14)) | (feedback << 14);
         if self.width == 1 {
-            self.value = (self.value & !(1 << 6)) | (feedback << 6);
+            self.register = (self.register & !(1 << 6)) | (feedback << 6);
         }
     }
 }
@@ -90,7 +93,7 @@ impl NoiseChannel {
                 ((DIVISORS[self.clock_divider as usize]) as u32) << self.clock_shift;
             self.envelope.timer = self.envelope.period;
             self.envelope.current_volume = self.envelope.initial_volume;
-            self.lfsr.value = 0x7FFF;
+            self.lfsr.register = 0x7FFF;
         }
     }
 
@@ -115,7 +118,7 @@ impl NoiseChannel {
 
     pub fn sample(&self) -> u8 {
         if self.enabled {
-            (!(self.lfsr.value) as u8 & 0x01) * self.envelope.current_volume
+            (!(self.lfsr.register) as u8 & 0x01) * self.envelope.current_volume
         } else {
             0
         }
