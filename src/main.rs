@@ -57,7 +57,7 @@ async fn main() -> Result<(), std::io::Error> {
         }
 
         let pressed = KEYMAP.map(is_key_down);
-        println!("{}", audio.producer.slots());
+
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             gameboy.run(pressed, cycles_per_sample);
             for sample in gameboy.cpu.bus.memory.apu.sample_buffer.drain(..) {
