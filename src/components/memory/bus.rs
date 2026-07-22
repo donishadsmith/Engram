@@ -5,7 +5,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn read(&self, address: u32) {
+    pub fn read<T: From<u8>>(&self, address: u32) -> T {
         match address {
             // General Internal Memory
             0x00000000..=0x00003FFF => {}, // BIOS
@@ -38,11 +38,20 @@ impl Bus {
     // TODO: Map out all IO registers
     // Eventually, each IO component will have its own
     // read and write registers function to route to
-    fn read_register(&self, address: u32) {
+    fn read_register<T: From<u16>>(&self, address: u32) -> T {
+        match address {
+            0x4000000 => {}, // LCD Control (DISPCNT), 16 bit register (read + write)
+            0x4000002 => {}, // Undocumented 16 bit register (read + write)
+            0x4000004 => {}, // Stat & LYC, 16 bit register (read + write)
+            0x4000006 => {}, // LY, 16 bit, (VCOUNT), read only
+            0x4000008 => {}, // LCD Control
 
+        }
     }
 
-    pub fn write(&mut self) {}
+    pub fn write<T: Into<u32>>(&mut self, address: u32, value: T) {
+
+    }
 
     fn write_register() {}
 }
