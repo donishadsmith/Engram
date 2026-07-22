@@ -45,7 +45,6 @@ impl Bus {
             0x4000004 => {}, // Stat & LYC, 16 bit register (read + write)
             0x4000006 => {}, // LY, 16 bit, (VCOUNT), read only
             0x4000008 => {}, // LCD Control
-
         }
     }
 
