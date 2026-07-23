@@ -85,7 +85,61 @@ impl Bus {
 
             // DMA Transfer Channels
             0x40000BA => {}, // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
-            // Start back at 40000C6h
+            0x40000C6 => {}, // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
+            0x40000D2 => {}, // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
+            0x40000DE => {}, // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            0x40000E0 => {}, // Not Used
+
+            // Timer Registers
+            0x4000100 => {}, // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
+            0x4000102 => {}, // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
+            0x4000104 => {}, // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
+            0x4000106 => {}, // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
+            0x4000108 => {}, // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
+            0x400010A => {}, // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
+            0x400010C => {}, // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
+            0x400010E => {}, // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000110 => {}, // Not Used
+
+            // Serial Communication (1)
+            0x4000120 => {}, // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
+            0x4000122 => {}, // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
+            0x4000124 => {}, // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
+            0x4000126 => {}, // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
+            0x4000128 => {}, // SIO Control Register (SIOCNT), 16 bit register (read + write)
+            0x400012A => {}, // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
+            0x400012C => {}, // Not Used
+
+            // Keypad Input
+            0x4000130 => {}, // Key Status (KEYINPUT), 16 bit register read only
+            0x4000132 => {}, // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
+
+            // Serial Communication (2)
+            0x4000134 => {}, // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
+            0x4000136 => {}, // Ancient - Infrared Register (Prototypes only) (IR)
+            0x4000138 => {}, // Not Used
+            0x4000140 => {}, // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
+            0x4000142 => {}, // Not Used
+            0x4000150 => {}, // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
+            0x4000154 => {}, // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
+            0x4000158 => {}, // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x400015A => {}, // Not Used
+
+            //Interrupt, Waitstate, and Power-Down Control
+            0x4000200 => {}, // Interrupt Enable Register (IE), 16 bit register (read + write) 
+            0x4000202 => {}, // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write)
+            0x4000204 => {}, // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
+            0x4000206 => {}, // Not used
+            0x4000208 => {}, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
+            0x400020A => {}, // Not used
+            0x4000300 => {}, // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
+            0x4000301 => {}, // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+            0x4000302 => {}, // Not used
+            0x4000410 => {}, // Undocumented - Purpose Unknown / Bug ??? 0FFh
+            0x4000411 => {}, // Not used
+            0x4000800 => {}, // Undocumented - Internal Memory Control, 32 bit register (read + write)
+            0x4000804 => {}, // Not used
+            address if (address & 0xFF00FFFF) == 0x04000800 => {}, // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
         }
     }
 
@@ -197,7 +251,67 @@ impl Bus {
             0x40000BA => {}, // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
             0x40000BC => {}, // DMA 1 Source Address (DMA1SAD), 32 bit register (write only)
             0x40000C0 => {}, // DMA 1 Destination Address (DMA1DAD), 32 bit register (write only)
-            // Start back at 40000C6h
+            0x40000C6 => {}, // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
+            0x40000C8 => {}, // DMA 2 Source Address (DMA2SAD), 32 bit register (write only)
+            0x40000CC => {}, // DMA 2 Destination Address (DMA2DAD), 32 bit register (write only)
+            0x40000D0 => {}, // DMA 2 Word Count (DMA2CNT_L), 16 bit register (write only)
+            0x40000D2 => {}, // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
+            0x40000D4 => {}, // DMA 3 Source Address (DMA3SAD), 32 bit register (write only)
+            0x40000D8 => {}, // DMA 3 Destination Address (DMA3DAD), 32 bit register (write only)
+            0x40000DC => {}, // DMA 3 Word Count (DMA3CNT_L), 16 bit register (write only)
+            0x40000DE => {}, // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            0x40000E0 => {}, // Not Used
+
+            // Timer Registers
+            0x4000100 => {}, // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
+            0x4000102 => {}, // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
+            0x4000104 => {}, // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
+            0x4000106 => {}, // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
+            0x4000108 => {}, // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
+            0x400010A => {}, // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
+            0x400010C => {}, // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
+            0x400010E => {}, // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000110 => {}, // Not Usedrol (TM3CNT_H), 16 bit register (read + write)
+            0x4000110 => {} // Not Used
+
+            // Serial Communication (1)
+            0x4000120 => {}, // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
+            0x4000122 => {}, // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
+            0x4000124 => {}, // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
+            0x4000126 => {}, // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
+            0x4000128 => {}, // SIO Control Register (SIOCNT), 16 bit register (read + write)
+            0x400012A => {}, // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
+            0x400012C => {}, // Not Used
+
+            // Keypad Input
+            0x4000132 => {}, // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
+
+            // Serial Communication (2)
+            0x4000134 => {}, // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
+            0x4000136 => {}, // Ancient - Infrared Register (Prototypes only) (IR)
+            0x4000138 => {}, // Not Used
+            0x4000140 => {}, // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
+            0x4000142 => {}, // Not Used
+            0x4000150 => {}, // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
+            0x4000154 => {}, // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
+            0x4000158 => {}, // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x400015A => {}, // Not Used
+
+            //Interrupt, Waitstate, and Power-Down Control
+            0x4000200 => {}, // Interrupt Enable Register (IE), 16 bit register (read + write) 
+            0x4000202 => {}, // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write)
+            0x4000204 => {}, // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
+            0x4000206 => {}, // Not used
+            0x4000208 => {}, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
+            0x400020A => {}, // Not used
+            0x4000300 => {}, // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
+            0x4000301 => {}, // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+            0x4000302 => {}, // Not used
+            0x4000410 => {}, // Undocumented - Purpose Unknown / Bug ??? 0FFh
+            0x4000411 => {}, // Not used
+            0x4000800 => {}, // Undocumented - Internal Memory Control, 32 bit register (read + write)
+            0x4000804 => {}, // Not used
+            address if (address & 0xFF00FFFF) == 0x04000800 => {}, // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
         }
     }
 }
