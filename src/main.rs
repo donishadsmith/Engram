@@ -4,7 +4,6 @@
 // https://ia903206.us.archive.org/34/items/NintendoGbaManualV1.1/Nintendo%20Gba%20Manual%20V1.1.pdf
 // https://ww1.microchip.com/downloads/en/DeviceDoc/DDI0029G_7TDMI_R3_trm.pdf
 
-
 fn main() {
     println!("Hello, world!");
 }
