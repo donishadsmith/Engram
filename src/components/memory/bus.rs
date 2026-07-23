@@ -85,6 +85,7 @@ impl Bus {
 
             // DMA Transfer Channels
             0x40000BA => {}, // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
+            // Start back at 40000C6h
         }
     }
 
@@ -194,6 +195,9 @@ impl Bus {
             0x40000B4 => {}, // DMA 0 Destination Address (DMA0DAD), 32 bit register (write only)
             0x40000B8 => {}, // DMA 0 Word Count (DMA0CNT_L), 16 bit register (write only)
             0x40000BA => {}, // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
+            0x40000BC => {}, // DMA 1 Source Address (DMA1SAD), 32 bit register (write only)
+            0x40000C0 => {}, // DMA 1 Destination Address (DMA1DAD), 32 bit register (write only)
+            // Start back at 40000C6h
         }
     }
 }
