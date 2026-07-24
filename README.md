@@ -2,16 +2,20 @@
 
 A Game Boy Color emulator written in Rust.
 
-<p align="center">
-  <img src="assets/shantae.png" width="250" height="250">
-  <img src="assets/pkmn_day.png" width="250" height="250">
-  <img src="assets/pkmn_night.png" width="250" height="250">
-  <img src="assets/pkmn_crystal.png" width="250" height="250">
-  <img src="assets/pkmn_pinball.png" width="250" height="250">
-  <img src="assets/road_rash.png" width="250" height="250">
-  <img src="assets/mario.png" width="250" height="250">
-  <img src="assets/loz.png" width="250" height="250">
-</p>
+<table align="center">
+  <tr>
+    <td><img src="assets/shantae.gif" width="250"></td>
+    <td><img src="assets/pkmn_crystal.gif" width="250"></td>
+    <td><img src="assets/road_rash.gif" width="250"></td>
+  </tr>
+  <tr>
+    <td><img src="assets/pkmn_pinball.png" width="250"></td>
+    <td><img src="assets/mario.png" width="250"></td>
+    <td><img src="assets/loz.png" width="250"></td>
+  </tr>
+</table>
+
+<p align="center"><i>Note: Pokemon Crystal battle sped up by dropping frames in <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a>.</i></p>
 
 ## Controls
 
