@@ -122,7 +122,7 @@ impl Bus {
             0x4000142 => {}, // Not Used
             0x4000150 => {}, // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
             0x4000154 => {}, // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
-            0x4000158 => {}, // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x4000158 => {}, // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + write)
             0x400015A => {}, // Not Used
 
             //Interrupt, Waitstate, and Power-Down Control
@@ -251,6 +251,7 @@ impl Bus {
             0x40000BA => {}, // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
             0x40000BC => {}, // DMA 1 Source Address (DMA1SAD), 32 bit register (write only)
             0x40000C0 => {}, // DMA 1 Destination Address (DMA1DAD), 32 bit register (write only)
+            0x40000C4 => {}, // DMA 1 Word Count (DMA1CNT_L), 16 bit register (read + write)
             0x40000C6 => {}, // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
             0x40000C8 => {}, // DMA 2 Source Address (DMA2SAD), 32 bit register (write only)
             0x40000CC => {}, // DMA 2 Destination Address (DMA2DAD), 32 bit register (write only)
@@ -294,7 +295,7 @@ impl Bus {
             0x4000142 => {}, // Not Used
             0x4000150 => {}, // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
             0x4000154 => {}, // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
-            0x4000158 => {}, // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x4000158 => {}, // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + write)
             0x400015A => {}, // Not Used
 
             //Interrupt, Waitstate, and Power-Down Control
