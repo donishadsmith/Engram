@@ -60,13 +60,13 @@ async fn main() -> Result<(), std::io::Error> {
 
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             gameboy.run(pressed, cycles_per_sample);
-            for sample in gameboy.cpu.bus.memory.apu.sample_buffer.drain(..) {
+            for sample in gameboy.cpu.bus.apu.sample_buffer.drain(..) {
                 let _ = audio.producer.push(sample);
             }
         }
 
         if gameboy.take_frame() {
-            screen.update(&gameboy.cpu.bus.memory.ppu);
+            screen.update(&gameboy.cpu.bus.ppu);
         }
 
         screen.draw();

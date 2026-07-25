@@ -1,11 +1,11 @@
 use crate::components::{
+    bus::AddressBus,
     cpu::{
         CPU, FlagDelta, FlagType, StatusFlag,
         alu::{ArithmeticOperation, BitwiseOperation, half_carry_add, half_carry_sub},
         cycles::{PREFIX_CYCLES, UNPREFIX_CYCLES},
         registers::{Register8Bits, Register16Bits},
     },
-    memory::bus::AddressBus,
     utils::{ByteOps8, MergeByteOps},
 };
 

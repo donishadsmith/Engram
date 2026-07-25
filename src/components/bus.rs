@@ -1,10 +1,13 @@
 // https://gbdev.io/pandocs/Memory_Map.html
 // https://gekkio.fi/files/gb-docs/gbctr.pdf
 use crate::components::{
+    apu::APU,
     bootloader::{CGB_BOOT, DMG_BOOTIX},
     cpu::interrupts::InterruptMode,
-    memory::memory::Memory,
+    joypad::Joypad,
+    ppu::PPU,
     rom::cartridge::{CGBFlag, Cartridge},
+    timer::Timer,
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -44,16 +47,35 @@ pub trait AddressBus {
 
 //http://gameboy.mongenel.com/dmg/asmmemmap.html
 pub struct Bus {
-    pub memory: Memory,
     boot_status: BootStatus,
     pub oam_dma: OAMDMAState,
     pub vram_dma: VRAMDMAState,
+    pub cartridge: Cartridge,
+    pub ppu: PPU,
+    pub apu: APU,
+    pub timer: Timer,
+    pub joypad: Joypad,
+    pub wram: Vec<u8>,
+    pub hram: Vec<u8>,
+    pub interrupt_flag: u8,
+    pub interrupt_enable: u8,
+    pub serial_data: u8,
+    pub serial_control: u8,
+    pub key_register: u8,
+    pub svbk_register: u8,
+    pub hdma_registers: [u8; 5],
 }
 
 impl Bus {
     pub fn new(cartridge: Cartridge) -> Self {
+        let cgb_flag = cartridge.header.cgb_flag;
+        let wram_size = if cgb_flag == CGBFlag::CGB {
+            0x8000
+        } else {
+            0x2000
+        };
+
         Self {
-            memory: Memory::new(cartridge),
             boot_status: BootStatus::Incomplete,
             oam_dma: OAMDMAState {
                 in_progress: false,
@@ -68,6 +90,20 @@ impl Bus {
                 blocks_remaining: 0,
                 mode: 0,
             },
+            cartridge,
+            wram: vec![0u8; wram_size],
+            ppu: PPU::new(cgb_flag == CGBFlag::CGB),
+            apu: APU::new(),
+            timer: Timer::new(),
+            joypad: Joypad::new(),
+            hram: vec![0u8; 0x007F],
+            interrupt_enable: 0x00,
+            interrupt_flag: 0x00,
+            serial_data: 0x00,
+            serial_control: 0,
+            key_register: 0,
+            svbk_register: 0,
+            hdma_registers: [0; 5],
         }
     }
 
@@ -76,7 +112,7 @@ impl Bus {
             return None;
         }
 
-        match self.memory.cartridge.header.cgb_flag {
+        match self.cartridge.header.cgb_flag {
             CGBFlag::DMG => match address {
                 0x0000..=0x00FF => Some(DMG_BOOTIX[address as usize]),
                 _ => None,
@@ -91,7 +127,7 @@ impl Bus {
     }
 
     fn is_cgb(&self) -> bool {
-        self.memory.cartridge.header.cgb_flag == CGBFlag::CGB
+        self.cartridge.header.cgb_flag == CGBFlag::CGB
     }
 
     fn get_wram_index(&self, address: u16) -> usize {
@@ -112,7 +148,7 @@ impl Bus {
             offset + (0xD000 - 0xC000)
         } else {
             // https://gbdev.io/pandocs/CGB_Registers.html?highlight=cgb%20mode
-            let bank = (self.memory.svbk_register & 0x07).max(1) as usize;
+            let bank = (self.svbk_register & 0x07).max(1) as usize;
             bank * (0xD000 - 0xC000) + offset
         }
     }
@@ -125,15 +161,15 @@ impl Bus {
             offset: 0,
             delay: 1,
         };
-        self.memory.ppu.oam_dma = value;
+        self.ppu.oam_dma = value;
     }
 
     fn oam_dma_read(&self, address: u16) -> u8 {
         match address {
-            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.read(address),
-            0x8000..=0x9FFF => self.memory.ppu.vram.read(address),
+            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cartridge.mbc.read(address),
+            0x8000..=0x9FFF => self.ppu.vram.read(address),
             0xC000..=0xFFFF => {
-                self.memory.wram[self.get_wram_index(if address >= 0xE000 {
+                self.wram[self.get_wram_index(if address >= 0xE000 {
                     0xC000 + (address & 0x1FFF)
                 } else {
                     address
@@ -154,7 +190,7 @@ impl Bus {
         }
 
         let byte = self.oam_dma_read(self.oam_dma.source_address + self.oam_dma.offset);
-        self.memory.ppu.oam[self.oam_dma.offset as usize] = byte;
+        self.ppu.oam[self.oam_dma.offset as usize] = byte;
         self.oam_dma.offset += 1;
         if self.oam_dma.offset == 160 {
             self.oam_dma.in_progress = false;
@@ -171,10 +207,9 @@ impl Bus {
             return;
         }
 
-        let source_address =
-            ((self.memory.hdma_registers[0] as u16) << 8) | self.memory.hdma_registers[1] as u16;
-        let offset = (((self.memory.hdma_registers[2] as u16) << 8)
-            | self.memory.hdma_registers[3] as u16) as usize;
+        let source_address = ((self.hdma_registers[0] as u16) << 8) | self.hdma_registers[1] as u16;
+        let offset =
+            (((self.hdma_registers[2] as u16) << 8) | self.hdma_registers[3] as u16) as usize;
         let blocks_remaining = ((value & 0x7F) as usize) + 1;
 
         self.vram_dma = VRAMDMAState {
@@ -200,14 +235,14 @@ impl Bus {
 
             let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16));
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
-            self.memory.ppu.vram.write(destination_address, byte);
+            self.ppu.vram.write(destination_address, byte);
         }
 
         self.vram_dma.in_progress = false;
     }
 
     pub fn hblank_dma_step(&mut self) {
-        let entered = std::mem::take(&mut self.memory.ppu.entered_hblank);
+        let entered = std::mem::take(&mut self.ppu.entered_hblank);
         if !self.vram_dma.in_progress || self.vram_dma.mode == 0 || !entered {
             return;
         }
@@ -221,7 +256,7 @@ impl Bus {
 
             let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16));
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
-            self.memory.ppu.vram.write(destination_address, byte);
+            self.ppu.vram.write(destination_address, byte);
         }
 
         self.vram_dma.source_address += 16;
@@ -245,23 +280,23 @@ impl AddressBus for Bus {
         }
 
         match address {
-            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.read(address),
-            0x8000..=0x9FFF => self.memory.ppu.vram.read(address),
+            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cartridge.mbc.read(address),
+            0x8000..=0x9FFF => self.ppu.vram.read(address),
             0xC000..=0xCFFF | 0xD000..=0xDFFF | 0xE000..=0xFDFF => {
-                self.memory.wram[self.get_wram_index(address)]
+                self.wram[self.get_wram_index(address)]
             }
-            0xFF00 => self.memory.joypad.read(),
-            0xFF01 => self.memory.serial_data,
-            0xFF02 => self.memory.serial_control | 0x7E,
-            0xFF04..=0xFF07 => self.memory.timer.read_register(address),
-            0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize],
+            0xFF00 => self.joypad.read(),
+            0xFF01 => self.serial_data,
+            0xFF02 => self.serial_control | 0x7E,
+            0xFF04..=0xFF07 => self.timer.read_register(address),
+            0xFE00..=0xFE9F => self.ppu.oam[(address - 0xFE00) as usize],
             0xFEA0..=0xFEFF => 0xFF,
-            0xFF0F => self.memory.interrupt_flag | 0xE0,
-            0xFF10..=0xFF26 => self.memory.apu.read_register(address),
-            0xFF30..=0xFF3F => self.memory.apu.read_wram(address),
-            0xFF40..=0xFF4B | 0xFF68..=0xFF6C => self.memory.ppu.read_register(address),
-            0xFF4D if self.is_cgb() => self.memory.key_register,
-            0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank | 0xFE,
+            0xFF0F => self.interrupt_flag | 0xE0,
+            0xFF10..=0xFF26 => self.apu.read_register(address),
+            0xFF30..=0xFF3F => self.apu.read_wram(address),
+            0xFF40..=0xFF4B | 0xFF68..=0xFF6C => self.ppu.read_register(address),
+            0xFF4D if self.is_cgb() => self.key_register,
+            0xFF4F if self.is_cgb() => self.ppu.vram.bank | 0xFE,
             0xFF51..=0xFF54 if self.is_cgb() => 0xFF,
             0xFF55 if self.is_cgb() => {
                 if self.vram_dma.in_progress {
@@ -270,9 +305,9 @@ impl AddressBus for Bus {
                     0xFF
                 }
             }
-            0xFF70 if self.is_cgb() => (self.memory.svbk_register | 0xF8) & 0x07,
-            0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize],
-            0xFFFF => self.memory.interrupt_enable,
+            0xFF70 if self.is_cgb() => (self.svbk_register | 0xF8) & 0x07,
+            0xFF80..=0xFFFE => self.hram[(address - 0xFF80) as usize],
+            0xFFFF => self.interrupt_enable,
             _ => {
                 eprintln!("The following address is not readable: {:04x}", address);
                 0xFF
@@ -286,49 +321,48 @@ impl AddressBus for Bus {
         }
 
         match address {
-            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.memory.cartridge.mbc.write(address, value),
-            0x8000..=0x9FFF => self.memory.ppu.vram.write(address, value),
+            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cartridge.mbc.write(address, value),
+            0x8000..=0x9FFF => self.ppu.vram.write(address, value),
             0xC000..=0xDFFF | 0xE000..=0xFDFF => {
                 let index = self.get_wram_index(address);
-                self.memory.wram[index] = value
+                self.wram[index] = value
             }
-            0xFF00 => self.memory.joypad.select = (value | 0xC0) & 0x30,
-            0xFF01 => self.memory.serial_data = value,
+            0xFF00 => self.joypad.select = (value | 0xC0) & 0x30,
+            0xFF01 => self.serial_data = value,
             0xFF02 => {
                 if value == 0x81 {
-                    self.memory.interrupt_flag |= InterruptMode::Serial.mask();
+                    self.interrupt_flag |= InterruptMode::Serial.mask();
                 }
             }
-            0xFF04..=0xFF07 => self.memory.timer.write_register(address, value),
-            0xFE00..=0xFE9F => self.memory.ppu.oam[(address - 0xFE00) as usize] = value,
-            0xFF0F => self.memory.interrupt_flag = value & 0x1F,
-            0xFF10..=0xFF26 => self.memory.apu.write_register(address, value),
-            0xFF30..=0xFF3F => self.memory.apu.write_wram(address, value),
+            0xFF04..=0xFF07 => self.timer.write_register(address, value),
+            0xFE00..=0xFE9F => self.ppu.oam[(address - 0xFE00) as usize] = value,
+            0xFF0F => self.interrupt_flag = value & 0x1F,
+            0xFF10..=0xFF26 => self.apu.write_register(address, value),
+            0xFF30..=0xFF3F => self.apu.write_wram(address, value),
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF68..=0xFF6C => {
-                self.memory
-                    .ppu
-                    .write_register(address, value, &mut self.memory.interrupt_flag)
+                self.ppu
+                    .write_register(address, value, &mut self.interrupt_flag)
             }
             0xFF46 => self.oam_dma_transfer(value),
             0xFF4D if self.is_cgb() => {
-                self.memory.key_register = (self.memory.key_register & 0x80) | (value & 0x01);
+                self.key_register = (self.key_register & 0x80) | (value & 0x01);
             }
-            0xFF4F if self.is_cgb() => self.memory.ppu.vram.bank_swap(value),
+            0xFF4F if self.is_cgb() => self.ppu.vram.bank_swap(value),
             0xFF50 => {
                 if (value & 0x01) != 0 {
                     self.boot_status = BootStatus::Complete;
                 }
             }
-            0xFF51 if self.is_cgb() => self.memory.hdma_registers[0] = value,
-            0xFF52 if self.is_cgb() => self.memory.hdma_registers[1] = value & 0xF0,
-            0xFF53 if self.is_cgb() => self.memory.hdma_registers[2] = value & 0x1F,
-            0xFF54 if self.is_cgb() => self.memory.hdma_registers[3] = value & 0xF0,
+            0xFF51 if self.is_cgb() => self.hdma_registers[0] = value,
+            0xFF52 if self.is_cgb() => self.hdma_registers[1] = value & 0xF0,
+            0xFF53 if self.is_cgb() => self.hdma_registers[2] = value & 0x1F,
+            0xFF54 if self.is_cgb() => self.hdma_registers[3] = value & 0xF0,
             0xFF55 if self.is_cgb() => self.initiate_vram_dma_transfer(value),
             0xFF70 if self.is_cgb() => {
-                self.memory.svbk_register = value;
+                self.svbk_register = value;
             }
-            0xFF80..=0xFFFE => self.memory.hram[(address - 0xFF80) as usize] = value,
-            0xFFFF => self.memory.interrupt_enable = value,
+            0xFF80..=0xFFFE => self.hram[(address - 0xFF80) as usize] = value,
+            0xFFFF => self.interrupt_enable = value,
             _ => eprintln!("The following address is not writable: {:04x}", address),
         }
     }
@@ -338,9 +372,9 @@ impl AddressBus for Bus {
     }
 
     fn perform_speed_switch(&mut self) -> bool {
-        if self.is_cgb() && self.memory.key_register & 0x01 != 0 {
-            self.memory.key_register ^= 0x80;
-            self.memory.key_register &= !0x01;
+        if self.is_cgb() && self.key_register & 0x01 != 0 {
+            self.key_register ^= 0x80;
+            self.key_register &= !0x01;
             true
         } else {
             false

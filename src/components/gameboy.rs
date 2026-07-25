@@ -1,4 +1,4 @@
-use crate::components::{cpu::CPU, memory::bus::Bus, rom::cartridge::Cartridge};
+use crate::components::{bus::Bus, cpu::CPU, rom::cartridge::Cartridge};
 
 const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
@@ -32,7 +32,7 @@ impl GameBoy {
                 self.cpu.bus.oam_dma_step();
             }
 
-            let double_speed = self.cpu.bus.memory.key_register & 0x80 != 0;
+            let double_speed = self.cpu.bus.key_register & 0x80 != 0;
             let cpu_t_cycles = if double_speed {
                 timer_t_cycles
             } else {
@@ -43,22 +43,20 @@ impl GameBoy {
 
             self.cpu
                 .bus
-                .memory
                 .ppu
-                .tick(ppu_t_cycles, &mut self.cpu.bus.memory.interrupt_flag);
+                .tick(ppu_t_cycles, &mut self.cpu.bus.interrupt_flag);
 
             self.cpu.bus.hblank_dma_step();
 
-            self.cpu.bus.memory.timer.tick(
+            self.cpu.bus.timer.tick(
                 timer_t_cycles,
-                &mut self.cpu.bus.memory.interrupt_flag,
+                &mut self.cpu.bus.interrupt_flag,
                 double_speed,
             );
 
-            let increase_apu_div_counter = self.cpu.bus.memory.timer.increase_div_apu_counter;
+            let increase_apu_div_counter = self.cpu.bus.timer.increase_div_apu_counter;
             self.cpu
                 .bus
-                .memory
                 .apu
                 .tick(ppu_t_cycles, cycles_per_sample, increase_apu_div_counter);
 
@@ -67,28 +65,27 @@ impl GameBoy {
 
         self.cpu
             .bus
-            .memory
             .joypad
-            .poll(pressed_key, &mut self.cpu.bus.memory.interrupt_flag);
+            .poll(pressed_key, &mut self.cpu.bus.interrupt_flag);
 
-        self.cpu.bus.memory.cartridge.mbc.tick();
+        self.cpu.bus.cartridge.mbc.tick();
     }
 
     pub fn battery_save(&self) -> Result<(), std::io::Error> {
-        self.cpu.bus.memory.cartridge.write_sav()?;
+        self.cpu.bus.cartridge.write_sav()?;
 
         Ok(())
     }
 
     pub fn ram_changed(&mut self) -> bool {
-        let updated_ram = self.cpu.bus.memory.cartridge.mbc.ram_changed().clone();
-        *self.cpu.bus.memory.cartridge.mbc.ram_changed() = false;
+        let updated_ram = self.cpu.bus.cartridge.mbc.ram_changed().clone();
+        *self.cpu.bus.cartridge.mbc.ram_changed() = false;
 
         updated_ram
     }
 
     pub fn take_frame(&mut self) -> bool {
-        std::mem::take(&mut self.cpu.bus.memory.ppu.frame_ready)
+        std::mem::take(&mut self.cpu.bus.ppu.frame_ready)
     }
 }
 

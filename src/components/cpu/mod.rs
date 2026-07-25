@@ -5,8 +5,8 @@ pub mod interrupts;
 pub mod registers;
 
 use crate::components::{
+    bus::AddressBus,
     cpu::{interrupts::InterruptMode, registers::Registers},
-    memory::bus::AddressBus,
     rom::cartridge::CGBFlag,
     utils::{ByteOps8, MergeByteOps},
 };

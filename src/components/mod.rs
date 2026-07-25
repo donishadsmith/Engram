@@ -1,9 +1,9 @@
 pub mod apu;
 pub mod bootloader;
+pub mod bus;
 pub mod cpu;
 pub mod gameboy;
 pub mod joypad;
-pub mod memory;
 pub mod ppu;
 pub mod rom;
 pub mod timer;
