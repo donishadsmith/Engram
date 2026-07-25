@@ -1,5 +1,19 @@
 // https://gbdev.io/pandocs/Memory_Map.html
 // https://gekkio.fi/files/gb-docs/gbctr.pdf
+
+/*
+https://rylev.github.io/DMG-01/public/book/memory_map.html
+https://gbdev.io/pandocs/Specifications.html
+http://gameboy.mongenel.com/dmg/asmmemmap.html
+
+MemoryMap
+
+- 8 kb work ram for DMG/ 32 kb for CGB - read/write
+- 8 kb video ram/ 16 kb for gameboy color
+- 127 bytes of high ram - LD instructions
+- 160 bytes of oam - sprites
+*/
+
 use crate::components::{
     apu::APU,
     bootloader::{CGB_BOOT, DMG_BOOTIX},
