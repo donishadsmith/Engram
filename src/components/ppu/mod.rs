@@ -258,6 +258,7 @@ impl PPU {
                     lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
                 let color_index =
                     self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
+
                 (color_index, attributes)
             } else {
                 let map_cell = (background_y as u16 / 8) * 32 + (background_x as u16 / 8);
@@ -285,6 +286,7 @@ impl PPU {
                     lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
                 let color_index =
                     self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
+
                 (color_index, attributes)
             };
 
