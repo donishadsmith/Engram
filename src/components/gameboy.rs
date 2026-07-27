@@ -61,6 +61,10 @@ impl GameBoy {
                 .tick(ppu_t_cycles, cycles_per_sample, increase_apu_div_counter);
 
             remaining_cycles = remaining_cycles.saturating_sub(cpu_t_cycles);
+
+            if self.cpu.bus.ppu.frame_ready {
+                break;
+            }
         }
 
         self.cpu
