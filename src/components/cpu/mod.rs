@@ -183,6 +183,7 @@ where
         };
 
         cpu.fetch();
+
         cpu
     }
 
@@ -197,6 +198,7 @@ where
 
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
         cpu.registers.instruction_register = Some(cpu.bus.read(opcode_address));
+
         cpu
     }
 
@@ -249,6 +251,7 @@ where
             }
 
             self.fetch();
+
             return 1;
         }
 
