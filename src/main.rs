@@ -3,7 +3,17 @@
 // https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/
 // https://ia903206.us.archive.org/34/items/NintendoGbaManualV1.1/Nintendo%20Gba%20Manual%20V1.1.pdf
 // https://ww1.microchip.com/downloads/en/DeviceDoc/DDI0029G_7TDMI_R3_trm.pdf
+// https://medium.com/@julio.vidaurre/making-a-gba-emulator-fbf91b85979a
 
-fn main() {
-    println!("Hello, world!");
+use std::{error::Error, path::PathBuf};
+
+use gba::{debug::*};
+
+
+fn main() -> Result<(), Box<dyn Error>>{
+    let source = PathBuf::from(r"C:\Users\donis\OneDrive\Desktop\Hamtaro - Ham-Ham Heartbreak (USA).gba");
+    let buffer = read_rom(source)?;
+    hexdump(&buffer, DumpWidth::Word)?;
+
+    Ok(())
 }

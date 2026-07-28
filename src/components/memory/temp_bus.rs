@@ -4,6 +4,9 @@ pub struct Bus {
 
 }
 
+// unlike gb, gameboy has 16 bit and 32 bit registers, the two 8 bit io registers appear to be undocumented, hence
+// why the addresses skip by 2 or 4
+
 impl Bus {
     pub fn read<T: From<u8>>(&self, address: u32) -> T {
         match address {
