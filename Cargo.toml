@@ -1,13 +1,12 @@
 [package]
 name = "engram"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
 
 [dependencies]
 macroquad = { version = "0.4", default-features = false }
-spin_sleep = "1.0"
 rfd = "0.17"
 chrono = "0.4"
 cpal = "0.18.1"

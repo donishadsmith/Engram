@@ -442,7 +442,7 @@ pub mod prelude {
                 return;
             }
 
-            let seconds_passed = current_timestamp - self.previous_unix_timestamp;
+            let seconds_passed = current_timestamp.saturating_sub(self.previous_unix_timestamp);
             self.previous_unix_timestamp = current_timestamp;
 
             let seconds = self.seconds as i64 + seconds_passed;
