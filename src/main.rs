@@ -7,13 +7,13 @@
 
 use std::{error::Error, path::PathBuf};
 
-use gba::{debug::*};
+use gba::{components::gamepak::GamePak, debug::*};
 
+fn main() -> Result<(), Box<dyn Error>> {
+    let file = Some(PathBuf::from(r""));
+    let gamepak = GamePak::load(file).unwrap();
+    //hexdump(&gamepak.rom, DumpWidth::Byte)?;
 
-fn main() -> Result<(), Box<dyn Error>>{
-    let source = PathBuf::from(r"C:\Users\donis\OneDrive\Desktop\Hamtaro - Ham-Ham Heartbreak (USA).gba");
-    let buffer = read_rom(source)?;
-    hexdump(&buffer, DumpWidth::Word)?;
-
+    println!("{}", gamepak.backup_type.to_str());
     Ok(())
 }
