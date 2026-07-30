@@ -1,5 +1,6 @@
 pub mod apu;
 pub mod bus;
+pub mod cpu;
 pub mod gamepak;
 pub mod joypad;
 pub mod ppu;
