@@ -40,6 +40,17 @@ pub trait BusValue: sealed::Sealed + Sized + Copy {
     fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType);
 }
 
+// need to add a generic with trait bound to cpu to create a mock bus for testing
+pub trait AddressBus {
+    fn read_u8(&mut self, address: u32, access: AccessType) -> u8;
+    fn read_u16(&mut self, address: u32, access: AccessType) -> u16;
+    fn read_u32(&mut self, address: u32, access: AccessType) -> u32;
+    fn write_u8(&mut self, address: u32, value: u8, access: AccessType);
+    fn write_u16(&mut self, address: u32, value: u16, access: AccessType);
+    fn write_u32(&mut self, address: u32, value: u32, access: AccessType);
+    fn idle(&mut self, cycles: u64);
+}
+
 pub struct Bus {
     pub scheduler: Scheduler,
     bios: Box<[u8; 0x4000]>,
@@ -513,7 +524,7 @@ impl BusValue for u16 {
             ]),
             0x0E | 0x0F => {
                 let byte = bus.read_backup_byte(address) as u16;
-                byte | (byte << 8)
+                (byte << 8) | byte
             }
             _ => bus.open() as u16,
         }
@@ -562,8 +573,120 @@ impl BusValue for u16 {
 
 impl BusValue for u32 {
     fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self {
-        0 as u32
+        bus.cost(address, 32, access_type);
+        let address = address & !3; // every 4th address
+
+        let little_endian = |arr: &[u8], index: usize| {
+            u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
+        };
+
+        match address >> 24 {
+            0x00 => little_endian(&*bus.bios, (address & 0x3FFF) as usize),
+            0x02 => little_endian(&*bus.ewram, Bus::ewram_index(address)),
+            0x03 => little_endian(&*bus.iwram, Bus::iwram_index(address)),
+            0x04 => {
+                let low_half_word = bus.read_register_16(address);
+                let high_half_word = bus.read_register_16(address + 2);
+
+                (high_half_word as u32) << 16 | low_half_word as u32
+            }
+            0x05 => little_endian(&*bus.ppu.palette_ram, Bus::palette_index(address)),
+            0x06 => little_endian(&*bus.ppu.vram, Bus::vram_index(address)),
+            0x07 => little_endian(&*bus.ppu.oam, Bus::oam_index(address)),
+            0x08..=0x0D => u32::from_le_bytes([
+                bus.gamepak.read_rom_region(address),
+                bus.gamepak.read_rom_region(address + 1),
+                bus.gamepak.read_rom_region(address + 2),
+                bus.gamepak.read_rom_region(address + 3),
+            ]),
+            0x0E | 0x0F => {
+                let byte = bus.read_backup_byte(address) as u32;
+                (byte << 24) | (byte << 16) | (byte << 8) | byte
+            }
+            _ => bus.open() as u32,
+        }
     }
 
-    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {}
+    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
+        bus.cost(address, 32, access_type);
+        let bytes = value.to_le_bytes();
+        let address = address & !3; // every 4th address
+
+        match address >> 24 {
+            0x00 => {} // BIOS no write,
+            0x02 => {
+                let index = Bus::ewram_index(address);
+                bus.ewram[index] = bytes[0];
+                bus.ewram[index + 1] = bytes[1];
+                bus.ewram[index + 2] = bytes[2];
+                bus.ewram[index + 3] = bytes[3];
+            }
+            0x03 => {
+                let index = Bus::iwram_index(address);
+                bus.iwram[index] = bytes[0];
+                bus.iwram[index + 1] = bytes[1];
+                bus.iwram[index + 2] = bytes[2];
+                bus.iwram[index + 3] = bytes[3];
+            }
+            0x04 => {
+                bus.write_register_16(address, u16::from_le_bytes([bytes[0], bytes[1]]));
+                bus.write_register_16(address + 2, u16::from_le_bytes([bytes[2], bytes[3]]));
+            }
+            0x05 => {
+                let index = Bus::palette_index(address);
+                bus.ppu.palette_ram[index] = bytes[0];
+                bus.ppu.palette_ram[index + 1] = bytes[1];
+                bus.ppu.palette_ram[index + 2] = bytes[2];
+                bus.ppu.palette_ram[index + 3] = bytes[3];
+            }
+            0x06 => {
+                let index = Bus::vram_index(address);
+                bus.ppu.vram[index] = bytes[0];
+                bus.ppu.vram[index + 1] = bytes[1];
+                bus.ppu.vram[index + 2] = bytes[2];
+                bus.ppu.vram[index + 3] = bytes[3];
+            }
+            0x07 => {
+                let index = Bus::oam_index(address);
+                bus.ppu.oam[index] = bytes[0];
+                bus.ppu.oam[index + 1] = bytes[1];
+                bus.ppu.oam[index + 2] = bytes[2];
+                bus.ppu.oam[index + 3] = bytes[3];
+            }
+
+            0x08..=0x0D => {}
+            0x0E | 0x0F => bus.write_backup_byte(address, bytes[0]),
+            _ => {}
+        }
+    }
+}
+
+impl AddressBus for Bus {
+    fn read_u8(&mut self, address: u32, access: AccessType) -> u8 {
+        self.read::<u8>(address, access)
+    }
+
+    fn read_u16(&mut self, address: u32, access: AccessType) -> u16 {
+        self.read::<u16>(address, access)
+    }
+
+    fn read_u32(&mut self, address: u32, access: AccessType) -> u32 {
+        self.read::<u32>(address, access)
+    }
+
+    fn write_u8(&mut self, address: u32, value: u8, access: AccessType) {
+        self.write::<u8>(address, value, access);
+    }
+
+    fn write_u16(&mut self, address: u32, value: u16, access: AccessType) {
+        self.write::<u16>(address, value, access);
+    }
+
+    fn write_u32(&mut self, address: u32, value: u32, access: AccessType) {
+        self.write::<u32>(address, value, access);
+    }
+
+    fn idle(&mut self, cycles: u64) {
+        Bus::idle(self, cycles);
+    }
 }
