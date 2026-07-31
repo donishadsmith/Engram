@@ -17,7 +17,7 @@ impl GameBoy {
         let bus = Bus::new(cartridge);
 
         Self {
-            cpu: CPU::<Bus>::start(cgb_flag, checksum, bus),
+            cpu: CPU::start(cgb_flag, checksum, bus),
         }
     }
 
