@@ -690,3 +690,37 @@ impl AddressBus for Bus {
         Bus::idle(self, cycles);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::gamepak::GamePak;
+
+    #[test]
+    fn test_bus_write_u32() {
+        let gamepak = GamePak::mock();
+        let mut bus = Bus::new(gamepak);
+
+        let address = 0x05000001;
+        let value = 0b100000001 as u32;
+        let access_type = AccessType::Sequential;
+        bus.write::<u32>(address, value, access_type);
+
+        assert_eq!(bus.scheduler.current, 2);
+        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
+
+        let gamepak = GamePak::mock();
+        let mut bus = Bus::new(gamepak);
+        bus.write(address, value, access_type);
+
+        assert_eq!(bus.scheduler.current, 2);
+        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
+
+        let gamepak = GamePak::mock();
+        let mut bus = Bus::new(gamepak);
+        bus.write_u32(address, value, access_type);
+
+        assert_eq!(bus.scheduler.current, 2);
+        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
+    }
+}

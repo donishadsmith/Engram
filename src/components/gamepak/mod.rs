@@ -167,4 +167,8 @@ impl GamePak {
         let index = (address & 0x01FFFFFF) as usize;
         self.rom.get(index).copied().unwrap_or(0)
     }
+
+    pub fn mock() -> Self {
+        Self { rom: vec![0u8; kilobytes(32000)], sav_path: PathBuf::from("mock.sav"), backup_memory: vec![0u8; kilobytes(32)], backup_type: BackupType::Sram, ram_updated: false }
+    }
 }
