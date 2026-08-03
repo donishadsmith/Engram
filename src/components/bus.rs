@@ -12,6 +12,7 @@
 // Just do an afterboot startup
 
 // https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
+
 use crate::components::{
     apu::APU, gamepak::GamePak, ppu::PPU, scheduler::Scheduler, utils::zero_arr,
 };
