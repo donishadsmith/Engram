@@ -36,7 +36,7 @@ jobs:
           sudo apt install libwayland-dev libasound2-dev libudev-dev pkg-config
 
       - name: Build release
-        run: cargo build --release
+        run: cargo build -p engram-gb --release
 
       - name: Rename binary (Unix)
         if: matrix.runner != 'windows-latest'
