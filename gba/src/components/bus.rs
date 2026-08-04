@@ -1,0 +1,727 @@
+// https://mgba.io/2015/06/27/cycle-counting-prefetch/
+// https://developer.arm.com/documentation/ddi0084/f/memory-interface/bus-cycle-types/sequential-cycles
+// https://corrupt.wiki/systems/gameboy-advance/bizhawk-memory-domains
+// https://medium.com/@michelheily/hello-gba-journey-of-making-an-emulator-part-1-8793000e8606
+// https://www.cs.rit.edu/~tjh8300/CowBite/CowBiteSpec.htm#Memory%20Map
+// https://www.nesdev.org/wiki/Open_bus_behavior
+// https://www.cs.rit.edu/~tjh8300/CowBite/CowBiteSpec.htm#Memory%20Map
+// https://www.chibiakumas.com/arm/gba.php
+
+// https://blog.asie.pl/2025/09/wonderful-update-september-2025/
+
+// Just do an afterboot startup
+
+// https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
+
+use crate::components::{
+    apu::APU, gamepak::GamePak, ppu::PPU, scheduler::Scheduler, utils::zero_arr,
+};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AccessType {
+    Sequential, // Memory address related to previous address, incremented by + 2 (half word) or +4 (word)
+    Nonsequential, // Memory address is fetched and has nothing to do with the previous instruction
+}
+
+// Note, there is an addition GBA cycle type: Internal, no memory access, performing a complex internal operation like a multiply, only 1 cycle
+
+mod sealed {
+    pub trait Sealed {}
+
+    impl Sealed for u8 {}
+
+    impl Sealed for u16 {}
+
+    impl Sealed for u32 {}
+}
+
+pub trait BusValue: sealed::Sealed + Sized + Copy {
+    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self;
+
+    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType);
+}
+
+// need to add a generic with trait bound to cpu to create a mock bus for testing
+pub trait AddressBus {
+    fn read_u8(&mut self, address: u32, access: AccessType) -> u8;
+    fn read_u16(&mut self, address: u32, access: AccessType) -> u16;
+    fn read_u32(&mut self, address: u32, access: AccessType) -> u32;
+    fn write_u8(&mut self, address: u32, value: u8, access: AccessType);
+    fn write_u16(&mut self, address: u32, value: u16, access: AccessType);
+    fn write_u32(&mut self, address: u32, value: u32, access: AccessType);
+    fn idle(&mut self, cycles: u64);
+}
+
+pub struct Bus {
+    pub scheduler: Scheduler,
+    bios: Box<[u8; 0x4000]>,
+    ewram: Box<[u8; 0x40000]>,
+    iwram: Box<[u8; 0x8000]>,
+    last_read: u32,
+    last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
+    // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
+    apu: APU,
+    ppu: PPU,
+    gamepak: GamePak,
+}
+
+impl Bus {
+    pub fn new(gamepak: GamePak) -> Self {
+        Self {
+            scheduler: Scheduler::new(),
+            bios: zero_arr(),
+            ewram: zero_arr(),
+            iwram: zero_arr(),
+            last_read: 0,
+            last_bios_fetch: 0xE129F000,
+            ppu: PPU::new(),
+            gamepak,
+            apu: APU::new(),
+        }
+    }
+
+    #[inline]
+    fn ewram_index(address: u32) -> usize {
+        (address & 0x3FFFF) as usize
+    }
+
+    #[inline]
+    fn iwram_index(address: u32) -> usize {
+        (address & 0x7FFF) as usize
+    }
+
+    #[inline]
+    pub fn palette_index(address: u32) -> usize {
+        (address & 0x3FF) as usize
+    }
+
+    #[inline]
+    pub fn oam_index(address: u32) -> usize {
+        (address & 0x3FF) as usize
+    }
+
+    #[inline]
+    pub fn vram_index(address: u32) -> usize {
+        let index = (address & 0x1FFFE) as usize;
+        let index = if index >= 0x18000 {
+            index - 0x8000
+        } else {
+            index
+        };
+
+        index
+    }
+
+    fn backup_byte(&self, address: u32) -> Option<usize> {
+        if self.gamepak.backup_memory.is_empty() {
+            return None;
+        }
+
+        let base_address = 0x0E000000;
+        let mask = (self.gamepak.backup_memory.len() - 1) as u32;
+        let index = ((address - base_address) & mask) as usize;
+
+        Some(index)
+    }
+
+    #[inline]
+    pub fn read_backup_byte(&self, address: u32) -> u8 {
+        match self.backup_byte(address) {
+            Some(index) => self.gamepak.backup_memory[index],
+            None => 0,
+        }
+    }
+
+    #[inline]
+    pub fn write_backup_byte(&mut self, address: u32, value: u8) {
+        match self.backup_byte(address) {
+            Some(index) => {
+                self.gamepak.backup_memory[index] = value;
+                self.gamepak.ram_updated = true;
+            }
+            None => {}
+        }
+    }
+
+    pub fn read<T: BusValue>(&mut self, address: u32, access_type: AccessType) -> T {
+        T::read(self, address, access_type)
+    }
+
+    pub fn write<T: BusValue>(&mut self, address: u32, value: T, access_type: AccessType) {
+        T::write(self, address, value, access_type)
+    }
+
+    pub fn idle(&mut self, cycles: u64) {
+        self.scheduler.current += cycles;
+    }
+
+    pub fn cost(&mut self, address: u32, width: u32, access_type: AccessType) {
+        let region = (address >> 24) as usize;
+        let cycles = match region {
+            0x00 | 0x03 | 0x04 | 0x07 => 1,
+            0x02 => {
+                if width == 32 {
+                    6
+                } else {
+                    3
+                }
+            }
+            0x05 | 0x06 => {
+                if width == 32 {
+                    2
+                } else {
+                    1
+                }
+            }
+            0x08..=0x0D => self.rom_cost(width, access_type),
+            0x0E | 0x0F => 5,
+            _ => 1,
+        };
+
+        self.scheduler.current += cycles as u64;
+    }
+
+    pub fn rom_cost(&mut self, width: u32, access_type: AccessType) -> usize {
+        0
+    }
+
+    // Take regiisters from an early commit and just map them back for now
+    // GBATEK lists 32-bit registers at TWO halfword addresses (e.g. "40000D4h,0D6h").
+    // Both halves are independently addressable, so each gets its own table entry (0x40000D4 = bits 0-15, 0x40000D6 = bits 16-31)
+    fn read_register_16(&mut self, address: u32) -> u16 {
+        match address {
+            // LCD I/O Registers
+            0x4000000 => {} // LCD Control (DISPCNT), 16 bit register (read + write)
+            0x4000002 => {} // Undocumented 16 bit register (read + write)
+            0x4000004 => {} // Stat & LYC, 16 bit register (read + write)
+            0x4000006 => {} // LY, 16 bit, (VCOUNT), read only
+            0x4000008 => {} // BG0 Control (BG0CNT) 16 bit register (read + write)
+            0x400000A => {} // BG1 Control (BG1CNT) 16 bit register (read + write)
+            0x400000C => {} // BG2 Control (BG2CNT) 16 bit register (read + write)
+            0x400000E => {} // BG3 Control (BG3CNT) 16 bit register (read + write)
+            0x4000048 => {} // Inside of Window 0 and 1 (WININ), 16 bit register (read + write)
+            0x400004A => {} // Inside of OBJ Window & Outside of Windows 2 (WINOUT) (read + write)
+            0x400004E => {} // Not Used
+            0x4000050 => {} // Color Special Effects Selection (BLDCNT), 16 bit register (read + write)
+            0x4000052 => {} // Alpha Blending Coefficients (BLDALPHA), 16 bit register (read + write)
+            0x4000056 => {} // Not Used
+
+            // Sound Registers
+            0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)
+            0x4000062 => {} // Channel 1 Duty/Length/Envelope (NR11, NR12) (SOUND1CNT_H), 16 bit register (read + write)
+            0x4000064 => {} // Channel 1 Frequency/Control (NR13, NR14) (SOUND1CNT_X), 16 bit register (read + write)
+            0x4000066 => {} // Not Used
+            0x4000068 => {} // Channel 2 Duty/Length/Envelope (NR21, NR22) (SOUND2CNT_L), 16 bit register (read + write)
+            0x400006A => {} // Not Used
+            0x400006C => {} // Channel 2 Frequency/Control (NR23, NR24) (SOUND2CNT_H), 16 bit register (read + write)
+            0x400006E => {} // Not Used
+            0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
+            0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
+            0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
+            0x4000076 => {} // Not Used
+            0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
+            0x400007A => {} // Not Used
+            0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
+            0x400007E => {} // Not Used
+            0x4000080 => {} // Control Stereo/Volume/Enable (NR50, NR51) (SOUNDCNT_L), 16 bit register (read + write)
+            0x4000082 => {} // Control Mixing/DMA Control (SOUNDCNT_H), 16 bit register (read + write)
+            0x4000084 => {} // Control Sound on/off (NR52) (SOUNDCNT_X), 16 bit register (read + write)
+            0x4000086 => {} // Not Used
+            0x4000088 => {} // BIOS/Sound PWM Control (SOUNDBIAS), 16 bit register (read + write)
+            0x400008A => {} // Not Used
+            0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
+            0x40000A8 => {} // Not Used
+
+            // DMA Transfer Channels
+            0x40000BA => {} // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
+            0x40000C6 => {} // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
+            0x40000D2 => {} // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
+            0x40000DE => {} // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            0x40000E0 => {} // Not Used
+
+            // Timer Registers
+            0x4000100 => {} // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
+            0x4000102 => {} // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
+            0x4000104 => {} // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
+            0x4000106 => {} // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
+            0x4000108 => {} // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
+            0x400010A => {} // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
+            0x400010C => {} // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
+            0x400010E => {} // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000110 => {} // Not Used
+
+            // Serial Communication (1)
+            0x4000120 => {} // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
+            0x4000122 => {} // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
+            0x4000124 => {} // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
+            0x4000126 => {} // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
+            0x4000128 => {} // SIO Control Register (SIOCNT), 16 bit register (read + write)
+            0x400012A => {} // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
+            0x400012C => {} // Not Used
+
+            // Keypad Input
+            0x4000130 => {} // Key Status (KEYINPUT), 16 bit register read only
+            0x4000132 => {} // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
+
+            // Serial Communication (2)
+            0x4000134 => {} // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
+            0x4000136 => {} // Ancient - Infrared Register (Prototypes only) (IR)
+            0x4000138 => {} // Not Used
+            0x4000140 => {} // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
+            0x4000142 => {} // Not Used
+            0x4000150 => {} // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
+            0x4000154 => {} // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
+            0x4000158 => {} // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x400015A => {} // Not Used
+
+            //Interrupt, Waitstate, and Power-Down Control
+            0x4000200 => {} // Interrupt Enable Register (IE), 16 bit register (read + write)
+            0x4000202 => {} // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write)
+            0x4000204 => {} // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
+            0x4000206 => {} // Not used
+            0x4000208 => {} // Interrupt Master Enable Register (IME), 16 bit register (read + write)
+            0x400020A => {} // Not used
+            0x4000300 => {} // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
+            0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+            0x4000302 => {} // Not used
+            0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
+            0x4000411 => {} // Not used
+            0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
+            0x4000804 => {} // Not used
+            address if (address & 0xFF00FFFF) == 0x04000800 => {} // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
+            _ => {}
+        }
+
+        0 as u16
+    }
+
+    fn write_register_16(&mut self, address: u32, value: u16) {
+        match address {
+            // LCD I/O Registers
+            0x4000000 => {} // LCD Control (DISPCNT), 16 bit register (read + write)
+            0x4000002 => {} // Undocumented 16 bit register (read + write)
+            0x4000004 => {} // Stat & LYC, 16 bit register (read + write)
+            0x4000008 => {} // BG0 Control (BG0CNT) 16 bit register (read + write)
+            0x400000A => {} // BG1 Control (BG1CNT) 16 bit register (read + write)
+            0x400000C => {} // BG2 Control (BG2CNT) 16 bit register (read + write)
+            0x400000E => {} // BG3 Control (BG3CNT) 16 bit register (read + write)
+            0x4000010 => {} // BG0 X-Offset (BG0HOFS) 16 bit register (write only)
+            0x4000012 => {} // BG0 Y-Offset (BG0VOFS) 16 bit register (write only)
+            0x4000014 => {} // BG1 X-Offset (BG1HOFS) 16 bit register (write only)
+            0x4000016 => {} // BG1 Y-Offset (BG1VOFS) 16 bit register (write only)
+            0x4000018 => {} // BG2 X-Offset (BG2HOFS) 16 bit register (write only)
+            0x400001A => {} // BG2 Y-Offset (BG2VOFS) 16 bit register (write only)
+            0x400001C => {} // BG3 X-Offset (BG3HOFS) 16 bit register (write only)
+            0x400001E => {} // BG3 Y-Offset (BG3VOFS) 16 bit register (write only)
+            0x4000020 => {} // BG2 Rotation/Scaling Parameter A (dx) (BG2PA), 16 bit register (write only)
+            0x4000022 => {} // BG2 Rotation/Scaling Parameter B (dmx) (BG2PB), 16 bit register (write only)
+            0x4000024 => {} // BG2 Rotation/Scaling Parameter C (dy) (BG2PC), 16 bit register (write only)
+            0x4000026 => {} // BG2 Rotation/Scaling Parameter D (dmy) (BG2PD), 16 bit register (write only)
+            0x4000028 => {} // BG2 Reference Point X-Coordinate (BG2X), 32 bit register (write only)
+            0x400002C => {} // BG2 Reference Point Y-Coordinate (BG2Y), 32 bit register (write only)
+            0x4000030 => {} // BG3 Rotation/Scaling Parameter A (dx) (BG3PA), 16 bit register (write only)
+            0x4000032 => {} // BG3 Rotation/Scaling Parameter B (dmx) (BG3PB), 16 bit register (write only)
+            0x4000034 => {} // BG3 Rotation/Scaling Parameter C (dy) (BG3PC), 16 bit register (write only)
+            0x4000036 => {} // BG3 Rotation/Scaling Parameter D (dmy) (BG3PD), 16 bit register (write only)
+            0x4000038 => {} // BG3 Reference Point X-Coordinate (BG3X), 32 bit register (write only)
+            0x400003C => {} // BG3 Reference Point Y-Coordinate (BG3Y), 32 bit register (write only)
+            0x4000040 => {} // Window 0 Horizontal Dimensions (WIN0H), 16 bit register (write only)
+            0x4000042 => {} // Window 1 Horizontal Dimensions (WIN1H), 16 bit register (write only)
+            0x4000044 => {} // Window 0 Vertical Dimensions (WIN0V), 16 bit register (write only)
+            0x4000046 => {} // Window 1 Vertical Dimensions (WIN1V), 16 bit register (write only)
+            0x4000048 => {} // Inside of Window 0 and 1 (WININ), 16 bit register (read + write)
+            0x400004A => {} // Inside of OBJ Window & Outside of Windows 2 (WINOUT), 16 bit register (read + write)
+            0x400004C => {} // Mosaic Size (MOSAIC), 16 bit register (write only)
+            0x400004E => {} // Not Used
+            0x4000050 => {} // Color Special Effects Selection (BLDCNT), 16 bit register (read + write)
+            0x4000052 => {} // Alpha Blending Coefficients (BLDALPHA), 16 bit register (read + write)
+            0x4000054 => {} // Brightness (Fade-In/Out) Coefficient (BLDY), 16 bit register (write only)
+            0x4000056 => {} // Not Used
+
+            // Sound Registers
+            0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)
+            0x4000062 => {} // Channel 1 Duty/Length/Envelope (NR11, NR12) (SOUND1CNT_H), 16 bit register (read + write)
+            0x4000064 => {} // Channel 1 Frequency/Control (NR13, NR14) (SOUND1CNT_X), 16 bit register (read + write)
+            0x4000066 => {} // Not Used
+            0x4000068 => {} // Channel 2 Duty/Length/Envelope (NR21, NR22) (SOUND2CNT_L), 16 bit register (read + write)
+            0x400006A => {} // Not Used
+            0x400006C => {} // Channel 2 Frequency/Control (NR23, NR24) (SOUND2CNT_H), 16 bit register (read + write)
+            0x400006E => {} // Not Used
+            0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
+            0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
+            0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
+            0x4000076 => {} // Not Used
+            0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
+            0x400007A => {} // Not Used
+            0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
+            0x400007E => {} // Not Used
+            0x4000080 => {} // Control Stereo/Volume/Enable (NR50, NR51) (SOUNDCNT_L), 16 bit register (read + write)
+            0x4000082 => {} // Control Mixing/DMA Control (SOUNDCNT_H), 16 bit register (read + write)
+            0x4000084 => {} // Control Sound on/off (NR52) (SOUNDCNT_X), 16 bit register (read + write)
+            0x4000086 => {} // Not Used
+            0x4000088 => {} // BIOS/Sound PWM Control (SOUNDBIAS), 16 bit register (read + write)
+            0x400008A => {} // Not Used
+            0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
+            0x40000A0 => {} // Channel A FIFO, Data 0-3, (FIFO_A) (write only), 32 bit register
+            0x40000A4 => {} // Channel B FIFO, Data 0-3, (FIFO_B) (write only), 32 bit register
+            0x40000A8 => {} // Not Used
+
+            // DMA Transfer Channels
+            0x40000B0 => {} // DMA 0 Source Address (DMA0SAD), 32 bit register (write only)
+            0x40000B4 => {} // DMA 0 Destination Address (DMA0DAD), 32 bit register (write only)
+            0x40000B8 => {} // DMA 0 Word Count (DMA0CNT_L), 16 bit register (write only)
+            0x40000BA => {} // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
+            0x40000BC => {} // DMA 1 Source Address (DMA1SAD), 32 bit register (write only)
+            0x40000C0 => {} // DMA 1 Destination Address (DMA1DAD), 32 bit register (write only)
+            0x40000C6 => {} // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
+            0x40000C8 => {} // DMA 2 Source Address (DMA2SAD), 32 bit register (write only)
+            0x40000CC => {} // DMA 2 Destination Address (DMA2DAD), 32 bit register (write only)
+            0x40000D0 => {} // DMA 2 Word Count (DMA2CNT_L), 16 bit register (write only)
+            0x40000D2 => {} // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
+            0x40000D4 => {} // DMA 3 Source Address (DMA3SAD), 32 bit register (write only)
+            0x40000D8 => {} // DMA 3 Destination Address (DMA3DAD), 32 bit register (write only)
+            0x40000DC => {} // DMA 3 Word Count (DMA3CNT_L), 16 bit register (write only)
+            0x40000DE => {} // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            0x40000E0 => {} // Not Used
+
+            // Timer Registers
+            0x4000100 => {} // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
+            0x4000102 => {} // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
+            0x4000104 => {} // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
+            0x4000106 => {} // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
+            0x4000108 => {} // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
+            0x400010A => {} // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
+            0x400010C => {} // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
+            0x400010E => {} // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000110 => {} // Not Usedrol (TM3CNT_H), 16 bit register (read + write)
+            0x4000112 => {} // Not Used
+
+            // Serial Communication (1)
+            0x4000120 => {} // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
+            0x4000122 => {} // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
+            0x4000124 => {} // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
+            0x4000126 => {} // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
+            0x4000128 => {} // SIO Control Register (SIOCNT), 16 bit register (read + write)
+            0x400012A => {} // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
+            0x400012C => {} // Not Used
+
+            // Keypad Input
+            0x4000132 => {} // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
+
+            // Serial Communication (2)
+            0x4000134 => {} // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
+            0x4000136 => {} // Ancient - Infrared Register (Prototypes only) (IR)
+            0x4000138 => {} // Not Used
+            0x4000140 => {} // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
+            0x4000142 => {} // Not Used
+            0x4000150 => {} // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
+            0x4000154 => {} // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
+            0x4000158 => {} // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x400015A => {} // Not Used
+
+            //Interrupt, Waitstate, and Power-Down Control
+            0x4000200 => {} // Interrupt Enable Register (IE), 16 bit register (read + write)
+            0x4000202 => {} // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write)
+            0x4000204 => {} // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
+            0x4000206 => {} // Not used
+            0x4000208 => {} // Interrupt Master Enable Register (IME), 16 bit register (read + write)
+            0x400020A => {} // Not used
+            0x4000300 => {} // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
+            0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+            0x4000302 => {} // Not used
+            0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
+            0x4000411 => {} // Not used
+            0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
+            0x4000804 => {} // Not used
+            address if (address & 0xFF00FFFF) == 0x04000800 => {} // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
+            _ => {}
+        }
+    }
+
+    fn open(&self) -> u32 {
+        0
+    }
+}
+
+impl BusValue for u8 {
+    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self {
+        bus.cost(address, 8, access_type);
+
+        match address >> 24 {
+            0x00 => bus.bios[(address & 0x3FFE) as usize],
+            0x02 => bus.ewram[Bus::ewram_index(address)],
+            0x03 => bus.iwram[Bus::iwram_index(address)],
+            0x04 => {
+                let half_word = bus.read_register_16(address & !1);
+                if address & 1 == 0 {
+                    half_word as u8
+                } else {
+                    (half_word >> 8) as u8
+                }
+            }
+            0x05 => bus.ppu.palette_ram[Bus::palette_index(address)],
+            0x06 => bus.ppu.vram[Bus::vram_index(address)],
+            0x07 => bus.ppu.oam[Bus::oam_index(address)],
+            0x08..=0x0D => bus.gamepak.read_rom_region(address),
+            0x0E | 0x0F => bus.read_backup_byte(address),
+            _ => bus.open() as u8,
+        }
+    }
+
+    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
+        bus.cost(address, 8, access_type);
+
+        match address >> 24 {
+            0x00 => {}
+            0x02 => bus.ewram[Bus::ewram_index(address)] = value,
+            0x03 => bus.iwram[Bus::iwram_index(address)] = value,
+            0x04 => {
+                let half_word = bus.read_register_16(address & !1);
+                let new_half_word = if address & 1 == 0 {
+                    (half_word & 0xFF00) | value as u16
+                } else {
+                    (half_word & 0x00FF) | (value as u16) << 8
+                };
+
+                bus.write_register_16(address & !1, new_half_word);
+            }
+            0x05 => {
+                let index = Bus::palette_index(address) & !1;
+                bus.ppu.palette_ram[index] = value;
+                bus.ppu.palette_ram[index + 1] = value;
+            }
+            0x06 => {
+                // TODO: regquires byte duplication based on MOde, bg/character region
+                let index = Bus::vram_index(address) & !1;
+                bus.ppu.vram[index] = value;
+                bus.ppu.vram[index + 1] = value;
+            }
+            0x07 => {}
+            0x08..=0x0D => {}
+            0x0E | 0x0F => bus.write_backup_byte(address, value),
+            _ => {}
+        }
+    }
+}
+
+impl BusValue for u16 {
+    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self {
+        bus.cost(address, 16, access_type);
+        let address = address & !1; // ensure even
+        let little_endian =
+            |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
+
+        match address >> 24 {
+            0x00 => little_endian(&*bus.bios, (address & 0x3FFE) as usize),
+            0x02 => little_endian(&*bus.ewram, Bus::ewram_index(address)),
+            0x03 => little_endian(&*bus.iwram, Bus::iwram_index(address)),
+            0x04 => bus.read_register_16(address),
+            0x05 => little_endian(&*bus.ppu.palette_ram, Bus::palette_index(address)),
+            0x06 => little_endian(&*bus.ppu.vram, Bus::vram_index(address)),
+            0x07 => little_endian(&*bus.ppu.oam, Bus::oam_index(address)),
+            0x08..=0x0D => u16::from_le_bytes([
+                bus.gamepak.read_rom_region(address),
+                bus.gamepak.read_rom_region(address + 1),
+            ]),
+            0x0E | 0x0F => {
+                let byte = bus.read_backup_byte(address) as u16;
+                (byte << 8) | byte
+            }
+            _ => bus.open() as u16,
+        }
+    }
+
+    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
+        bus.cost(address, 16, access_type);
+        let bytes = value.to_le_bytes();
+        let address = address & !1; // ensure even
+
+        match address >> 24 {
+            0x00 => {} // BIOS no write,
+            0x02 => {
+                let index = Bus::ewram_index(address);
+                bus.ewram[index] = bytes[0];
+                bus.ewram[index + 1] = bytes[1];
+            }
+            0x03 => {
+                let index = Bus::iwram_index(address);
+                bus.iwram[index] = bytes[0];
+                bus.iwram[index + 1] = bytes[1];
+            }
+            0x04 => bus.write_register_16(address, value),
+            0x05 => {
+                let index = Bus::palette_index(address);
+                bus.ppu.palette_ram[index] = bytes[0];
+                bus.ppu.palette_ram[index + 1] = bytes[1];
+            }
+            0x06 => {
+                let index = Bus::vram_index(address);
+                bus.ppu.vram[index] = bytes[0];
+                bus.ppu.vram[index + 1] = bytes[1];
+            }
+            0x07 => {
+                let index = Bus::oam_index(address);
+                bus.ppu.oam[index] = bytes[0];
+                bus.ppu.oam[index + 1] = bytes[1];
+            }
+
+            0x08..=0x0D => {}
+            0x0E | 0x0F => bus.write_backup_byte(address, bytes[0]),
+            _ => {}
+        }
+    }
+}
+
+impl BusValue for u32 {
+    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self {
+        bus.cost(address, 32, access_type);
+        let address = address & !3; // every 4th address
+
+        let little_endian = |arr: &[u8], index: usize| {
+            u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
+        };
+
+        match address >> 24 {
+            0x00 => little_endian(&*bus.bios, (address & 0x3FFF) as usize),
+            0x02 => little_endian(&*bus.ewram, Bus::ewram_index(address)),
+            0x03 => little_endian(&*bus.iwram, Bus::iwram_index(address)),
+            0x04 => {
+                let low_half_word = bus.read_register_16(address);
+                let high_half_word = bus.read_register_16(address + 2);
+
+                (high_half_word as u32) << 16 | low_half_word as u32
+            }
+            0x05 => little_endian(&*bus.ppu.palette_ram, Bus::palette_index(address)),
+            0x06 => little_endian(&*bus.ppu.vram, Bus::vram_index(address)),
+            0x07 => little_endian(&*bus.ppu.oam, Bus::oam_index(address)),
+            0x08..=0x0D => u32::from_le_bytes([
+                bus.gamepak.read_rom_region(address),
+                bus.gamepak.read_rom_region(address + 1),
+                bus.gamepak.read_rom_region(address + 2),
+                bus.gamepak.read_rom_region(address + 3),
+            ]),
+            0x0E | 0x0F => {
+                let byte = bus.read_backup_byte(address) as u32;
+                (byte << 24) | (byte << 16) | (byte << 8) | byte
+            }
+            _ => bus.open() as u32,
+        }
+    }
+
+    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
+        bus.cost(address, 32, access_type);
+        let bytes = value.to_le_bytes();
+        let address = address & !3; // every 4th address
+
+        match address >> 24 {
+            0x00 => {} // BIOS no write,
+            0x02 => {
+                let index = Bus::ewram_index(address);
+                bus.ewram[index] = bytes[0];
+                bus.ewram[index + 1] = bytes[1];
+                bus.ewram[index + 2] = bytes[2];
+                bus.ewram[index + 3] = bytes[3];
+            }
+            0x03 => {
+                let index = Bus::iwram_index(address);
+                bus.iwram[index] = bytes[0];
+                bus.iwram[index + 1] = bytes[1];
+                bus.iwram[index + 2] = bytes[2];
+                bus.iwram[index + 3] = bytes[3];
+            }
+            0x04 => {
+                bus.write_register_16(address, u16::from_le_bytes([bytes[0], bytes[1]]));
+                bus.write_register_16(address + 2, u16::from_le_bytes([bytes[2], bytes[3]]));
+            }
+            0x05 => {
+                let index = Bus::palette_index(address);
+                bus.ppu.palette_ram[index] = bytes[0];
+                bus.ppu.palette_ram[index + 1] = bytes[1];
+                bus.ppu.palette_ram[index + 2] = bytes[2];
+                bus.ppu.palette_ram[index + 3] = bytes[3];
+            }
+            0x06 => {
+                let index = Bus::vram_index(address);
+                bus.ppu.vram[index] = bytes[0];
+                bus.ppu.vram[index + 1] = bytes[1];
+                bus.ppu.vram[index + 2] = bytes[2];
+                bus.ppu.vram[index + 3] = bytes[3];
+            }
+            0x07 => {
+                let index = Bus::oam_index(address);
+                bus.ppu.oam[index] = bytes[0];
+                bus.ppu.oam[index + 1] = bytes[1];
+                bus.ppu.oam[index + 2] = bytes[2];
+                bus.ppu.oam[index + 3] = bytes[3];
+            }
+
+            0x08..=0x0D => {}
+            0x0E | 0x0F => bus.write_backup_byte(address, bytes[0]),
+            _ => {}
+        }
+    }
+}
+
+impl AddressBus for Bus {
+    fn read_u8(&mut self, address: u32, access: AccessType) -> u8 {
+        self.read::<u8>(address, access)
+    }
+
+    fn read_u16(&mut self, address: u32, access: AccessType) -> u16 {
+        self.read::<u16>(address, access)
+    }
+
+    fn read_u32(&mut self, address: u32, access: AccessType) -> u32 {
+        self.read::<u32>(address, access)
+    }
+
+    fn write_u8(&mut self, address: u32, value: u8, access: AccessType) {
+        self.write::<u8>(address, value, access);
+    }
+
+    fn write_u16(&mut self, address: u32, value: u16, access: AccessType) {
+        self.write::<u16>(address, value, access);
+    }
+
+    fn write_u32(&mut self, address: u32, value: u32, access: AccessType) {
+        self.write::<u32>(address, value, access);
+    }
+
+    fn idle(&mut self, cycles: u64) {
+        Bus::idle(self, cycles);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::gamepak::GamePak;
+
+    #[test]
+    fn test_bus_write_u32() {
+        let gamepak = GamePak::mock();
+        let mut bus = Bus::new(gamepak);
+
+        let address = 0x05000001;
+        let value = 0b100000001 as u32;
+        let access_type = AccessType::Sequential;
+        bus.write::<u32>(address, value, access_type);
+
+        assert_eq!(bus.scheduler.current, 2);
+        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
+
+        let gamepak = GamePak::mock();
+        let mut bus = Bus::new(gamepak);
+        bus.write(address, value, access_type);
+
+        assert_eq!(bus.scheduler.current, 2);
+        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
+
+        let gamepak = GamePak::mock();
+        let mut bus = Bus::new(gamepak);
+        bus.write_u32(address, value, access_type);
+
+        assert_eq!(bus.scheduler.current, 2);
+        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
+    }
+}

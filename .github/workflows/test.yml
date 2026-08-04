@@ -35,4 +35,4 @@ jobs:
           sudo apt install libwayland-dev libasound2-dev libudev-dev pkg-config
 
       - name: Test emulator
-        run: cargo test
+        run: cargo test -p engram-gb

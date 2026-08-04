@@ -11,3 +11,7 @@ tests/blargg/*/source/
 *.s
 mooneye/
 *ppu_registers.txt*
+*.txt
+*.bin
+*.sav
+*.gba
