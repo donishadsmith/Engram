@@ -3,11 +3,11 @@
 /roms
 *.gb
 # These roms should be fine though
-!tests/blargg/**/*.gb
+!gb/tests/blargg/**/*.gb
 Cargo.lock
 *.sav
-tests/blargg/**/*source*
-tests/blargg/*/source/
+gb/tests/blargg/**/*source*
+gb/tests/blargg/*/source/
 *.s
 mooneye/
 *ppu_registers.txt*

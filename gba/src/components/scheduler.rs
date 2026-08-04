@@ -1,5 +1,7 @@
 // https://www.gregorygaines.com/blog/emulator-polling-vs-scheduler-game-loop/
 // https://brilliant.org/wiki/binary-heap/
+// https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/sched.rs
+// https://github.com/elipsitz/gba-emulator/blob/main/gba_core/src/scheduler.rs
 
 // Lets schedule events instead of polling
 // We can use a match statement in the gba main loop instead of constantly calling
@@ -7,7 +9,7 @@
 
 use std::{cmp::Reverse, collections::BinaryHeap};
 
-#[derive(Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Eq, Ord, PartialEq, PartialOrd, Debug)]
 pub enum Event {
     Hblank,
     Vblank,
@@ -28,12 +30,21 @@ impl Scheduler {
         }
     }
 
-    pub fn schedule(&mut self, event: Event, cycles: u64) {
+    pub fn add(&mut self, event: Event, cycles: u64) {
         self.queue.push(Reverse((self.current + cycles, event)));
     }
 
     pub fn next(&self) -> u64 {
         self.queue.peek().map_or(u64::MAX, |Reverse((t, _))| *t)
+    }
+
+    pub fn go_to_next_event(&mut self) {
+        let current = self.current;
+        let next = self.next();
+
+        if next != u64::MAX && next > current {
+            self.current += next - current
+        }
     }
 
     pub fn pop(&mut self) -> Option<Event> {
@@ -42,5 +53,32 @@ impl Scheduler {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scheduler_with_schedule() {
+        let mut scheduler = Scheduler::new();
+
+        scheduler.add(Event::Hblank, 5);
+
+        assert_eq!(scheduler.next(), 5);
+        assert_eq!(scheduler.pop(), None);
+
+        scheduler.current = 6;
+
+        assert_eq!(scheduler.pop(), Some(Event::Hblank));
+    }
+
+    #[test]
+    fn test_scheduler_with_no_schedule() {
+        let mut scheduler = Scheduler::new();
+
+        assert_eq!(scheduler.next(), u64::MAX);
+        assert_eq!(scheduler.pop(), None);
     }
 }

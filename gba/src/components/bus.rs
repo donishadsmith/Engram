@@ -1,4 +1,5 @@
 // https://mgba.io/2015/06/27/cycle-counting-prefetch/
+// https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/bus/bus.cc
 // https://developer.arm.com/documentation/ddi0084/f/memory-interface/bus-cycle-types/sequential-cycles
 // https://corrupt.wiki/systems/gameboy-advance/bizhawk-memory-domains
 // https://medium.com/@michelheily/hello-gba-journey-of-making-an-emulator-part-1-8793000e8606
@@ -8,7 +9,7 @@
 // https://www.chibiakumas.com/arm/gba.php
 
 // https://blog.asie.pl/2025/09/wonderful-update-september-2025/
-
+// https://github.com/michelhe/rustboyadvance-ng/blob/master/arm7tdmi/src/memory.rs
 // Just do an afterboot startup
 
 // https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
@@ -49,7 +50,6 @@ pub trait AddressBus {
     fn write_u8(&mut self, address: u32, value: u8, access: AccessType);
     fn write_u16(&mut self, address: u32, value: u16, access: AccessType);
     fn write_u32(&mut self, address: u32, value: u32, access: AccessType);
-    fn idle(&mut self, cycles: u64);
 }
 
 pub struct Bus {
@@ -182,7 +182,12 @@ impl Bus {
     }
 
     pub fn rom_cost(&mut self, width: u32, access_type: AccessType) -> usize {
-        0
+        let first = match access_type {
+            AccessType::Nonsequential => 5,
+            AccessType::Sequential => 3,
+        };
+
+        if width == 32 { first + 3 } else { first }
     }
 
     // Take regiisters from an early commit and just map them back for now
@@ -441,6 +446,14 @@ impl Bus {
     fn open(&self) -> u32 {
         0
     }
+
+    pub fn pending_interrupt(&self) -> usize {
+        0
+    }
+
+    pub fn ime_enabled(&self) -> bool {
+        false
+    }
 }
 
 impl BusValue for u8 {
@@ -448,7 +461,7 @@ impl BusValue for u8 {
         bus.cost(address, 8, access_type);
 
         match address >> 24 {
-            0x00 => bus.bios[(address & 0x3FFE) as usize],
+            0x00 => bus.bios[(address & 0x3FFF) as usize],
             0x02 => bus.ewram[Bus::ewram_index(address)],
             0x03 => bus.iwram[Bus::iwram_index(address)],
             0x04 => {
@@ -685,10 +698,6 @@ impl AddressBus for Bus {
 
     fn write_u32(&mut self, address: u32, value: u32, access: AccessType) {
         self.write::<u32>(address, value, access);
-    }
-
-    fn idle(&mut self, cycles: u64) {
-        Bus::idle(self, cycles);
     }
 }
 

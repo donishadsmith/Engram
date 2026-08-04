@@ -40,12 +40,15 @@ Instructions
 Example Instructions:
 SUB r0, r1, #5 -> r0 = r1 - 5
 ADD r2, r3, r3, LSL #2 (add with inline shift) -> r2 = r3 + (r3 * 4)
-ANDS r4, r4, #0x20 (suffix x means alu condition codes will reflect operation results) -> r4 &= 0x20;
+ANDS r4, r4, #0x20 (suffix "s" means alu condition codes will reflect operation results) -> r4 &= 0x20;
 ADDEQ r5, r5, r6 (instruction only executes if the EQ condition is true at the executation stage of pipeline else its noop) -> if (EQ) r5 += r6
 B <Label> (Branch instruction/Pc-relative branch)
 LDR r0, [r1] => r0 = *r1
 STRNEB r2, [r3, r4] => if (NE) *(r3 + r4) = r2 [B is byte size stor; least significant byte of r2 to the address r3 + r4 but only when NE is true]
 */
+
+// https://users.ece.utexas.edu/~mcdermot/arch/articles/ARM/arm7tdmi_instruction_set_reference.pdf
+
 // Maybe a mode index helper
 // Section 2.7 in https://vision.gel.ulaval.ca/~jflalonde/cours/1001/h19/docs/ARM7TDMI.pdf
 // Mode is determined by the bits 0-4
@@ -82,16 +85,22 @@ enum VectorTable {
     Und = 0x04,
     Reset = 0x00,
 }
+
+enum Exception {
+    Irq,
+    SoftwareInterrupt,
+    Undefined,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u16)]
 enum ProcessorMode {
-    Usr = 0x10, // Typical mode most tasks run on (Unprivileged)
-    Fiq = 0x11, // Entered when high priority (fast) interrupt is raised (Privileged) - Banks out r8-14, and spsr
-    Irq = 0x12, // Entered when normal priority interrupt is raised (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Svc = 0x13, // Entered on reset and when a supervisor call instruction (SVC) us executed- Banks out register 13 (sp), 14 (lr), and spsr
-    Abt = 0x17, // Handle memory access violations (Priileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Und = 0x1B, // Undefined instructions (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Sys = 0x1F, // Mode using same registers as User mode (Privileged) - No banks just uses User
+    Usr, // Typical mode most tasks run on (Unprivileged)
+    Fiq, // Entered when high priority (fast) interrupt is raised (Privileged) - Banks out r8-14, and spsr
+    Irq, // Entered when normal priority interrupt is raised (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
+    Svc, // Entered on reset and when a supervisor call instruction (SVC) us executed- Banks out register 13 (sp), 14 (lr), and spsr
+    Abt, // Handle memory access violations (Priileged) - Banks out register 13 (sp), 14 (lr), and spsr
+    Und, // Undefined instructions (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
+    Sys, // Mode using same registers as User mode (Privileged) - No banks just uses User
 }
 
 impl ProcessorMode {
@@ -139,6 +148,100 @@ impl ProcessorMode {
     }
 }
 
+// https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/format-summary
+// https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/arm-instruction-summary?lang=en
+// https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/
+// https://support.arm.com/documentation/ddi0027/latest/ - Page 30
+enum DataOp {
+    And,
+    Eor,
+    Sub,
+    Rsb,
+    Add,
+    Adc,
+    Sbc,
+    Rsc,
+    Tst,
+    Teq,
+    Cmp,
+    Cmn,
+    Orr,
+    Mov,
+    Bic,
+    Mvn,
+}
+
+impl DataOp {
+    // [24:21]
+    fn from_bits(bits: u32) -> Self {
+        match bits & 0xF {
+            0b0000 => DataOp::And,
+            0b0001 => DataOp::Eor,
+            0b0010 => DataOp::Sub,
+            0b0011 => DataOp::Rsb,
+            0b0100 => DataOp::Add,
+            0b0101 => DataOp::Adc,
+            0b0110 => DataOp::Sbc,
+            0b0111 => DataOp::Rsc,
+            0b1000 => DataOp::Tst,
+            0b1001 => DataOp::Teq,
+            0b1010 => DataOp::Cmp,
+            0b1011 => DataOp::Cmn,
+            0b1100 => DataOp::Orr,
+            0b1101 => DataOp::Mov,
+            0b1110 => DataOp::Bic,
+            0b1111 => DataOp::Mvn,
+            _ => unreachable!(),
+        }
+    }
+}
+
+enum ShiftType {
+    LogicalLeft,
+    LogicalRight,
+    ArithmeticRight,
+    RotateRight,
+}
+
+// [6:5]
+fn from_bits(bits: u32) -> ShiftType {
+    match bits & 0x3 {
+        0b00 => ShiftType::LogicalLeft,
+        0b01 => ShiftType::LogicalRight,
+        0b10 => ShiftType::ArithmeticRight,
+        0b11 => ShiftType::RotateRight,
+        _ => unreachable!(),
+    }
+}
+
+enum ShiftAmount {
+    Immediate(u8),
+    Register(u8),
+}
+
+enum Operand2 {
+    Immediate {
+        value: u8,
+        rotate: u8,
+    },
+    Register {
+        rm: u8,
+        shift_type: ShiftType,
+        shift_amount: ShiftAmount,
+    },
+}
+
+enum ArmInstruction {
+    DataProcessing {
+        opcode: DataOp,
+        set_flags: bool,
+        rn: u8,
+        rd: u8,
+        operand2: Operand2,
+    },
+    Undefined,
+}
+
 pub struct Registers {
     r: [u32; 16],
     banked_high_registers: [[u32; 5]; 2],
@@ -149,46 +252,159 @@ pub struct Registers {
 }
 
 impl Registers {
-    fn new() {}
+    fn new() -> Self {
+        Self {
+            r: [0; 16],
+            banked_high_registers: [[0; 5]; 2],
+            banked_special_registers: [[0; 2]; 6],
+            banked_spsr: [0; 6],
+            cpsr: 0,
+        }
+    }
+
+    fn n_is_set(&self) -> bool {
+        (self.cpsr >> 28) & 0x80 != 0
+    }
+
+    fn z_is_set(&self) -> bool {
+        (self.cpsr >> 28) & 0x40 != 0
+    }
+
+    fn c_is_set(&self) -> bool {
+        (self.cpsr >> 28) & 0x20 != 0
+    }
+
+    fn v_is_set(&self) -> bool {
+        (self.cpsr >> 28) & 0x10 != 0
+    }
+
+    pub fn irqs_enabled(&self) -> bool {
+        (self.cpsr & 0x80) == 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum FetchedOpcode {
+    Arm(u32),
+    Thumb(u16),
 }
 
 // Store both fetch and decoded instrucion
 struct Pipeline {
-    fetched: u32,
-    decoded: u32,
+    fetched: Option<FetchedOpcode>,
+    decoded: Option<FetchedOpcode>,
 }
 
 impl Pipeline {
-    fn new() {}
-
-    fn push_instruction(&mut self, instruction: u32) {
-        self.decoded = self.fetched;
-        self.fetched = instruction;
+    fn new() -> Self {
+        Self {
+            fetched: None,
+            decoded: None,
+        }
     }
+
+    fn flush(&mut self) {
+        self.fetched = None;
+        self.decoded = None;
+    }
+
+    fn advance(&mut self, new_fetch: FetchedOpcode) -> Option<FetchedOpcode> {
+        let executing = self.decoded;
+        self.decoded = self.fetched;
+        self.fetched = Some(new_fetch);
+
+        executing
+    }
+}
+
+#[derive(Eq, PartialEq)]
+pub enum HaltState {
+    Running,
+    Halted,
+    IntrWait { flags: u16 },
+}
+
+pub enum CpuRequest {
+    Swi(u32),
 }
 
 pub struct Arm7tdmi {
-    registers: Registers,
+    pub registers: Registers,
     pipeline: Pipeline,
+    pub halt_state: HaltState,
 }
 
 impl Arm7tdmi {
-    pub fn step<A: AddressBus>(&mut self, bus: &mut A) {
+    pub fn new() -> Self {
+        Self {
+            registers: Registers::new(),
+            pipeline: Pipeline::new(),
+            halt_state: HaltState::Running,
+        }
+    }
+
+    // https://github.com/Warpten/CowBite/blob/master/GBA.cpp#L70
+    pub fn skip_boot(&mut self) {
+        self.registers.r[13] = 0x03007F00;
+        self.registers.r[15] = 0x08000000;
+        self.registers.cpsr = 0x00000013;
+
+        self.registers.banked_special_registers[3][0] = 0x03007FE0; // sp_svc
+        self.registers.banked_special_registers[2][0] = 0x03007FA0; // sp_irq
+        self.registers.banked_special_registers[0][0] = 0x03007F00; // sp_usr/sys
+
+        self.pipeline.flush();
+    }
+
+    pub fn step<A: AddressBus>(&mut self, bus: &mut A) -> Option<CpuRequest> {
         let executing_instruction = self.pipeline.decoded;
-        let new_instruction = match self.state() {
-            ProcessorState::Arm => bus.read_u32(self.registers.r[15], AccessType::Sequential), // TODO: Just assume always sequential for now
+        let new_fetch = match self.state() {
+            ProcessorState::Arm => {
+                FetchedOpcode::Arm(bus.read_u32(self.registers.r[15], AccessType::Sequential))
+            } // TODO: Just assume always sequential for now
             ProcessorState::Thumb => {
-                bus.read_u16(self.registers.r[15], AccessType::Sequential) as u32
+                FetchedOpcode::Thumb(bus.read_u16(self.registers.r[15], AccessType::Sequential))
             }
         };
 
-        // probably should do a bios intercept of some sort, the GBA bios actually had
-        // support functions that games use
-        self.pipeline.push_instruction(new_instruction);
-        self.execute_arm(executing_instruction);
+        self.pipeline.advance(new_fetch);
+
+        if let Some(opcode) = executing_instruction {
+            match opcode {
+                FetchedOpcode::Arm(word) => {
+                    if !self.is_noop(word) {
+                        let instruction = self.decode_arm(word);
+                        //return self.execute_arm(instruction);
+                    }
+                }
+                FetchedOpcode::Thumb(halfword) => {
+                    // let instruction = self.decode_thumb(halfword);
+                    //self.execute_thumb(instruction)
+                }
+            }
+        }
+
+        self.increment();
+        None
     }
 
-    fn execute_arm(&self, instruction: u32) {}
+    pub fn is_halted(&self) -> bool {
+        self.halt_state != HaltState::Running
+    }
+
+    pub fn awake(&mut self, pending: usize) {
+        //self.halt_state = HaltState::Running;
+    }
+
+    fn decode_arm(&self, word: u32) -> ArmInstruction {
+        ArmInstruction::Undefined
+    }
+
+    fn execute_arm(&self) {}
+
+    fn decode_thumb(&self, halfword: u16) {}
+
+    fn execute_thumb(&self) {}
 
     fn mode(&self) -> ProcessorMode {
         ProcessorMode::from_cpsr(self.registers.cpsr)
@@ -201,17 +417,12 @@ impl Arm7tdmi {
     fn set_high_registers(&mut self, banking_action: BankingAction) {
         let mode = self.mode();
         let offset = 8;
-        if matches!(
-            mode,
-            ProcessorMode::Usr | ProcessorMode::Sys | ProcessorMode::Fiq
-        ) {
-            let index = mode.high_register_index();
-            for i in 0..5 {
-                if banking_action == BankingAction::Restore {
-                    self.registers.r[i + offset] = self.registers.banked_high_registers[index][i];
-                } else {
-                    self.registers.banked_high_registers[index][i] = self.registers.r[i + offset];
-                }
+        let index = mode.high_register_index();
+        for i in 0..5 {
+            if banking_action == BankingAction::Restore {
+                self.registers.r[i + offset] = self.registers.banked_high_registers[index][i];
+            } else {
+                self.registers.banked_high_registers[index][i] = self.registers.r[i + offset];
             }
         }
     }
@@ -231,7 +442,7 @@ impl Arm7tdmi {
             }
         } else {
             self.registers.banked_special_registers[index][0] = self.registers.r[13];
-            self.registers.banked_special_registers[index][1] = self.registers.r[15];
+            self.registers.banked_special_registers[index][1] = self.registers.r[14];
         }
     }
 
@@ -240,9 +451,9 @@ impl Arm7tdmi {
         let index = mode.spsr_index();
 
         if banking_action == BankingAction::Restore {
-            self.registers.r[15] = self.registers.banked_spsr[index];
+            self.registers.cpsr = self.registers.banked_spsr[index];
         } else {
-            self.registers.banked_spsr[index] = self.registers.r[15];
+            self.registers.banked_spsr[index] = self.registers.cpsr;
         }
     }
 
@@ -263,5 +474,84 @@ impl Arm7tdmi {
         self.registers.r[15] = self.registers.r[15].wrapping_add(offset)
     }
 
-    fn raise_exception() {}
+    pub fn raise_irq<A: AddressBus>(&mut self, bus: &mut A) {
+        self.raise_exception(Exception::Irq);
+    }
+
+    fn raise_exception(&mut self, exception: Exception) {}
+
+    fn is_noop(&self, opcode: u32) -> bool {
+        let opcode_flags = opcode >> 28;
+        let cpsr_flags = self.registers.cpsr >> 28;
+
+        // cpsr condition flag order NZCV, is 31:28
+        // https://support.arm.com/documentation/ddi0027/latest/ - page 26
+        // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/arm-instruction-summary?lang=en - Table 1.6
+        let should_execute = match opcode_flags {
+            0b0000 => cpsr_flags & 0x04 != 0,
+            0b0001 => cpsr_flags & 0x04 == 0,
+            0b0010 => cpsr_flags & 0x02 != 0,
+            0b0011 => cpsr_flags & 0x02 == 0,
+            0b0100 => cpsr_flags & 0x08 != 0,
+            0b0101 => cpsr_flags & 0x08 == 0,
+            0b0110 => cpsr_flags & 0x01 == 1,
+            0b0111 => cpsr_flags & 0x01 == 0,
+            0b1000 => (cpsr_flags & 0x02 != 0) && (cpsr_flags & 0x04 == 0),
+            0b1001 => (cpsr_flags & 0x02 == 0) || (cpsr_flags & 0x04 != 0),
+            0b1010 => ((cpsr_flags & 0x08) >> 3) == (cpsr_flags & 0x01),
+            0b1011 => ((cpsr_flags & 0x08) >> 3) != (cpsr_flags & 0x01),
+            0b1100 => {
+                ((cpsr_flags & 0x04) == 0) && (((cpsr_flags & 0x08) >> 3) == (cpsr_flags & 0x01))
+            }
+            0b1101 => {
+                ((cpsr_flags & 0x04) != 0) || (((cpsr_flags & 0x08) >> 3) != (cpsr_flags & 0x01))
+            }
+            0b1110 => true,
+            0b1111 => false,
+            _ => unreachable!(),
+        };
+
+        !should_execute
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const N: u32 = 0x80000000;
+    const Z: u32 = 0x40000000;
+    const C: u32 = 0x20000000;
+    const V: u32 = 0x10000000;
+
+    const GT: u32 = 0b1100 << 28;
+    const LE: u32 = 0b1101 << 28;
+
+    #[test]
+    fn test_condition_flag_gt() {
+        let mut cpu = Arm7tdmi::new();
+
+        cpu.registers.cpsr = N;
+        assert!(cpu.is_noop(GT));
+
+        cpu.registers.cpsr = N | V;
+        assert!(!cpu.is_noop(GT));
+
+        cpu.registers.cpsr = N | C;
+        assert!(cpu.is_noop(GT));
+    }
+
+    #[test]
+    fn test_condition_flag_le() {
+        let mut cpu = Arm7tdmi::new();
+
+        cpu.registers.cpsr = N | Z;
+        assert!(!cpu.is_noop(LE));
+
+        cpu.registers.cpsr = N | V;
+        assert!(cpu.is_noop(LE));
+
+        cpu.registers.cpsr = N | C;
+        assert!(!cpu.is_noop(LE));
+    }
 }

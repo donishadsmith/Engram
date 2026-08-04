@@ -2,6 +2,7 @@ pub mod apu;
 pub mod bus;
 pub mod cpu;
 pub mod gamepak;
+pub mod gba;
 pub mod joypad;
 pub mod ppu;
 pub mod scheduler;
