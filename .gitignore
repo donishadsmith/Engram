@@ -11,6 +11,7 @@ gb/tests/blargg/*/source/
 *.s
 mooneye/
 *ppu_registers.txt*
+*hexdump.txt*
 *.txt
 *.bin
 *.sav
