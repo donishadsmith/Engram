@@ -5,6 +5,8 @@
 // https://ww1.microchip.com/downloads/en/DeviceDoc/DDI0029G_7TDMI_R3_trm.pdf
 // https://medium.com/@julio.vidaurre/making-a-gba-emulator-fbf91b85979a
 
+// ****GBA TEST ROMS: github.com/jsmolka/gba-tests****
+
 use std::{error::Error, path::PathBuf};
 
 use gba::{components::gamepak::GamePak, debug::*};
