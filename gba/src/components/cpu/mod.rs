@@ -1,4 +1,7 @@
-use crate::components::bus::{AccessType, AddressBus};
+use crate::components::{
+    bus::{AccessType, AddressBus},
+    utils::BitOps,
+};
 /*
 The ARM University Program, ARM Architecture Fundamentals: https://www.youtube.com/watch?v=7LqPJGnBPMM
 
@@ -75,6 +78,14 @@ impl ProcessorState {
     }
 }
 
+#[repr(usize)]
+enum CpuFlag {
+    N = 31,
+    Z = 30,
+    C = 29,
+    V = 28,
+}
+
 enum VectorTable {
     Fiq = 0x1C,
     Irq = 0x18,
@@ -94,13 +105,13 @@ enum Exception {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ProcessorMode {
-    Usr, // Typical mode most tasks run on (Unprivileged)
-    Fiq, // Entered when high priority (fast) interrupt is raised (Privileged) - Banks out r8-14, and spsr
-    Irq, // Entered when normal priority interrupt is raised (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Svc, // Entered on reset and when a supervisor call instruction (SVC) us executed- Banks out register 13 (sp), 14 (lr), and spsr
-    Abt, // Handle memory access violations (Priileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Und, // Undefined instructions (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Sys, // Mode using same registers as User mode (Privileged) - No banks just uses User
+    Usr = 0x10, // Typical mode most tasks run on (Unprivileged)
+    Fiq = 0x11, // Entered when high priority (fast) interrupt is raised (Privileged) - Banks out r8-14, and spsr
+    Irq = 0x12, // Entered when normal priority interrupt is raised (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
+    Svc = 0x13, // Entered on reset and when a supervisor call instruction (SVC) us executed- Banks out register 13 (sp), 14 (lr), and spsr
+    Abt = 0x17, // Handle memory access violations (Priileged) - Banks out register 13 (sp), 14 (lr), and spsr
+    Und = 0x1B, // Undefined instructions (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
+    Sys = 0x1F, // Mode using same registers as User mode (Privileged) - No banks just uses User
 }
 
 impl ProcessorMode {
@@ -151,7 +162,7 @@ impl ProcessorMode {
 // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/format-summary
 // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/arm-instruction-summary?lang=en
 // https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/
-// https://support.arm.com/documentation/ddi0027/latest/ - Page 30
+// ***https://support.arm.com/documentation/ddi0027/latest/ - Page 30*** <- THIS IS THE ARM7DI DATA SHEET
 enum DataOp {
     And,
     Eor,
@@ -262,24 +273,44 @@ impl Registers {
         }
     }
 
-    fn n_is_set(&self) -> bool {
-        (self.cpsr >> 28) & 0x80 != 0
+    pub fn N(&self) -> bool {
+        self.cpsr.is_set(CpuFlag::N as usize)
     }
 
-    fn z_is_set(&self) -> bool {
-        (self.cpsr >> 28) & 0x40 != 0
+    pub fn set_N(&mut self) {
+        self.cpsr.set_bit(CpuFlag::N as usize)
     }
 
-    fn c_is_set(&self) -> bool {
-        (self.cpsr >> 28) & 0x20 != 0
+    pub fn Z(&self) -> bool {
+        self.cpsr.is_set(CpuFlag::Z as usize)
     }
 
-    fn v_is_set(&self) -> bool {
-        (self.cpsr >> 28) & 0x10 != 0
+    pub fn set_Z(&mut self) {
+        self.cpsr.set_bit(CpuFlag::Z as usize)
     }
 
-    pub fn irqs_enabled(&self) -> bool {
-        (self.cpsr & 0x80) == 0
+    pub fn C(&self) -> bool {
+        self.cpsr.is_set(CpuFlag::C as usize)
+    }
+
+    pub fn set_C(&mut self) {
+        self.cpsr.set_bit(CpuFlag::C as usize)
+    }
+
+    pub fn V(&self) -> bool {
+        self.cpsr.is_set(CpuFlag::V as usize)
+    }
+
+    pub fn set_V(&mut self) {
+        self.cpsr.set_bit(CpuFlag::V as usize)
+    }
+
+    pub fn irq_enabled(&self) -> bool {
+        self.cpsr.is_set(7)
+    }
+
+    pub fn fiq_enabled(&self) -> bool {
+        self.cpsr.is_set(6)
     }
 }
 
@@ -374,7 +405,7 @@ impl Arm7tdmi {
                 FetchedOpcode::Arm(word) => {
                     if !self.is_noop(word) {
                         let instruction = self.decode_arm(word);
-                        //return self.execute_arm(instruction);
+                        return self.execute_arm(instruction);
                     }
                 }
                 FetchedOpcode::Thumb(halfword) => {
@@ -400,20 +431,40 @@ impl Arm7tdmi {
         ArmInstruction::Undefined
     }
 
-    fn execute_arm(&self) {}
+    fn execute_arm(&self, instruction: ArmInstruction) -> Option<CpuRequest> {
+        None
+    }
 
     fn decode_thumb(&self, halfword: u16) {}
 
-    fn execute_thumb(&self) {}
+    fn execute_thumb(&self) -> Option<CpuRequest> {
+        None
+    }
 
     fn mode(&self) -> ProcessorMode {
         ProcessorMode::from_cpsr(self.registers.cpsr)
+    }
+
+    fn change_mode(&mut self, mode: ProcessorMode) {
+        self.set_sp_and_pc(BankingAction::Snapshot);
+        self.registers.cpsr.clear_bit_range(0..5);
+        self.registers.cpsr |= mode as u32;
+
+        self.set_sp_and_pc(BankingAction::Restore);
     }
 
     fn state(&self) -> ProcessorState {
         ProcessorState::from_cpsr(self.registers.cpsr)
     }
 
+    fn change_state(&mut self, state: ProcessorState) {
+        self.registers.cpsr.clear_bit(5);
+        if state == ProcessorState::Thumb {
+            self.registers.cpsr.set_bit(5);
+        }
+    }
+
+    // Likely will never trigger because apparantly the gba never enters FIQ but keep anyway
     fn set_high_registers(&mut self, banking_action: BankingAction) {
         let mode = self.mode();
         let offset = 8;
@@ -435,10 +486,6 @@ impl Arm7tdmi {
         if banking_action == BankingAction::Restore {
             for i in 0..2 {
                 self.registers.r[i + offset] = self.registers.banked_special_registers[index][i];
-
-                if i == 1 {
-                    self.registers.r[15] = self.registers.r[14];
-                }
             }
         } else {
             self.registers.banked_special_registers[index][0] = self.registers.r[13];
@@ -446,15 +493,20 @@ impl Arm7tdmi {
         }
     }
 
-    fn set_cpsr(&mut self, banking_action: BankingAction) {
+    fn snapshot_cpsr_to_target_spsr(&mut self, target_mode: ProcessorMode) {
+        let index = target_mode.spsr_index();
+        self.registers.banked_spsr[index] = self.registers.cpsr
+    }
+
+    fn restore_mode(&mut self) {
+        self.set_sp_and_pc(BankingAction::Snapshot);
         let mode = self.mode();
         let index = mode.spsr_index();
+        let cpsr = self.registers.banked_spsr[index];
 
-        if banking_action == BankingAction::Restore {
-            self.registers.cpsr = self.registers.banked_spsr[index];
-        } else {
-            self.registers.banked_spsr[index] = self.registers.cpsr;
-        }
+        self.registers.cpsr = cpsr;
+
+        self.set_sp_and_pc(BankingAction::Restore);
     }
 
     fn jump() {}
@@ -474,7 +526,10 @@ impl Arm7tdmi {
         self.registers.r[15] = self.registers.r[15].wrapping_add(offset)
     }
 
-    pub fn raise_irq<A: AddressBus>(&mut self, bus: &mut A) {
+    pub fn raise_irq(&mut self) {
+        self.snapshot_cpsr_to_target_spsr(ProcessorMode::Irq);
+        self.change_mode(ProcessorMode::Irq);
+        self.registers.cpsr.set_bit(7);
         self.raise_exception(Exception::Irq);
     }
 
@@ -482,29 +537,37 @@ impl Arm7tdmi {
 
     fn is_noop(&self, opcode: u32) -> bool {
         let opcode_flags = opcode >> 28;
-        let cpsr_flags = self.registers.cpsr >> 28;
+        let regs = &self.registers;
 
         // cpsr condition flag order NZCV, is 31:28
         // https://support.arm.com/documentation/ddi0027/latest/ - page 26
         // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/arm-instruction-summary?lang=en - Table 1.6
         let should_execute = match opcode_flags {
-            0b0000 => cpsr_flags & 0x04 != 0,
-            0b0001 => cpsr_flags & 0x04 == 0,
-            0b0010 => cpsr_flags & 0x02 != 0,
-            0b0011 => cpsr_flags & 0x02 == 0,
-            0b0100 => cpsr_flags & 0x08 != 0,
-            0b0101 => cpsr_flags & 0x08 == 0,
-            0b0110 => cpsr_flags & 0x01 == 1,
-            0b0111 => cpsr_flags & 0x01 == 0,
-            0b1000 => (cpsr_flags & 0x02 != 0) && (cpsr_flags & 0x04 == 0),
-            0b1001 => (cpsr_flags & 0x02 == 0) || (cpsr_flags & 0x04 != 0),
-            0b1010 => ((cpsr_flags & 0x08) >> 3) == (cpsr_flags & 0x01),
-            0b1011 => ((cpsr_flags & 0x08) >> 3) != (cpsr_flags & 0x01),
+            0b0000 => regs.Z(),
+            0b0001 => !regs.Z(),
+            0b0010 => regs.C(),
+            0b0011 => !regs.C(),
+            0b0100 => regs.N(),
+            0b0101 => !regs.N(),
+            0b0110 => regs.V(),
+            0b0111 => !regs.V(),
+            0b1000 => regs.C() && !regs.Z(),
+            0b1001 => !regs.C() && regs.Z(),
+            0b1010 => {
+                regs.cpsr.get_bit(CpuFlag::N as usize) == regs.cpsr.get_bit(CpuFlag::V as usize)
+            }
+            0b1011 => {
+                regs.cpsr.get_bit(CpuFlag::N as usize) != regs.cpsr.get_bit(CpuFlag::V as usize)
+            }
             0b1100 => {
-                ((cpsr_flags & 0x04) == 0) && (((cpsr_flags & 0x08) >> 3) == (cpsr_flags & 0x01))
+                !regs.Z()
+                    && regs.cpsr.get_bit(CpuFlag::N as usize)
+                        == regs.cpsr.get_bit(CpuFlag::V as usize)
             }
             0b1101 => {
-                ((cpsr_flags & 0x04) != 0) || (((cpsr_flags & 0x08) >> 3) != (cpsr_flags & 0x01))
+                regs.Z()
+                    || regs.cpsr.get_bit(CpuFlag::N as usize)
+                        != regs.cpsr.get_bit(CpuFlag::V as usize)
             }
             0b1110 => true,
             0b1111 => false,
@@ -553,5 +616,31 @@ mod tests {
 
         cpu.registers.cpsr = N | C;
         assert!(!cpu.is_noop(LE));
+    }
+
+    #[test]
+    fn test_raise_irq() {
+        let mut cpu = Arm7tdmi::new();
+
+        cpu.registers.cpsr = ProcessorMode::Sys as u32;
+        assert_eq!(cpu.mode(), ProcessorMode::Sys);
+
+        cpu.raise_irq();
+        assert_eq!(cpu.mode(), ProcessorMode::Irq);
+
+        cpu.restore_mode();
+        assert_eq!(cpu.mode(), ProcessorMode::Sys);
+    }
+
+    #[test]
+    fn test_change_state() {
+        let mut cpu = Arm7tdmi::new();
+        assert_eq!(cpu.state(), ProcessorState::Arm);
+
+        cpu.change_state(ProcessorState::Thumb);
+        assert_eq!(cpu.state(), ProcessorState::Thumb);
+
+        cpu.change_state(ProcessorState::Arm);
+        assert_eq!(cpu.state(), ProcessorState::Arm);
     }
 }
