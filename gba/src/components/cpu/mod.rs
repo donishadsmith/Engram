@@ -1,4 +1,5 @@
 use crate::components::{
+    bios::handle_swi,
     bus::{AccessType, AddressBus},
     utils::BitOps,
 };
@@ -254,7 +255,7 @@ enum ArmInstruction {
 }
 
 pub struct Registers {
-    r: [u32; 16],
+    pub r: [u32; 16],
     banked_high_registers: [[u32; 5]; 2],
     banked_special_registers: [[u32; 2]; 6],
     banked_spsr: [u32; 6],
@@ -263,7 +264,7 @@ pub struct Registers {
 }
 
 impl Registers {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             r: [0; 16],
             banked_high_registers: [[0; 5]; 2],
@@ -363,6 +364,7 @@ pub struct Arm7tdmi {
     pub registers: Registers,
     pipeline: Pipeline,
     pub halt_state: HaltState,
+    branched: bool,
 }
 
 impl Arm7tdmi {
@@ -371,6 +373,7 @@ impl Arm7tdmi {
             registers: Registers::new(),
             pipeline: Pipeline::new(),
             halt_state: HaltState::Running,
+            branched: false,
         }
     }
 
@@ -387,8 +390,8 @@ impl Arm7tdmi {
         self.pipeline.flush();
     }
 
-    pub fn step<A: AddressBus>(&mut self, bus: &mut A) -> Option<CpuRequest> {
-        let executing_instruction = self.pipeline.decoded;
+    pub fn step<A: AddressBus>(&mut self, bus: &mut A) {
+        self.branched = false;
         let new_fetch = match self.state() {
             ProcessorState::Arm => {
                 FetchedOpcode::Arm(bus.read_u32(self.registers.r[15], AccessType::Sequential))
@@ -398,25 +401,49 @@ impl Arm7tdmi {
             }
         };
 
-        self.pipeline.advance(new_fetch);
+        let executing_instruction = self.pipeline.advance(new_fetch);
+        let executing_address = self.registers.r[15].wrapping_sub(2 * self.pc_offset());
 
+        let mut cpu_request: Option<CpuRequest> = None;
         if let Some(opcode) = executing_instruction {
-            match opcode {
+            cpu_request = match opcode {
                 FetchedOpcode::Arm(word) => {
                     if !self.is_noop(word) {
                         let instruction = self.decode_arm(word);
-                        return self.execute_arm(instruction);
+                        self.execute_arm(instruction)
+                    } else {
+                        None
                     }
                 }
                 FetchedOpcode::Thumb(halfword) => {
-                    // let instruction = self.decode_thumb(halfword);
-                    //self.execute_thumb(instruction)
+                    let instruction = self.decode_thumb(halfword);
+                    // self.execute_thumb(instruction)
+                    Some(CpuRequest::Swi(0x01))
+                }
+            };
+        }
+
+        if let Some(request) = cpu_request {
+            match request {
+                CpuRequest::Swi(function) => {
+                    handle_swi(function, &mut self.registers, &mut self.halt_state, bus)
                 }
             }
         }
 
-        self.increment();
-        None
+        if let HaltState::IntrWait { .. } = self.halt_state {
+            self.registers.r[15] = executing_address;
+            self.flush_pipeline();
+        }
+
+        if !self.branched {
+            self.increment_pc();
+        }
+    }
+
+    fn flush_pipeline(&mut self) {
+        self.pipeline.flush();
+        self.branched = true;
     }
 
     pub fn is_halted(&self) -> bool {
@@ -517,13 +544,17 @@ impl Arm7tdmi {
 
     fn push() {}
 
-    fn increment(&mut self) {
-        let offset = if self.state() == ProcessorState::Arm {
+    fn pc_offset(&self) -> u32 {
+        if self.state() == ProcessorState::Arm {
             4
         } else {
             2
-        };
-        self.registers.r[15] = self.registers.r[15].wrapping_add(offset)
+        }
+    }
+
+    fn increment_pc(&mut self) {
+        let offset = self.pc_offset();
+        self.registers.r[15] = self.registers.r[15].wrapping_add(offset);
     }
 
     pub fn raise_irq(&mut self) {
@@ -552,7 +583,7 @@ impl Arm7tdmi {
             0b0110 => regs.V(),
             0b0111 => !regs.V(),
             0b1000 => regs.C() && !regs.Z(),
-            0b1001 => !regs.C() && regs.Z(),
+            0b1001 => !regs.C() || regs.Z(),
             0b1010 => {
                 regs.cpsr.get_bit(CpuFlag::N as usize) == regs.cpsr.get_bit(CpuFlag::V as usize)
             }

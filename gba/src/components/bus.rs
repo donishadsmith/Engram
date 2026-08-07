@@ -55,6 +55,9 @@ pub trait AddressBus {
     fn write_u8(&mut self, address: u32, value: u8, access: AccessType);
     fn write_u16(&mut self, address: u32, value: u16, access: AccessType);
     fn write_u32(&mut self, address: u32, value: u32, access: AccessType);
+    fn idle(&mut self, cycles: u64) {
+        0;
+    }
 }
 
 pub struct Bus {
@@ -160,10 +163,6 @@ impl Bus {
 
     pub fn write<T: BusValue>(&mut self, address: u32, value: T, access_type: AccessType) {
         T::write(self, address, value, access_type)
-    }
-
-    pub fn idle(&mut self, cycles: u64) {
-        self.scheduler.current += cycles;
     }
 
     pub fn cost(&mut self, address: u32, width: u32, access_type: AccessType) {
@@ -718,6 +717,10 @@ impl AddressBus for Bus {
 
     fn write_u32(&mut self, address: u32, value: u32, access: AccessType) {
         self.write::<u32>(address, value, access);
+    }
+
+    fn idle(&mut self, cycles: u64) {
+        self.scheduler.current += cycles;
     }
 }
 

@@ -1,9 +1,4 @@
-use crate::components::{
-    bus::Bus,
-    cpu::{Arm7tdmi, CpuRequest},
-    gamepak::GamePak,
-    scheduler::Event,
-};
+use crate::components::{bus::Bus, cpu::Arm7tdmi, gamepak::GamePak, scheduler::Event};
 
 pub struct GBA {
     bus: Bus,
@@ -23,10 +18,8 @@ impl GBA {
 
         if self.cpu.is_halted() {
             bus.scheduler.go_to_next_event();
-        } else if let Some(cpu_request) = self.cpu.step(bus) {
-            match cpu_request {
-                CpuRequest::Swi(function) => self.handle_swi(function),
-            }
+        } else {
+            self.cpu.step(bus)
         };
 
         while let Some(event) = self.bus.scheduler.pop() {
@@ -51,20 +44,6 @@ impl GBA {
             self.cpu.awake(pending);
             if self.bus.ime_enabled() && self.cpu.registers.irq_enabled() {
                 self.cpu.raise_irq()
-            }
-        }
-    }
-
-    fn handle_swi(&mut self, function: u32) {
-        // https://github.com/mgba-emu/mgba/blob/b54fc45b4ddab1c493122f6644f6d290dce319ce/src/gba/hle-bios.s#L69
-        match function {
-            0x00 => {} // SoftReset
-            0x02 => {} //
-            _ => {
-                eprintln!(
-                    "The following SWI function not implemented: {:#04X}",
-                    function
-                );
             }
         }
     }
