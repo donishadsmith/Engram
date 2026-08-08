@@ -1,4 +1,9 @@
-use crate::components::{bus::Bus, cpu::Arm7tdmi, gamepak::GamePak, scheduler::Event};
+use crate::components::{
+    bus::Bus,
+    cpu::{Arm7tdmi, HaltState},
+    gamepak::GamePak,
+    scheduler::Event,
+};
 
 pub struct GBA {
     bus: Bus,
@@ -22,6 +27,10 @@ impl GBA {
             self.cpu.step(bus)
         };
 
+        if let Some(_) = self.bus.take_halt_request() {
+            self.cpu.halt_state = HaltState::Halted;
+        }
+
         while let Some(event) = self.bus.scheduler.pop() {
             self.handle_event(event);
         }
@@ -39,9 +48,8 @@ impl GBA {
     }
 
     fn check_interrupts(&mut self) {
-        let pending = self.bus.pending_interrupt();
-        if pending != 0 {
-            self.cpu.awake(pending);
+        if self.bus.pending_interrupt() != 0 {
+            self.cpu.awake();
             if self.bus.ime_enabled() && self.cpu.registers.irq_enabled() {
                 self.cpu.raise_irq()
             }

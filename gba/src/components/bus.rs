@@ -74,6 +74,8 @@ pub struct Bus {
     interrupt_master_enable: u32,
     interrupt_enable: u16,
     interrupt_flag: u16,
+    postflg: u8,
+    haltcnt: Option<u8>,
 }
 
 impl Bus {
@@ -91,6 +93,8 @@ impl Bus {
             interrupt_master_enable: 0,
             interrupt_flag: 0,
             interrupt_enable: 0,
+            postflg: 0,
+            haltcnt: None,
         }
     }
 
@@ -296,7 +300,7 @@ impl Bus {
             // 0x4000206 => {} // Not used
             0x4000208 => self.interrupt_master_enable as u16, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
             // 0x400020A => {} // Not used
-            // 0x4000300 => {} // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
+            0x4000300 => self.postflg as u16, // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
             // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
             // 0x4000302 => {} // Not used
             // 0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
@@ -439,9 +443,11 @@ impl Bus {
             0x4000206 => {} // Not used
             0x4000208 => self.interrupt_master_enable = (value & 1) as u32, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
             0x400020A => {}                                                 // Not used
-            0x4000300 => {} // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
-            0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-            0x4000302 => {} // Not used
+            0x4000300 => {
+                self.postflg = (value & 1) as u8;
+                self.haltcnt = Some((value >> 8) as u8);
+            } // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
+            0x4000302 => {}                                                 // Not used
             0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
             0x4000411 => {} // Not used
             0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
@@ -464,6 +470,14 @@ impl Bus {
 
     pub fn ime_enabled(&self) -> bool {
         self.interrupt_master_enable.is_set(0)
+    }
+
+    pub fn skip_boot(&mut self) {
+        self.postflg = 1;
+    }
+
+    pub fn take_halt_request(&mut self) -> Option<u8> {
+        self.haltcnt.take()
     }
 }
 
@@ -494,10 +508,44 @@ impl BusValue for u8 {
 
     fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
         bus.cost(address, 8, access_type);
+        // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
+        /*
+        _00000300:
+            mov  r3, #0x4000000 = base 0x4000000 in r3
+            ldr  r2, [r3, #0x200] = 32 bit read of x4000200 stored in r2
+            and  r2, r2, r2, lsr #16 = bitwise and; r2 & (r2 >> 16) - IE & IF flags
+            ands r1, r2, #0x80 = r1 = r2 & 0x80 checking bit 7 (serial), which i will never implement - s updates condition flag
+            ldrne r0, _00000AB8 = if (ne = Z flag is clear = !0) load value at _00000AB8 to r0
+            andeq r1, r2, #1 = r1 = r2 & 1, if (eq = Z flag is set = 0) - bit 1 is vblank
+            ldreq r0, _00000ABC - load address from _00000ABC into r0 if Z flag set
+            strheq r2, [r3, #-8] - if z is set, take lowest half word of r2 and store at r3 + - 8 = 0x03FFFFF8
+            strb r1, [r3, #0x202] - store lowest byte in to 0x4000202
+            bx r0
+        */
+
+        // Some game could right to 203
         if address & !1 == 0x4000202 {
             let mask = (value as u16) << ((address & 1) * 8);
             bus.interrupt_flag &= !mask;
+
+            return;
+        }
+
+        /*
+           _000001AC:
+               moves lowest 8 bits of the 32 bit value in r2 to address 0x40000301 - HALTCNT register
+               mov r12, #0x4000000
+               strb r2, [r12, #0x301]
+        */
+
+        if address & !1 == 0x4000300 {
+            if address & 1 == 0 {
+                bus.postflg = value & 1; // postflag is touched in boot sequence, consider if want to support bios
+            } else {
+                bus.haltcnt = Some(value)
+            }
+
             return;
         }
 
