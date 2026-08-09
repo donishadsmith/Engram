@@ -63,8 +63,8 @@ pub trait AddressBus {
 pub struct Bus {
     pub scheduler: Scheduler,
     bios: Box<[u8; 0x4000]>,
-    ewram: Box<[u8; 0x40000]>,
-    iwram: Box<[u8; 0x8000]>,
+    pub ewram: Box<[u8; 0x40000]>,
+    pub iwram: Box<[u8; 0x8000]>,
     last_read: u32,
     last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
@@ -99,12 +99,12 @@ impl Bus {
     }
 
     #[inline]
-    fn ewram_index(address: u32) -> usize {
+    pub fn ewram_index(address: u32) -> usize {
         (address & 0x3FFFF) as usize
     }
 
     #[inline]
-    fn iwram_index(address: u32) -> usize {
+    pub fn iwram_index(address: u32) -> usize {
         (address & 0x7FFF) as usize
     }
 
@@ -571,7 +571,8 @@ impl BusValue for u8 {
                 bus.ppu.palette_ram[index + 1] = value;
             }
             0x06 => {
-                // TODO: regquires byte duplication based on MOde, bg/character region
+                // https://gbadev.net/tonc/bitmaps.html
+                // https://www.patater.com/gbaguy/gba/ch5.htm
                 let index = Bus::vram_index(address) & !1;
                 bus.ppu.vram[index] = value;
                 bus.ppu.vram[index + 1] = value;

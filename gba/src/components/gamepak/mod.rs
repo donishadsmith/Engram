@@ -4,6 +4,7 @@ use std::{
     fs::{read, write},
     io::Error,
     path::PathBuf,
+    slice::SliceIndex,
 };
 // SRAM_F
 
@@ -169,8 +170,12 @@ impl GamePak {
     }
 
     pub fn mock() -> Self {
+        let mut rom = vec![8u8; kilobytes(32000)];
+        let index = rom.len() - 1;
+        rom[index] = 0;
+
         Self {
-            rom: vec![0u8; kilobytes(32000)],
+            rom: vec![8u8; kilobytes(32000)],
             sav_path: PathBuf::from("mock.sav"),
             backup_memory: vec![0u8; kilobytes(32)],
             backup_type: BackupType::Sram,
