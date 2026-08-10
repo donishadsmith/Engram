@@ -203,16 +203,6 @@ impl ProcessorMode {
 // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/arm-instruction-summary?lang=en
 // https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/
 // ***https://support.arm.com/documentation/ddi0027/latest/ - Page 30*** <- THIS IS THE ARM7DI DATA SHEET
-// [6:5]
-fn from_bits(bits: u32) -> ShiftType {
-    match bits & 0x3 {
-        0b00 => ShiftType::LogicalLeft,
-        0b01 => ShiftType::LogicalRight,
-        0b10 => ShiftType::ArithmeticRight,
-        0b11 => ShiftType::RotateRight,
-        _ => unreachable!(),
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum FetchedInstruction {

@@ -1,4 +1,4 @@
-use crate::components::cpu::Condition;
+use crate::components::{cpu::Condition, utils::BitOps};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DataOp {
@@ -51,6 +51,17 @@ pub enum ShiftType {
     LogicalRight,
     ArithmeticRight,
     RotateRight,
+}
+
+// [6:5]
+fn from_bits(bits: u32) -> ShiftType {
+    match bits.get_bit_range(5..7) {
+        0b00 => ShiftType::LogicalLeft,
+        0b01 => ShiftType::LogicalRight,
+        0b10 => ShiftType::ArithmeticRight,
+        0b11 => ShiftType::RotateRight,
+        _ => unreachable!(),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
