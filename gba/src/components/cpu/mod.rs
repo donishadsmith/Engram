@@ -250,12 +250,20 @@ impl Registers {
         self.cpsr.set_bit(CpuFlag::N as usize)
     }
 
+    fn clear_N(&mut self) {
+        self.cpsr.clear_bit(CpuFlag::N as usize)
+    }
+
     fn Z(&self) -> bool {
         self.cpsr.is_set(CpuFlag::Z as usize)
     }
 
     fn set_Z(&mut self) {
         self.cpsr.set_bit(CpuFlag::Z as usize)
+    }
+
+    fn clear_Z(&mut self) {
+        self.cpsr.clear_bit(CpuFlag::Z as usize)
     }
 
     fn C(&self) -> bool {
@@ -266,12 +274,20 @@ impl Registers {
         self.cpsr.set_bit(CpuFlag::C as usize)
     }
 
+    fn clear_C(&mut self) {
+        self.cpsr.clear_bit(CpuFlag::C as usize)
+    }
+
     fn V(&self) -> bool {
         self.cpsr.is_set(CpuFlag::V as usize)
     }
 
     fn set_V(&mut self) {
         self.cpsr.set_bit(CpuFlag::V as usize)
+    }
+
+    fn clear_V(&mut self) {
+        self.cpsr.clear_bit(CpuFlag::V as usize)
     }
 
     pub fn irq_enabled(&self) -> bool {
