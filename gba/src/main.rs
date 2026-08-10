@@ -9,7 +9,7 @@
 
 use std::{error::Error, path::PathBuf};
 
-use gba::{components::gamepak::GamePak, debug::*};
+use engram_gba::{components::gamepak::GamePak, debug::*};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let file = Some(PathBuf::from(r""));

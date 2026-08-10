@@ -9,6 +9,7 @@ use crate::components::{
     cpu::{Arm7tdmi, HaltState, Registers},
     utils::BitOps,
 };
+use std::f32::consts::PI;
 
 const ARCTAN_COEFFICIENTS: [i32; 7] = [0x390, 0x91C, 0xFB6, 0x16AA, 0x2081, 0x3651, 0xA2F9];
 
@@ -22,6 +23,13 @@ const CIRCLE_ORIGIN: i32 = 0;
 enum BitSize {
     EightBit,
     SixteenBit,
+    ThirtyTwoBit,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CpuSetMode {
+    CpuSet,
+    CpuSetFast,
 }
 
 // Yeah, im just going to ifnore, multiboot, stop, and the entire sound driver family
@@ -30,9 +38,8 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
     // https://gbadev.net/gbadoc/bios.html
     // https://github.com/mgba-emu/mgba/blob/b54fc45b4ddab1c493122f6644f6d290dce319ce/src/gba/hle-bios.s#L69
     match function {
-        0x00 => {}
+        0x00 => soft_reset(cpu, bus), // https://problemkaputt.de/gbatek-bios-reset-functions.htm
         0x02 => cpu.halt_state = HaltState::Halted,
-        0x03 => {} // Stop
         0x04 => intr_wait(cpu, bus, cpu.registers.r[0] != 0, cpu.registers.r[1] as u16),
         0x05 => {
             cpu.registers.r[0] = 1;
@@ -61,7 +68,21 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
             let cycles = arctan2(&mut cpu.registers);
             bus.idle(cycles);
         }
+        0x0B => cpuset(cpu, bus, CpuSetMode::CpuSet),
+        0x0C => cpuset(cpu, bus, CpuSetMode::CpuSetFast),
+        0x0D => {
+            // https://github.com/mgba-emu/bios-dump
+            // https://problemkaputt.de/gbatek-bios-misc-functions.htm
+            cpu.registers.r[0] = 0xBAAE187F;
+        }
+        0x0E => bg_affine_set(&cpu.registers, bus),
+        0x0F => obj_affine_set(&cpu.registers, bus),
         0x10 => bit_unpack(&cpu.registers, bus),
+        0x11 => lz77_uncomp(&cpu.registers, bus, BitSize::EightBit),
+        0x12 => lz77_uncomp(&cpu.registers, bus, BitSize::SixteenBit),
+        0x13 => huff_uncomp(&cpu.registers, bus), // *****STILL NNEDS TO BE COMPLETED****
+        0x14 => rl_uncomp(&cpu.registers, bus, BitSize::EightBit),
+        0x15 => rl_uncomp(&cpu.registers, bus, BitSize::SixteenBit),
         0x16 => diff_unfilter(&cpu.registers, bus, BitSize::EightBit, BitSize::EightBit),
         0x17 => diff_unfilter(&cpu.registers, bus, BitSize::EightBit, BitSize::SixteenBit),
         0x18 => diff_unfilter(
@@ -70,11 +91,7 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
             BitSize::SixteenBit,
             BitSize::SixteenBit,
         ),
-        0x0D => {
-            // https://github.com/mgba-emu/bios-dump
-            // https://problemkaputt.de/gbatek-bios-misc-functions.htm
-            cpu.registers.r[0] = 0xBAAE187F;
-        }
+        0x1F => midi_key_2_freq(&mut cpu.registers, bus),
         _ => {
             eprintln!(
                 "The following SWI function not implemented: {:#04X}",
@@ -84,14 +101,36 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
     }
 }
 
-fn intr_wait<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A, clear_if: bool, target_flags: u16) {
+fn soft_reset<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A) {
+    let return_flag = bus.read_u8(0x03007FFA, AccessType::Nonsequential);
+
+    for address in 0x03007E00..0x03008000 {
+        bus.write_u8(address, 0, AccessType::Sequential);
+    }
+
+    let entry_point = if return_flag == 0 {
+        0x08000000
+    } else {
+        0x02000000
+    };
+
+    cpu.registers.soft_reset(entry_point);
+    cpu.branch_to(entry_point);
+}
+
+fn intr_wait<A: AddressBus>(
+    cpu: &mut Arm7tdmi,
+    bus: &mut A,
+    clear_interrupt_flag: bool,
+    target_flags: u16,
+) {
     bus.write_u16(0x4000208, 1, AccessType::Nonsequential);
 
     // Since the cpu rewinds the program counter to execute the swi until wait is satisfied
     // cant keep clearing the IF flag and need the re-execution to check if the flag is cleared
     let bios_flags = bus.read_u16(0x03007FF8, AccessType::Nonsequential);
 
-    if clear_if {
+    if clear_interrupt_flag {
         bus.write_u16(
             0x03007FF8,
             bios_flags & !target_flags,
@@ -107,6 +146,84 @@ fn intr_wait<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A, clear_if: bool, tar
         );
     } else {
         cpu.halt_state = HaltState::IntrWait
+    }
+}
+
+fn cpuset<A: AddressBus>(cpu: &Arm7tdmi, bus: &mut A, cpu_mode: CpuSetMode) {
+    let mut source_address = cpu.registers.r[0];
+    let mut destination_address = cpu.registers.r[1];
+    let metadata = cpu.registers.r[2];
+
+    let mut remaining_count = metadata.get_bit_range(0..21);
+    let fixed_source_address = metadata.get_bit(24);
+
+    let bit_mode = match cpu_mode {
+        CpuSetMode::CpuSetFast => BitSize::ThirtyTwoBit,
+        CpuSetMode::CpuSet => {
+            if metadata.is_set(26) {
+                BitSize::ThirtyTwoBit
+            } else {
+                BitSize::SixteenBit
+            }
+        }
+    };
+
+    if cpu_mode == CpuSetMode::CpuSetFast {
+        remaining_count = (remaining_count + 7) & !7;
+    }
+
+    let fill_data: Option<u32> = if fixed_source_address == 1 {
+        match bit_mode {
+            BitSize::SixteenBit => {
+                Some(bus.read_u16(source_address, AccessType::Nonsequential) as u32)
+            }
+            BitSize::ThirtyTwoBit => Some(bus.read_u32(source_address, AccessType::Nonsequential)),
+            _ => unreachable!(),
+        }
+    } else {
+        None
+    };
+
+    let mut first = true;
+    while remaining_count != 0 {
+        let access_type = if first {
+            AccessType::Nonsequential
+        } else {
+            AccessType::Sequential
+        };
+        match fill_data {
+            Some(data) => match bit_mode {
+                BitSize::SixteenBit => {
+                    bus.write_u16(destination_address, data as u16, access_type);
+                    destination_address += 2;
+                }
+                BitSize::ThirtyTwoBit => {
+                    bus.write_u32(destination_address, data, access_type);
+                    destination_address += 4;
+                }
+                _ => unreachable!(),
+            },
+            None => match bit_mode {
+                BitSize::SixteenBit => {
+                    let halfword = bus.read_u16(source_address, access_type);
+                    source_address += 2;
+
+                    bus.write_u16(destination_address, halfword, access_type);
+                    destination_address += 2;
+                }
+                BitSize::ThirtyTwoBit => {
+                    let word = bus.read_u32(source_address, access_type);
+                    source_address += 4;
+
+                    bus.write_u32(destination_address, word, access_type);
+                    destination_address += 4;
+                }
+                _ => unreachable!(),
+            },
+        }
+
+        first = false;
+        remaining_count -= 1;
     }
 }
 
@@ -301,9 +418,140 @@ fn arctan2(registers: &mut Registers) -> u64 {
     cycles
 }
 
-fn bg_affine_set() {}
+// Took comment from mgba
+// [ sx   0  0 ]   [ cos(theta)  -sin(theta)  0 ]   [ 1  0  cx - ox ]   [ A B rx ]
+// [  0  sy  0 ] * [ sin(theta)   cos(theta)  0 ] * [ 0  1  cy - oy ] = [ C D ry ]
+// [  0   0  1 ]   [     0            0       1 ]   [ 0  0     1    ]   [ 0 0  1 ]
+fn bg_affine_set<A: AddressBus>(registers: &Registers, bus: &mut A) {
+    let mut source_address = registers.r[0];
+    let mut destination_address = registers.r[1];
+    let mut number_of_calculations = registers.r[2];
 
-fn obj_affine_set() {}
+    while number_of_calculations != 0 {
+        let data_origin_x =
+            (bus.read_u32(source_address, AccessType::Nonsequential) as i32) as f32 / 256.0;
+        let data_origin_y =
+            (bus.read_u32(source_address + 4, AccessType::Sequential) as i32) as f32 / 256.0;
+        let display_center_x =
+            (bus.read_u16(source_address + 8, AccessType::Sequential) as i16) as f32;
+        let display_center_y =
+            (bus.read_u16(source_address + 10, AccessType::Sequential) as i16) as f32;
+        let scale_ratio_x =
+            (bus.read_u16(source_address + 12, AccessType::Sequential) as i16) as f32 / 256.0;
+        let scale_ratio_y =
+            (bus.read_u16(source_address + 14, AccessType::Sequential) as i16) as f32 / 256.0;
+        let theta = ((bus.read_u16(source_address + 16, AccessType::Sequential) >> 8) as i32)
+            as f32
+            / 128.0
+            * PI;
+        source_address += 20;
+
+        let cos = theta.cos();
+        let sin = theta.sin();
+
+        let a = scale_ratio_x * cos;
+        let b = scale_ratio_x * -sin;
+        let c = scale_ratio_y * sin;
+        let d = scale_ratio_y * cos;
+
+        let rotate_x = data_origin_x - (a * display_center_x + b * display_center_y);
+        let rotate_y = data_origin_y - (c * display_center_x + d * display_center_y);
+
+        bus.write_u16(
+            destination_address,
+            (a * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+        bus.write_u16(
+            destination_address + 2,
+            (b * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+        bus.write_u16(
+            destination_address + 4,
+            (c * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+        bus.write_u16(
+            destination_address + 6,
+            (d * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+        bus.write_u32(
+            destination_address + 8,
+            (rotate_x * 256.0) as i32 as u32,
+            AccessType::Sequential,
+        );
+        bus.write_u32(
+            destination_address + 12,
+            (rotate_y * 256.0) as i32 as u32,
+            AccessType::Sequential,
+        );
+        destination_address += 16;
+
+        number_of_calculations -= 1;
+    }
+}
+
+// Took comment from mgba
+// [ sx   0 ]   [ cos(theta)  -sin(theta) ]   [ A B ]
+// [  0  sy ] * [ sin(theta)   cos(theta) ] = [ C D ]
+fn obj_affine_set<A: AddressBus>(registers: &Registers, bus: &mut A) {
+    let mut source_address = registers.r[0];
+    let mut destination_address = registers.r[1];
+    let mut number_of_calculations = registers.r[2];
+    let offset_between_calculations = registers.r[3];
+
+    while number_of_calculations != 0 {
+        let scale_ratio_x =
+            (bus.read_u16(source_address, AccessType::Sequential) as i16) as f32 / 256.0;
+        let scale_ratio_y =
+            (bus.read_u16(source_address + 2, AccessType::Sequential) as i16) as f32 / 256.0;
+        let theta = ((bus.read_u16(source_address + 4, AccessType::Sequential) >> 8) as i32) as f32
+            / 128.0
+            * PI;
+
+        source_address += 8;
+
+        let cos = theta.cos();
+        let sin = theta.sin();
+
+        let a = scale_ratio_x * cos;
+        let b = scale_ratio_x * -sin;
+        let c = scale_ratio_y * sin;
+        let d = scale_ratio_y * cos;
+
+        bus.write_u16(
+            destination_address,
+            (a * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+        bus.write_u16(
+            destination_address + offset_between_calculations,
+            (b * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+        bus.write_u16(
+            destination_address + offset_between_calculations * 2,
+            (c * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+        bus.write_u16(
+            destination_address + offset_between_calculations * 3,
+            (d * 256.0) as i32 as u16,
+            AccessType::Sequential,
+        );
+
+        destination_address += offset_between_calculations * 4;
+        number_of_calculations -= 1;
+    }
+}
+
+fn midi_key_2_freq<A: AddressBus>(registers: &mut Registers, bus: &mut A) {
+    let key = bus.read_u32(registers.r[0] + 4, AccessType::Nonsequential);
+    let exponent = (180.0 - registers.r[1] as f32 - registers.r[2] as f32 / 256.0) / 12.0;
+    registers.r[0] = (key as f32 / exponent.exp2()) as u32;
+}
 
 struct BitUnpackMetadata {
     source_length: u16,
@@ -370,19 +618,6 @@ fn bit_unpack<A: AddressBus>(registers: &Registers, bus: &mut A) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
     let metadata = BitUnpackMetadata::from_register(registers.r[2], bus);
-
-    // mgba logs bad bit width, so doing the same just in case
-    debug_assert!(
-        matches!(metadata.source_width, 1 | 2 | 4 | 8),
-        "invalid BitUnPack source width: {}",
-        metadata.source_width
-    );
-
-    debug_assert!(
-        matches!(metadata.destination_width, 1 | 2 | 4 | 8 | 16 | 32),
-        "invalid BitUnPack destination width: {}",
-        metadata.destination_width
-    );
 
     let mut bytes_consumed = metadata.source_length;
     let mut buffer = BitUnpackPixelData::new();
@@ -451,6 +686,7 @@ impl DiffMetadata {
                     arr[(i * 2 + 1) as usize] = (accumulator >> 8) as u8;
                 }
             }
+            _ => unreachable!(),
         }
 
         arr
@@ -490,14 +726,185 @@ fn diff_unfilter<A: AddressBus>(
                 );
             }
         }
+        _ => unreachable!(),
     }
 }
 
-fn huff_uncomp<A: AddressBus, Bus>(registers: &Registers, bus: &mut A) {}
+enum CompressionType {
+    Compressed,
+    Uncompressed,
+}
 
-fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {}
+impl CompressionType {
+    fn from_flag(flag: u8) -> CompressionType {
+        match flag.get_bit(7) {
+            0 => CompressionType::Uncompressed,
+            _ => CompressionType::Compressed,
+        }
+    }
+}
 
-fn rl_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {}
+struct Packer {
+    write_width: BitSize,
+    pending: Option<u8>,
+}
+
+impl Packer {
+    fn new(write_width: BitSize) -> Self {
+        Self {
+            write_width,
+            pending: None,
+        }
+    }
+
+    fn push<A: AddressBus>(&mut self, bus: &mut A, destination_address: &mut u32, byte: u8) {
+        match self.write_width {
+            BitSize::EightBit => {
+                bus.write_u8(*destination_address, byte, AccessType::Sequential);
+                *destination_address += 1;
+            }
+            BitSize::SixteenBit => match self.pending.take() {
+                Some(low_byte) => {
+                    let halfword = low_byte as u16 | ((byte as u16) << 8);
+                    bus.write_u16(*destination_address, halfword, AccessType::Sequential);
+                    *destination_address += 2;
+                }
+                None => self.pending = Some(byte),
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    fn flush_unpaired_byte<A: AddressBus>(&mut self, bus: &mut A, destination_address: u32) {
+        match self.pending.take() {
+            Some(low_byte) => {
+                bus.write_u16(destination_address, low_byte as u16, AccessType::Sequential);
+            }
+            None => {}
+        }
+    }
+}
+
+fn rl_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {
+    let mut source_address = registers.r[0];
+    let mut destination_address = registers.r[1];
+
+    let mut remaining_bytes = bus
+        .read_u32(source_address, AccessType::Nonsequential)
+        .get_bit_range(8..32);
+    source_address += 4;
+
+    let mut packer = Packer::new(write_width);
+
+    while remaining_bytes != 0 {
+        let flag = bus.read_u8(source_address, AccessType::Sequential);
+        let compression_type = CompressionType::from_flag(flag);
+        let mut data_length = flag.get_bit_range(0..7);
+        source_address += 1;
+
+        data_length += match compression_type {
+            CompressionType::Uncompressed => 1,
+            CompressionType::Compressed => 3,
+        };
+
+        match compression_type {
+            CompressionType::Compressed => {
+                let byte = bus.read_u8(source_address, AccessType::Sequential);
+                source_address += 1;
+                for _ in 0..data_length {
+                    if remaining_bytes == 0 {
+                        break;
+                    }
+
+                    remaining_bytes -= 1;
+                    packer.push(bus, &mut destination_address, byte);
+                }
+            }
+            CompressionType::Uncompressed => {
+                for _ in 0..data_length {
+                    if remaining_bytes == 0 {
+                        break;
+                    }
+
+                    remaining_bytes -= 1;
+                    let byte = bus.read_u8(source_address, AccessType::Sequential);
+                    source_address += 1;
+                    packer.push(bus, &mut destination_address, byte);
+                }
+            }
+        }
+    }
+
+    // Could be an unpaired byte for halfword
+    packer.flush_unpaired_byte(bus, destination_address);
+}
+
+fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {
+    let mut source_address = registers.r[0];
+    let mut destination_address = registers.r[1];
+
+    let mut remaining_bytes = bus
+        .read_u32(source_address, AccessType::Nonsequential)
+        .get_bit_range(8..32);
+    source_address += 4;
+
+    let mut packer = Packer::new(write_width);
+
+    while remaining_bytes != 0 {
+        let flag = bus.read_u8(source_address, AccessType::Sequential);
+        source_address += 1;
+
+        for bit in (0..8).rev() {
+            if remaining_bytes == 0 {
+                break;
+            }
+
+            if flag.is_set(bit) {
+                let byte1 = bus.read_u8(source_address, AccessType::Sequential);
+                source_address += 1;
+                let byte2 = bus.read_u8(source_address, AccessType::Sequential);
+                source_address += 1;
+
+                let metadata = byte1 as u16 | ((byte2 as u16) << 8);
+
+                let n_bytes = metadata.get_bit_range(4..8) + 3;
+
+                let msb_displacement = metadata.get_bit_range(0..4);
+                let lsb_displacement = metadata.get_bit_range(8..16);
+                let displacment = ((msb_displacement as u32) << 8) | lsb_displacement as u32;
+
+                for _ in 0..n_bytes {
+                    if remaining_bytes == 0 {
+                        break;
+                    }
+
+                    remaining_bytes -= 1;
+
+                    let byte = bus.read_u8(
+                        destination_address - displacment - 1,
+                        AccessType::Sequential,
+                    );
+                    packer.push(bus, &mut destination_address, byte);
+                }
+            } else {
+                remaining_bytes -= 1;
+
+                let byte = bus.read_u8(source_address, AccessType::Sequential);
+                source_address += 1;
+                packer.push(bus, &mut destination_address, byte);
+            }
+        }
+    }
+
+    packer.flush_unpaired_byte(bus, destination_address);
+}
+
+fn huff_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A) {
+    let mut source_address = registers.r[0];
+    let mut destination_address = registers.r[1];
+
+    panic!("Still need to finish this function");
+}
 
 #[cfg(test)]
 mod tests {
@@ -791,5 +1198,124 @@ mod tests {
         diff_unfilter(&registers, &mut bus, BitSize::EightBit, BitSize::SixteenBit);
 
         assert_eq!(ewram_word(&bus, 0), 0x0D0C0B0A);
+    }
+
+    #[test]
+    fn test_rl_uncomp_8bit() {
+        let mut bus = Bus::new(GamePak::mock());
+        let mut registers = Registers::new();
+
+        registers.r[0] = 0x03000000;
+        registers.r[1] = 0x02000000;
+
+        // 7x AA, just 11 22 33, 4x 00 -> 14 bytes
+        let header = 14 << 8;
+        write_diff_source(
+            &mut bus,
+            0x03000000,
+            header,
+            &[0x84, 0xAA, 0x02, 0x11, 0x22, 0x33, 0x81, 0x00],
+        );
+
+        rl_uncomp(&registers, &mut bus, BitSize::EightBit);
+
+        assert_eq!(
+            &bus.ewram[0..14],
+            &[
+                0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0x11, 0x22, 0x33, 0x00, 0x00, 0x00, 0x00
+            ]
+        );
+    }
+
+    #[test]
+    fn test_rl_uncomp_16bit_with_unpaired_byte() {
+        let mut bus = Bus::new(GamePak::mock());
+        let mut registers = Registers::new();
+
+        registers.r[0] = 0x03000000;
+        registers.r[1] = 0x02000000;
+
+        // 3x AA then just BB -> AA AA AA BB, run ends on odd byte
+        let header = 4 << 8;
+        write_diff_source(&mut bus, 0x03000000, header, &[0x80, 0xAA, 0x00, 0xBB]);
+
+        rl_uncomp(&registers, &mut bus, BitSize::SixteenBit);
+
+        assert_eq!(ewram_word(&bus, 0), 0xBBAA_AAAA);
+    }
+
+    #[test]
+    fn test_lz77_uncomp_8bit_lookback() {
+        let mut bus = Bus::new(GamePak::mock());
+        let mut registers = Registers::new();
+
+        registers.r[0] = 0x03000000;
+        registers.r[1] = 0x02000000;
+
+        // literal A, literal B, then copy 3 from displacement 1 (2 back) -> ABABA
+        let header = 5 << 8;
+        write_diff_source(
+            &mut bus,
+            0x03000000,
+            header,
+            &[0x20, 0x41, 0x42, 0x00, 0x01],
+        );
+
+        lz77_uncomp(&registers, &mut bus, BitSize::EightBit);
+
+        assert_eq!(&bus.ewram[0..5], &[0x41, 0x42, 0x41, 0x42, 0x41]);
+    }
+
+    #[test]
+    fn test_cpuset_copy_16bit() {
+        let mut bus = Bus::new(GamePak::mock());
+        let mut cpu = Arm7tdmi::new();
+
+        bus.iwram[0..6].copy_from_slice(&[0x11, 0x22, 0x33, 0x44, 0x55, 0x66]);
+        cpu.registers.r[0] = 0x03000000;
+        cpu.registers.r[1] = 0x02000000;
+        cpu.registers.r[2] = 3;
+
+        cpuset(&cpu, &mut bus, CpuSetMode::CpuSet);
+
+        assert_eq!(&bus.ewram[0..6], &[0x11, 0x22, 0x33, 0x44, 0x55, 0x66]);
+    }
+
+    #[test]
+    fn test_cpuset_fill_reads_source_once() {
+        let mut bus = Bus::new(GamePak::mock());
+        let mut cpu = Arm7tdmi::new();
+
+        // fill value, then 0x99 garbage data that should not appear
+        bus.iwram[0..8].copy_from_slice(&[0xEF, 0xBE, 0xAD, 0xDE, 0x99, 0x99, 0x99, 0x99]);
+        cpu.registers.r[0] = 0x03000000;
+        cpu.registers.r[1] = 0x02000000;
+        cpu.registers.r[2] = (1 << 26) | (1 << 24) | 3;
+
+        cpuset(&cpu, &mut bus, CpuSetMode::CpuSet);
+
+        assert_eq!(ewram_word(&bus, 0), 0xDEADBEEF);
+        assert_eq!(ewram_word(&bus, 4), 0xDEADBEEF);
+        assert_eq!(ewram_word(&bus, 8), 0xDEADBEEF);
+        assert_eq!(ewram_word(&bus, 12), 0);
+    }
+
+    #[test]
+    fn test_cpuset_fast_8_word_round_up() {
+        let mut bus = Bus::new(GamePak::mock());
+        let mut cpu = Arm7tdmi::new();
+
+        for i in 0..32 {
+            bus.iwram[i] = i as u8;
+        }
+
+        cpu.registers.r[0] = 0x03000000;
+        cpu.registers.r[1] = 0x02000000;
+        cpu.registers.r[2] = 3;
+
+        cpuset(&cpu, &mut bus, CpuSetMode::CpuSetFast);
+
+        assert_eq!(&bus.ewram[0..32], &bus.iwram[0..32]);
+        assert_eq!(ewram_word(&bus, 28), 0x1F1E1D1C); // word 7
     }
 }

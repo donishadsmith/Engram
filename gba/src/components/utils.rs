@@ -80,7 +80,7 @@ pub trait BitOps:
         let diff = end - start;
         let mask = (!Self::ZERO) >> (Self::BIT_WIDTH - diff);
 
-        *self = *self & !(mask << start);
+        *self &= !(mask << start);
 
         *self |= (value & mask) << start;
     }
