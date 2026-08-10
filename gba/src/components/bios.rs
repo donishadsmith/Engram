@@ -4,6 +4,7 @@
 
 // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
+// ***** IF THE EMULATOR IS NOTICEABLY SLOW BECAUSE LESS CPU STEPS OCCUR, CHECK THE THREE ADITIONAL IDLE CHARGES IN THE LZ COMPRESSION *******
 use crate::components::{
     bus::{AccessType, AddressBus},
     cpu::{Arm7tdmi, HaltState, Registers},
@@ -840,6 +841,7 @@ fn rl_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: Bit
 }
 
 fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {
+    bus.idle(20); // CHECK THIS LATER
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
 
@@ -851,6 +853,7 @@ fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: B
     let mut packer = Packer::new(write_width);
 
     while remaining_bytes != 0 {
+        bus.idle(14); // CHECK THIS LATER
         let flag = bus.read_u8(source_address, AccessType::Sequential);
         source_address += 1;
 
@@ -859,6 +862,7 @@ fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: B
                 break;
             }
 
+            bus.idle(18); // CHECK THIS LATER
             if flag.is_set(bit) {
                 let byte1 = bus.read_u8(source_address, AccessType::Sequential);
                 source_address += 1;
@@ -878,6 +882,7 @@ fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: B
                         break;
                     }
 
+                    bus.idle(10); // CHECK THIS LATER
                     remaining_bytes -= 1;
 
                     let byte = bus.read_u8(
