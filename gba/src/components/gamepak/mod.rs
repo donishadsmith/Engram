@@ -4,9 +4,7 @@ use std::{
     fs::{read, write},
     io::Error,
     path::PathBuf,
-    slice::SliceIndex,
 };
-// SRAM_F
 
 // https://problemkaputt.de/gbatek-gba-cart-backup-ids.htm
 #[derive(Clone, Copy, PartialEq, Eq)]

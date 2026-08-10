@@ -81,7 +81,7 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
         0x10 => bit_unpack(&cpu.registers, bus),
         0x11 => lz77_uncomp(&cpu.registers, bus, BitSize::EightBit),
         0x12 => lz77_uncomp(&cpu.registers, bus, BitSize::SixteenBit),
-        0x13 => huff_uncomp(&cpu.registers, bus), // *****STILL NNEDS TO BE COMPLETED****
+        0x13 => huff_uncomp(&cpu.registers, bus),
         0x14 => rl_uncomp(&cpu.registers, bus, BitSize::EightBit),
         0x15 => rl_uncomp(&cpu.registers, bus, BitSize::SixteenBit),
         0x16 => diff_unfilter(&cpu.registers, bus, BitSize::EightBit, BitSize::EightBit),
@@ -586,12 +586,12 @@ impl BitUnpackMetadata {
 }
 
 // https://problemkaputt.de/gbatek-bios-decompression-functions.htm
-struct BitUnpackPixelData {
+struct WordBuffer {
     data: u32,
     bits_filled: u8,
 }
 
-impl BitUnpackPixelData {
+impl WordBuffer {
     fn new() -> Self {
         Self {
             data: 0,
@@ -599,8 +599,8 @@ impl BitUnpackPixelData {
         }
     }
 
-    fn push(&mut self, pixel: u32, destination_width: u8) -> bool {
-        self.data |= pixel << self.bits_filled;
+    fn push(&mut self, data: u32, destination_width: u8) -> bool {
+        self.data |= data << self.bits_filled;
         self.bits_filled += destination_width;
 
         self.bits_filled >= 32
@@ -621,7 +621,7 @@ fn bit_unpack<A: AddressBus>(registers: &Registers, bus: &mut A) {
     let metadata = BitUnpackMetadata::from_register(registers.r[2], bus);
 
     let mut bytes_consumed = metadata.source_length;
-    let mut buffer = BitUnpackPixelData::new();
+    let mut buffer = WordBuffer::new();
 
     while bytes_consumed != 0 {
         let source_byte = bus.read_u8(source_address, AccessType::Sequential) as u32;
@@ -840,6 +840,7 @@ fn rl_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: Bit
     packer.flush_unpaired_byte(bus, destination_address);
 }
 
+// Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
 fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {
     bus.idle(20); // CHECK THIS LATER
     let mut source_address = registers.r[0];
@@ -904,11 +905,78 @@ fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: B
     packer.flush_unpaired_byte(bus, destination_address);
 }
 
+struct Tree {
+    root_address: u32,
+    current_address: u32,
+}
+
+impl Tree {
+    fn new(parent_address: u32) -> Self {
+        Self {
+            root_address: parent_address,
+            current_address: parent_address,
+        }
+    }
+
+    fn step<A: AddressBus>(&mut self, bus: &mut A, current_bit: u32) -> Option<u8> {
+        let node = bus.read_u8(self.current_address, AccessType::Nonsequential);
+        let offset = node.get_bit_range(0..6) as u32;
+        let child_address = (self.current_address & !1) + offset * 2 + 2 + current_bit;
+        let is_leaf = if current_bit == 0 {
+            node.is_set(7)
+        } else {
+            node.is_set(6)
+        };
+
+        if is_leaf {
+            self.current_address = self.root_address;
+
+            Some(bus.read_u8(child_address, AccessType::Nonsequential))
+        } else {
+            self.current_address = child_address;
+
+            None
+        }
+    }
+}
+
 fn huff_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
 
-    panic!("Still need to finish this function");
+    let header = bus.read_u32(source_address, AccessType::Nonsequential);
+
+    let data_size = header.get_bit_range(0..4);
+    let mut remaining_bits = header.get_bit_range(8..32) * 8;
+    source_address += 4;
+    let tree_size = bus.read_u8(source_address, AccessType::Sequential);
+    let mut bitstream = source_address + (tree_size as u32 + 1) * 2;
+    source_address += 1;
+
+    let mut tree = Tree::new(source_address);
+    let mut buffer = WordBuffer::new();
+
+    while remaining_bits != 0 {
+        let word = bus.read_u32(bitstream, AccessType::Nonsequential);
+        bitstream += 4;
+
+        for bit in (0..32).rev() {
+            if let Some(symbol) = tree.step(bus, word.get_bit(bit) as u32) {
+                if buffer.push(
+                    symbol.get_bit_range(0..data_size as usize) as u32,
+                    data_size as u8,
+                ) {
+                    bus.write_u32(destination_address, buffer.flush(), AccessType::Sequential);
+                    destination_address += 4;
+                }
+
+                remaining_bits -= data_size;
+                if remaining_bits == 0 {
+                    break;
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1322,5 +1390,24 @@ mod tests {
 
         assert_eq!(&bus.ewram[0..32], &bus.iwram[0..32]);
         assert_eq!(ewram_word(&bus, 28), 0x1F1E1D1C); // word 7
+    }
+
+    #[test]
+    fn test_huff() {
+        let mut bus = Bus::new(GamePak::mock());
+        let mut cpu = Arm7tdmi::new();
+
+        cpu.registers.r[0] = 0x03000000;
+        cpu.registers.r[1] = 0x02000000;
+
+        let source_address = Bus::iwram_index(cpu.registers.r[0]);
+        // first 4 - header, 5 - tree size byte, 6-8 is root "f", 9 = "u", 10 = "H", padding + bitstream word 0xB0000000
+        bus.iwram[source_address..source_address + 16].copy_from_slice(&[
+            0x28, 0x04, 0, 0, 0x03, 0x80, 0x66, 0xC0, 0x48, 0x75, 0, 0, 0, 0, 0, 0xB0,
+        ]);
+
+        huff_uncomp(&cpu.registers, &mut bus);
+
+        assert_eq!(&bus.ewram[0..4], b"Huff");
     }
 }
