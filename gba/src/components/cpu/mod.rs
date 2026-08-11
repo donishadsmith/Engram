@@ -202,7 +202,7 @@ impl ProcessorMode {
 // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/format-summary
 // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/arm-instruction-summary?lang=en
 // https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/
-// ***https://support.arm.com/documentation/ddi0027/latest/ - Page 30*** <- THIS IS THE ARM7DI DATA SHEET
+// ***https://www.dwedit.org/files/ARM7TDMI.pdf - Page 30*** <- THIS IS THE ARM7TDMI DATA SHEET
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum FetchedInstruction {
@@ -219,6 +219,7 @@ pub enum HaltState {
 
 pub enum SideEffect {
     Branch(u32),
+    BranchRestoreCpsr(u32),
     Swi(u32),
 }
 
@@ -513,6 +514,10 @@ impl Arm7tdmi {
             match request {
                 SideEffect::Swi(function) => handle_swi(function, self, bus),
                 SideEffect::Branch(address) => self.branch_to(address),
+                SideEffect::BranchRestoreCpsr(address) => {
+                    self.registers.restore_cpsr_from_spsr();
+                    self.branch_to(address);
+                }
             }
         }
 
@@ -556,7 +561,7 @@ impl Arm7tdmi {
         self.registers.set_spsr(old_cpsr);
         self.registers.r[14] = lr;
         self.registers.set_state(ProcessorState::Arm);
-        self.registers.enable_irq();
+        self.registers.disable_irq();
 
         self.branch_to(vector as u32);
     }
