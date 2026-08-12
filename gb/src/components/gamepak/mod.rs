@@ -270,7 +270,7 @@ impl GamePak {
 
         let mut sav_buffer = std::fs::read(sav_path)?;
         if sav_buffer.len() >= SAV_HEADER_SIZE {
-            let magic_start = sav_buffer.len()- SAV_HEADER_SIZE;
+            let magic_start = sav_buffer.len() - SAV_HEADER_SIZE;
             let magic_end = magic_start + MAGIC_NUMBERS.len();
             if sav_buffer[magic_start..magic_end] == MAGIC_NUMBERS {
                 rtc_save_state = Some(RTCSaveState::from_bytes(&sav_buffer[magic_end..]));

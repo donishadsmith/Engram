@@ -15,7 +15,13 @@ MemoryMap
 */
 
 use crate::components::{
-    apu::APU, bootloader::{CGB_BOOT, DMG_BOOTIX}, cpu::interrupts::InterruptMode, gamepak::{CGBFlag, GamePak}, joypad::Joypad, ppu::PPU, timer::Timer,
+    apu::APU,
+    bootloader::{CGB_BOOT, DMG_BOOTIX},
+    cpu::interrupts::InterruptMode,
+    gamepak::{CGBFlag, GamePak},
+    joypad::Joypad,
+    ppu::PPU,
+    timer::Timer,
 };
 
 #[derive(Clone, Copy, PartialEq)]
