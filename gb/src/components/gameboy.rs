@@ -1,4 +1,4 @@
-use crate::components::{bus::Bus, cpu::CPU, rom::cartridge::Cartridge};
+use crate::components::{bus::Bus, cpu::CPU, gamepak::GamePak};
 
 const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
@@ -11,10 +11,10 @@ pub struct GameBoy {
 }
 
 impl GameBoy {
-    pub fn boot(cartridge: Cartridge) -> Self {
-        let checksum = cartridge.header.checksum;
-        let cgb_flag = cartridge.header.cgb_flag;
-        let bus = Bus::new(cartridge);
+    pub fn boot(gamepak: GamePak) -> Self {
+        let checksum = gamepak.header.checksum;
+        let cgb_flag = gamepak.header.cgb_flag;
+        let bus = Bus::new(gamepak);
 
         Self {
             cpu: CPU::start(cgb_flag, checksum, bus),
@@ -72,18 +72,18 @@ impl GameBoy {
             .joypad
             .poll(pressed_key, &mut self.cpu.bus.interrupt_flag);
 
-        self.cpu.bus.cartridge.mbc.tick();
+        self.cpu.bus.gamepak.mbc.tick();
     }
 
     pub fn battery_save(&self) -> Result<(), std::io::Error> {
-        self.cpu.bus.cartridge.write_sav()?;
+        self.cpu.bus.gamepak.write_sav()?;
 
         Ok(())
     }
 
     pub fn ram_changed(&mut self) -> bool {
-        let updated_ram = self.cpu.bus.cartridge.mbc.ram_changed().clone();
-        *self.cpu.bus.cartridge.mbc.ram_changed() = false;
+        let updated_ram = self.cpu.bus.gamepak.mbc.ram_changed().clone();
+        *self.cpu.bus.gamepak.mbc.ram_changed() = false;
 
         updated_ram
     }

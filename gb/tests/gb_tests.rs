@@ -1,4 +1,4 @@
-use engram_gb::components::{gameboy::GameBoy, rom::cartridge::Cartridge};
+use engram_gb::components::{gameboy::GameBoy, gamepak::GamePak};
 use std::path::PathBuf;
 
 fn run_blargg_cpu_rom(rom: &str) {
@@ -6,7 +6,7 @@ fn run_blargg_cpu_rom(rom: &str) {
         .join("tests/blargg/cpu_instrs/individual")
         .join(rom);
 
-    let mut gameboy = GameBoy::boot(Cartridge::load(Some(path)).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
 }
 
@@ -70,7 +70,7 @@ fn test_instr_timing() {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/instr_timing/instr_timing.gb");
 
-    let mut gameboy = GameBoy::boot(Cartridge::load(Some(path)).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
 }
 
@@ -79,7 +79,7 @@ fn test_interrupt_timing() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/blargg/interrupt_time/interrupt_time.gb");
 
-    let mut gameboy = GameBoy::boot(Cartridge::load(Some(path)).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
 }
 
@@ -88,7 +88,7 @@ fn test_mem_timing() {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/mem_timing/mem_timing.gb");
 
-    let mut gameboy = GameBoy::boot(Cartridge::load(Some(path)).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
 }
 
@@ -97,7 +97,7 @@ fn test_mem_timing2() {
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/mem_timing-2/mem_timing.gb");
 
-    let mut gameboy = GameBoy::boot(Cartridge::load(Some(path)).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
 }
 
@@ -105,7 +105,7 @@ fn test_mem_timing2() {
 fn test_oam_bug() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/oam_bug/oam_bug.gb");
 
-    let mut gameboy = GameBoy::boot(Cartridge::load(Some(path)).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
 }
 
@@ -113,6 +113,6 @@ fn test_oam_bug() {
 fn test_halt_bug() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/halt_bug.gb");
 
-    let mut gameboy = GameBoy::boot(Cartridge::load(Some(path)).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
 }

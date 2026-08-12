@@ -1,6 +1,6 @@
 // TODO: Check if worth to consolidate some code
 pub mod prelude {
-    use crate::components::rom::cartridge::MBCType;
+    use crate::components::gamepak::MBCType;
     use chrono::Utc;
 
     pub trait MBC {

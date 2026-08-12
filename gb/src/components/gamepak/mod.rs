@@ -1,8 +1,10 @@
+pub mod mbc;
+
 /*
     https://tonisagrista.com/blog/2026/playkid/
 
     https://gbdev.io/pandocs/The_Cartridge_Header.html
-    0147 — Cartridge type, indicates the memory bank controller based on some 8 bit value
+    0147-Cartridge type, indicates the memory bank controller based on some 8 bit value
 
     https://gbdev.io/pandocs/MBCs.html
     Gameboy can only see 64 KB but some Roms can be up to 1 MB, bank switching required
@@ -10,7 +12,7 @@
 
 use std::path::PathBuf;
 
-use crate::components::rom::mbc::prelude::*;
+use crate::components::gamepak::mbc::prelude::*;
 
 // "RTC" in ASCII
 const MAGIC_NUMBERS: [u8; 3] = [0x52, 0x54, 0x43];
@@ -114,8 +116,8 @@ impl Header {
 
     /*
         https://gbdev.io/pandocs/The_Cartridge_Header.html#footnote-mbc30
-        0104-0133 — Nintendo logo; valid rom contains this
-        0134-0143 — Title - in uppercase ASCII, if the title is less than 16 characters, it gets zero padded, which is NULL in ASCII
+        0104-0133-Nintendo logo; valid rom contains this
+        0134-0143-Title- in uppercase ASCII, if the title is less than 16 characters, it gets zero padded, which is NULL in ASCII
     */
     fn title(rom: &[u8]) -> String {
         rom[0x0134..=0x0143]
@@ -125,10 +127,10 @@ impl Header {
             .collect()
     }
     /*
-        uint8_t - wraps
+        uint8_t- wraps
         uint8_t checksum = 0;
         for (uint16_t address = 0x0134; address <= 0x014C; address++) {
-            checksum = checksum - rom[address] - 1;
+            checksum = checksum- rom[address]- 1;
         }
     */
     fn checksum(rom: &[u8]) -> u8 {
@@ -169,12 +171,12 @@ impl Header {
         }
     }
 
-    // 0148 — ROM size: 32 KiB * (1 << <value>)
+    // 0148-ROM size: 32 KiB * (1 << <value>)
     fn rom_size(rom: &[u8]) -> usize {
         32 * 1024 * (1usize << rom[0x0148] as usize)
     }
 
-    // 0149 — RAM size
+    // 0149-RAM size
     fn ram_size(rom: &[u8]) -> usize {
         match rom[0x0149] {
             0x02 => 8 * 1024,   // 1 bank; bank size is multiple of 8
@@ -200,13 +202,13 @@ impl Header {
     }
 }
 
-pub struct Cartridge {
+pub struct GamePak {
     pub header: Header,
     pub sav_path: PathBuf,
     pub mbc: Box<dyn MBC>,
 }
 
-impl Cartridge {
+impl GamePak {
     pub fn load(filename: Option<std::path::PathBuf>) -> Result<Self, std::io::Error> {
         let Some(rom_path) = filename else {
             let file_error_msg = "Issue occured with file selection".to_string();
@@ -268,7 +270,7 @@ impl Cartridge {
 
         let mut sav_buffer = std::fs::read(sav_path)?;
         if sav_buffer.len() >= SAV_HEADER_SIZE {
-            let magic_start = sav_buffer.len() - SAV_HEADER_SIZE;
+            let magic_start = sav_buffer.len()- SAV_HEADER_SIZE;
             let magic_end = magic_start + MAGIC_NUMBERS.len();
             if sav_buffer[magic_start..magic_end] == MAGIC_NUMBERS {
                 rtc_save_state = Some(RTCSaveState::from_bytes(&sav_buffer[magic_end..]));

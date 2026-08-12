@@ -1,6 +1,6 @@
 use crate::components::{
     cpu::{FlagDelta, ProgramCounter, STARTING_ADDRESS, StatusFlag},
-    rom::cartridge::CGBFlag,
+    gamepak::CGBFlag,
     utils::{ByteOps16, MergeByteOps},
 };
 #[derive(Clone, Copy)]

@@ -9,7 +9,7 @@
 
 use engram_gb::{
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
-    components::{gameboy::GameBoy, rom::cartridge::Cartridge},
+    components::{gameboy::GameBoy, gamepak::GamePak},
     render::Screen,
 };
 use macroquad::prelude::*;
@@ -40,8 +40,8 @@ pub fn file_dialog() -> Option<PathBuf> {
 async fn main() -> Result<(), std::io::Error> {
     let mut audio = AudioOutput::new();
     let rom = file_dialog();
-    let cartridge = Cartridge::load(rom)?;
-    let mut gameboy = GameBoy::boot(cartridge);
+    let gamepak = GamePak::load(rom)?;
+    let mut gameboy = GameBoy::boot(gamepak);
     let mut screen = Screen::new();
 
     let cycles_per_sample = GB_CLOCK_SPEED / audio.sample_rate;

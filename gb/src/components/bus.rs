@@ -15,13 +15,7 @@ MemoryMap
 */
 
 use crate::components::{
-    apu::APU,
-    bootloader::{CGB_BOOT, DMG_BOOTIX},
-    cpu::interrupts::InterruptMode,
-    joypad::Joypad,
-    ppu::PPU,
-    rom::cartridge::{CGBFlag, Cartridge},
-    timer::Timer,
+    apu::APU, bootloader::{CGB_BOOT, DMG_BOOTIX}, cpu::interrupts::InterruptMode, gamepak::{CGBFlag, GamePak}, joypad::Joypad, ppu::PPU, timer::Timer,
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -64,7 +58,7 @@ pub struct Bus {
     boot_status: BootStatus,
     pub oam_dma: OAMDMAState,
     pub vram_dma: VRAMDMAState,
-    pub cartridge: Cartridge,
+    pub gamepak: GamePak,
     pub ppu: PPU,
     pub apu: APU,
     pub timer: Timer,
@@ -81,8 +75,8 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(cartridge: Cartridge) -> Self {
-        let cgb_flag = cartridge.header.cgb_flag;
+    pub fn new(gamepak: GamePak) -> Self {
+        let cgb_flag = gamepak.header.cgb_flag;
         let wram_size = if cgb_flag == CGBFlag::CGB {
             0x8000
         } else {
@@ -104,7 +98,7 @@ impl Bus {
                 blocks_remaining: 0,
                 mode: 0,
             },
-            cartridge,
+            gamepak,
             wram: vec![0u8; wram_size],
             ppu: PPU::new(cgb_flag == CGBFlag::CGB),
             apu: APU::new(),
@@ -126,7 +120,7 @@ impl Bus {
             return None;
         }
 
-        match self.cartridge.header.cgb_flag {
+        match self.gamepak.header.cgb_flag {
             CGBFlag::DMG => match address {
                 0x0000..=0x00FF => Some(DMG_BOOTIX[address as usize]),
                 _ => None,
@@ -141,7 +135,7 @@ impl Bus {
     }
 
     fn is_cgb(&self) -> bool {
-        self.cartridge.header.cgb_flag == CGBFlag::CGB
+        self.gamepak.header.cgb_flag == CGBFlag::CGB
     }
 
     fn get_wram_index(&self, address: u16) -> usize {
@@ -180,7 +174,7 @@ impl Bus {
 
     fn oam_dma_read(&self, address: u16) -> u8 {
         match address {
-            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cartridge.mbc.read(address),
+            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.read(address),
             0x8000..=0x9FFF => self.ppu.vram.read(address),
             0xC000..=0xFFFF => {
                 self.wram[self.get_wram_index(if address >= 0xE000 {
@@ -294,7 +288,7 @@ impl AddressBus for Bus {
         }
 
         match address {
-            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cartridge.mbc.read(address),
+            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.read(address),
             0x8000..=0x9FFF => self.ppu.vram.read(address),
             0xC000..=0xCFFF | 0xD000..=0xDFFF | 0xE000..=0xFDFF => {
                 self.wram[self.get_wram_index(address)]
@@ -335,7 +329,7 @@ impl AddressBus for Bus {
         }
 
         match address {
-            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.cartridge.mbc.write(address, value),
+            0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.write(address, value),
             0x8000..=0x9FFF => self.ppu.vram.write(address, value),
             0xC000..=0xDFFF | 0xE000..=0xFDFF => {
                 let index = self.get_wram_index(address);

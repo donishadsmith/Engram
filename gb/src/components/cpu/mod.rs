@@ -7,7 +7,7 @@ pub mod registers;
 use crate::components::{
     bus::AddressBus,
     cpu::{interrupts::InterruptMode, registers::Registers},
-    rom::cartridge::CGBFlag,
+    gamepak::CGBFlag,
     utils::{ByteOps8, MergeByteOps},
 };
 
@@ -323,7 +323,7 @@ mod tests {
     use super::*;
     use crate::components::{
         cpu::{alu::ArithmeticOperation, registers::Registers},
-        rom::cartridge::Cartridge,
+        gamepak::GamePak,
     };
 
     #[test]
@@ -385,11 +385,11 @@ mod tests {
     #[test]
     fn test_flag_setting() -> Result<(), std::io::Error> {
         // Test flag setting
-        let monochrome_cartridge = Cartridge::fake()?;
+        let monochrome_gamepak = GamePak::fake()?;
         // Default checksum is 0, so f register is set to 0x10000000
         let mut register = Registers::new(
-            monochrome_cartridge.header.cgb_flag,
-            monochrome_cartridge.header.checksum,
+            monochrome_gamepak.header.cgb_flag,
+            monochrome_gamepak.header.checksum,
         );
 
         let a: u8 = 255;
