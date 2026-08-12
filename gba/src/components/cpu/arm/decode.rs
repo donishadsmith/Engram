@@ -22,7 +22,7 @@ pub enum DataOp {
 
 impl DataOp {
     // [24:21]
-    fn from_bits(bits: u32) -> Self {
+    fn from_bits(bits: u8) -> Self {
         match bits {
             0b0000 => DataOp::And,
             0b0001 => DataOp::Eor,
@@ -136,6 +136,17 @@ pub enum TransferKind {
     SignedHalfword,
 }
 
+impl TransferKind {
+    fn from_bits(bits: u8) -> TransferKind {
+        match bits {
+            0b01 => TransferKind::UnsignedHalfword,
+            0b10 => TransferKind::SignedByte,
+            0b11 => TransferKind::SignedHalfword,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MsrSource {
     Register(u8),
@@ -239,65 +250,170 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
 
     match instruction.get_bit_range(25..28) {
         0b000 | 0b001 => {
-            if instruction.get_bit_range(4..28) == 0b000100101111111111110001 {
-                return DecodedArm {
-                    condition,
-                    instruction: ArmInstruction::BranchExchange {
-                        rn: instruction.get_bit_range(0..4) as u8,
-                    },
-                };
-            }
+            if instruction.is_set(4) && instruction.is_set(7) && !instruction.is_set(25) {
+                if instruction.get_bit_range(5..7) != 0 {
+                    if instruction.is_set(22) {
+                        return DecodedArm {
+                            condition,
+                            instruction: ArmInstruction::HalfwordDataTransfer {
+                                offset: HalfwordOffset::Immediate(
+                                    instruction.get_bit_range(0..4) as u8
+                                        | (instruction.get_bit_range(8..12) as u8) << 4,
+                                ),
+                                transfer_kind: TransferKind::from_bits(
+                                    instruction.get_bit_range(5..7) as u8,
+                                ),
+                                rd: instruction.get_bit_range(12..16) as u8,
+                                rn: instruction.get_bit_range(16..20) as u8,
+                                write_back: instruction.is_set(21),
+                                addressing_mode: AddressingMode::from_bits(
+                                    instruction.get_bit_range(23..25) as u8,
+                                ),
+                                transfer_action: if instruction.is_set(20) {
+                                    TransferAction::Load
+                                } else {
+                                    TransferAction::Store
+                                },
+                            },
+                        };
+                    } else {
+                        return DecodedArm {
+                            condition,
+                            instruction: ArmInstruction::HalfwordDataTransfer {
+                                offset: HalfwordOffset::Register(
+                                    instruction.get_bit_range(0..4) as u8
+                                ),
+                                transfer_kind: TransferKind::from_bits(
+                                    instruction.get_bit_range(5..7) as u8,
+                                ),
+                                rd: instruction.get_bit_range(12..16) as u8,
+                                rn: instruction.get_bit_range(16..20) as u8,
+                                write_back: instruction.is_set(21),
+                                addressing_mode: AddressingMode::from_bits(
+                                    instruction.get_bit_range(23..25) as u8,
+                                ),
+                                transfer_action: if instruction.is_set(20) {
+                                    TransferAction::Load
+                                } else {
+                                    TransferAction::Store
+                                },
+                            },
+                        };
+                    }
+                }
 
-            if instruction.get_bit_range(4..8) == 0b1001 && instruction.get_bit_range(22..25) == 0 {
-                return DecodedArm {
-                    condition,
-                    instruction: ArmInstruction::Multiply {
-                        rm: instruction.get_bit_range(0..4) as u8,
-                        rs: instruction.get_bit_range(8..12) as u8,
-                        rn: instruction.get_bit_range(12..16) as u8,
-                        rd: instruction.get_bit_range(16..20) as u8,
-                        accumulate: instruction.is_set(21),
-                        set_flags: instruction.is_set(20),
-                    },
-                };
-            }
-
-            if instruction.get_bit_range(4..8) == 0b1001 && instruction.get_bit_range(23..25) == 1 {
-                return DecodedArm {
-                    condition,
-                    instruction: ArmInstruction::MultiplyLong {
-                        rm: instruction.get_bit_range(0..4) as u8,
-                        rs: instruction.get_bit_range(8..12) as u8,
-                        rdlo: instruction.get_bit_range(12..16) as u8,
-                        rdhi: instruction.get_bit_range(16..20) as u8,
-                        accumulate: instruction.is_set(21),
-                        set_flags: instruction.is_set(20),
-                        signed: instruction.is_set(22),
-                    },
-                };
-            }
-
-            if instruction.get_bit_range(4..12) == 0b00001001
-                && instruction.get_bit_range(20..25) & 0b11011 == 0b10000
-            {
-                return DecodedArm {
-                    condition,
-                    instruction: ArmInstruction::SingleDataSwap {
-                        rm: instruction.get_bit_range(0..4) as u8,
-                        rd: instruction.get_bit_range(12..16) as u8,
-                        rn: instruction.get_bit_range(16..20) as u8,
-                        swap_size: if instruction.is_set(22) {
-                            BitSize::Byte
-                        } else {
-                            BitSize::Word
+                if instruction.is_set(24) {
+                    return DecodedArm {
+                        condition,
+                        instruction: ArmInstruction::SingleDataSwap {
+                            rm: instruction.get_bit_range(0..4) as u8,
+                            rd: instruction.get_bit_range(12..16) as u8,
+                            rn: instruction.get_bit_range(16..20) as u8,
+                            swap_size: if instruction.is_set(22) {
+                                BitSize::Byte
+                            } else {
+                                BitSize::Word
+                            },
                         },
-                    },
-                };
+                    };
+                }
+
+                if instruction.is_set(23) {
+                    return DecodedArm {
+                        condition,
+                        instruction: ArmInstruction::MultiplyLong {
+                            rm: instruction.get_bit_range(0..4) as u8,
+                            rs: instruction.get_bit_range(8..12) as u8,
+                            rdlo: instruction.get_bit_range(12..16) as u8,
+                            rdhi: instruction.get_bit_range(16..20) as u8,
+                            accumulate: instruction.is_set(21),
+                            set_flags: instruction.is_set(20),
+                            signed: instruction.is_set(22),
+                        },
+                    };
+                } else {
+                    return DecodedArm {
+                        condition,
+                        instruction: ArmInstruction::Multiply {
+                            rm: instruction.get_bit_range(0..4) as u8,
+                            rs: instruction.get_bit_range(8..12) as u8,
+                            rn: instruction.get_bit_range(12..16) as u8,
+                            rd: instruction.get_bit_range(16..20) as u8,
+                            accumulate: instruction.is_set(21),
+                            set_flags: instruction.is_set(20),
+                        },
+                    };
+                }
             } else {
-                DecodedArm {
-                    condition,
-                    instruction: ArmInstruction::Undefined,
-                } // placeholder, remember to actually decode the instructions in here; for reamining decoding think about the best masking approach, perhaps make the psr & data processing last
+                if instruction.get_bit_range(4..28) == 0b000100101111111111110001 {
+                    return DecodedArm {
+                        condition,
+                        instruction: ArmInstruction::BranchExchange {
+                            rn: instruction.get_bit_range(0..4) as u8,
+                        },
+                    };
+                }
+
+                let bits = instruction.get_bit_range(12..22);
+                if bits == 0b1010011111 || bits == 0b1010001111 {
+                    let flags_only = !instruction.is_set(16);
+                    let source = if instruction.is_set(25) {
+                        MsrSource::Immediate {
+                            value: instruction.get_bit_range(0..8) as u8,
+                            rotate: instruction.get_bit_range(8..12) as u8,
+                        }
+                    } else {
+                        MsrSource::Register(instruction.get_bit_range(0..4) as u8)
+                    };
+
+                    return DecodedArm {
+                        condition,
+                        instruction: ArmInstruction::Msr {
+                            source,
+                            use_spsr: instruction.is_set(22),
+                            flags_only,
+                        },
+                    };
+                }
+
+                if instruction.get_bit_range(0..12) == 0
+                    && instruction.get_bit_range(16..22) == 0b001111
+                    && instruction.get_bit_range(23..28) == 0b00010
+                {
+                    return DecodedArm {
+                        condition,
+                        instruction: ArmInstruction::Mrs {
+                            rd: instruction.get_bit_range(12..16) as u8,
+                            use_spsr: instruction.is_set(22),
+                        },
+                    };
+                } else {
+                    let operand2 = if !instruction.is_set(25) {
+                        Operand2::Register(ShiftedRegister {
+                            rm: instruction.get_bit_range(0..4) as u8,
+                            shift_type: ShiftType::from_bits(instruction.get_bit_range(5..7)),
+                            shift_amount: ShiftAmount::Immediate(
+                                instruction.get_bit_range(7..12) as u8
+                            ),
+                        })
+                    } else {
+                        Operand2::Immediate {
+                            value: instruction.get_bit_range(0..8) as u8,
+                            rotate: instruction.get_bit_range(8..12) as u8,
+                        }
+                    };
+
+                    return DecodedArm {
+                        condition,
+                        instruction: ArmInstruction::DataProcessing {
+                            opcode: DataOp::from_bits(instruction.get_bit_range(21..25) as u8),
+                            set_flags: instruction.is_set(20),
+                            rn: instruction.get_bit_range(16..20) as u8,
+                            rd: instruction.get_bit_range(12..16) as u8,
+                            operand2,
+                        },
+                    };
+                }
             }
         }
         0b010 | 0b011 => {
@@ -386,5 +502,266 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
             }
         }
         _ => unreachable!(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_multiply() {
+        let multiply = 0b1110_0000_0000_0000_0000_0010_1001_0001;
+        let instruction = decode_arm(multiply);
+
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::Multiply {
+                rm: 1,
+                rs: 2,
+                rn: 0,
+                rd: 0,
+                accumulate: false,
+                set_flags: false
+            }
+        ))
+    }
+
+    #[test]
+    fn test_multiply_long() {
+        let multiply_long = 0b1110_0000_1000_0001_0000_0011_1001_0010;
+        let instruction = decode_arm(multiply_long);
+
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::MultiplyLong {
+                rm: 2,
+                rs: 3,
+                rdlo: 0,
+                rdhi: 1,
+                accumulate: false,
+                set_flags: false,
+                signed: false
+            }
+        ))
+    }
+
+    #[test]
+    fn test_single_data_swap() {
+        let single_data_swap = 0b1110_0001_0000_0010_0000_0000_1001_0001;
+        let instruction = decode_arm(single_data_swap);
+
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::SingleDataSwap {
+                rm: 1,
+                rd: 0,
+                rn: 2,
+                swap_size: BitSize::Word
+            }
+        ))
+    }
+
+    #[test]
+    fn test_branch_and_exchange() {
+        let branch_and_exchange = 0b1110_0001_0010_1111_1111_1111_0001_0000;
+        let instruction = decode_arm(branch_and_exchange);
+
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::BranchExchange { rn: 0 }
+        ))
+    }
+
+    #[test]
+    fn test_halfword_data_transfer() {
+        let register_offset = 0b1110_0001_1001_0010_0001_0000_1011_0011;
+        let instruction = decode_arm(register_offset);
+
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::HalfwordDataTransfer {
+                offset: HalfwordOffset::Register(3),
+                rn: 2,
+                rd: 1,
+                write_back: false,
+                transfer_action: TransferAction::Load,
+                transfer_kind: TransferKind::UnsignedHalfword,
+                addressing_mode: AddressingMode::PreIncrement
+            }
+        ));
+
+        let immediate_offset: u32 = 0b1110_0001_1101_0010_0001_0000_1011_0011;
+        let instruction = decode_arm(immediate_offset);
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::HalfwordDataTransfer {
+                offset: HalfwordOffset::Immediate(3),
+                rn: 2,
+                rd: 1,
+                write_back: false,
+                transfer_action: TransferAction::Load,
+                transfer_kind: TransferKind::UnsignedHalfword,
+                addressing_mode: AddressingMode::PreIncrement
+            }
+        ));
+    }
+
+    #[test]
+    fn test_single_data_transfer() {
+        let single_data_transfer = 0b1110_0101_1001_0001_0000_0000_0000_0100;
+        let instruction = decode_arm(single_data_transfer);
+
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::SingleDataTransfer {
+                offset: SdtOffset::Immediate(4),
+                rn: 1,
+                rd: 0,
+                write_back: false,
+                transfer_action: TransferAction::Load,
+                transfer_size: BitSize::Word,
+                addressing_mode: AddressingMode::PreIncrement,
+            }
+        ))
+    }
+
+    #[test]
+    fn test_undefined() {
+        let undefined = 0b1110_0110_0000_0000_0000_0000_0001_0000;
+        let instruction = decode_arm(undefined);
+        assert!(matches!(instruction.instruction, ArmInstruction::Undefined));
+
+        let coprocessors: [u32; 3] = [
+            0b1110_1101_1001_0001_0000_1111_0000_0000,
+            0b1110_1110_0001_0001_0000_1111_0000_0010,
+            0b1110_1110_0001_0001_0000_1111_0001_0000,
+        ];
+
+        for i in coprocessors {
+            let instruction = decode_arm(i);
+            assert!(matches!(instruction.instruction, ArmInstruction::Undefined));
+        }
+    }
+
+    #[test]
+    fn test_block_data_transfer() {
+        let block_data_transfer = 0b1110_1000_1011_1101_0000_0000_0000_1111;
+        let instruction = decode_arm(block_data_transfer);
+
+        assert!(matches!(
+            instruction.instruction,
+            ArmInstruction::BlockDataTransfer {
+                rn: 13,
+                write_back: true,
+                transfer_action: TransferAction::Load,
+                addressing_mode: AddressingMode::PostIncrement,
+                psr: false,
+                register_list: 0b1111
+            }
+        ))
+    }
+
+    #[test]
+    fn test_branch() {
+        let branch = 0b1110_1011_0000_0000_0000_0000_0000_0010;
+        assert_eq!(
+            decode_arm(branch).instruction,
+            ArmInstruction::Branch {
+                link: true,
+                offset: 8
+            }
+        );
+    }
+
+    #[test]
+    fn test_branch_decrement_pc() {
+        let branch = 0b1110_1010_1111_1111_1111_1111_1111_1100;
+        assert_eq!(
+            decode_arm(branch).instruction,
+            ArmInstruction::Branch {
+                link: false,
+                offset: -16
+            }
+        );
+    }
+
+    #[test]
+    fn test_software_interrupt() {
+        let software_interrupt = 0b1110_1111_0000_1000_0000_0000_0000_0000;
+        let instruction = decode_arm(software_interrupt);
+
+        assert_eq!(
+            instruction.instruction,
+            ArmInstruction::SoftwareInterrupt { comment: 8 }
+        );
+    }
+
+    #[test]
+    fn test_data_processing() {
+        let data_processing = 0b1110_0000_1000_0001_0000_0000_0000_0010;
+        let instruction = decode_arm(data_processing);
+
+        assert_eq!(
+            instruction.instruction,
+            ArmInstruction::DataProcessing {
+                opcode: DataOp::Add,
+                set_flags: false,
+                rn: 1,
+                rd: 0,
+                operand2: Operand2::Register(ShiftedRegister {
+                    rm: 2,
+                    shift_type: ShiftType::LogicalLeft,
+                    shift_amount: ShiftAmount::Immediate(0)
+                })
+            }
+        );
+    }
+
+    #[test]
+    fn test_mrs() {
+        let mrs = 0b1110_0001_0000_1111_0000_0000_0000_0000;
+        let instruction = decode_arm(mrs);
+
+        assert_eq!(
+            instruction.instruction,
+            ArmInstruction::Mrs {
+                rd: 0,
+                use_spsr: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_msr_no_flag_only() {
+        let msr = 0b1110_0001_0010_1001_1111_0000_0000_0000;
+        let instruction = decode_arm(msr);
+
+        assert_eq!(
+            instruction.instruction,
+            ArmInstruction::Msr {
+                source: MsrSource::Register(0),
+                use_spsr: false,
+                flags_only: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_msr_flags_only() {
+        let msr = 0b1110_0011_0010_1000_1111_0100_1111_0000;
+        let instruction = decode_arm(msr);
+
+        assert_eq!(
+            instruction.instruction,
+            ArmInstruction::Msr {
+                source: MsrSource::Immediate {
+                    value: 0b11110000,
+                    rotate: 0b100
+                },
+                use_spsr: false,
+                flags_only: true
+            }
+        );
     }
 }
