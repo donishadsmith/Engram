@@ -238,10 +238,21 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
     let condition = Condition::from_arm_instruction(instruction);
 
     match instruction.get_bit_range(25..28) {
-        0b000 | 0b001 => DecodedArm {
-            condition,
-            instruction: ArmInstruction::Undefined,
-        }, // placeholder, remember to actually decode the instructions in here
+        0b000 | 0b001 => {
+            if instruction.get_bit_range(4..28) == 0b000100101111111111110001 {
+                DecodedArm {
+                    condition,
+                    instruction: ArmInstruction::BranchExchange {
+                        rn: instruction.get_bit_range(0..4) as u8,
+                    },
+                }
+            } else {
+                DecodedArm {
+                    condition,
+                    instruction: ArmInstruction::Undefined,
+                } // placeholder, remember to actually decode the instructions in here
+            }
+        }
         0b010 | 0b011 => {
             if instruction.is_set(4) && instruction.is_set(25) {
                 DecodedArm {
