@@ -171,7 +171,7 @@ pub enum ArmInstruction {
     },
     MultiplyLong {
         rm: u8,
-        rn: u8,
+        rs: u8,
         rdlo: u8,
         rdhi: u8,
         accumulate: bool,
@@ -179,9 +179,9 @@ pub enum ArmInstruction {
         set_flags: bool,
     },
     SingleDataSwap {
-        rn: u8,
-        rd: u8,
         rm: u8,
+        rd: u8,
+        rn: u8,
         swap_size: BitSize,
     },
     BranchExchange {
@@ -240,17 +240,64 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
     match instruction.get_bit_range(25..28) {
         0b000 | 0b001 => {
             if instruction.get_bit_range(4..28) == 0b000100101111111111110001 {
-                DecodedArm {
+                return DecodedArm {
                     condition,
                     instruction: ArmInstruction::BranchExchange {
                         rn: instruction.get_bit_range(0..4) as u8,
                     },
-                }
+                };
+            }
+
+            if instruction.get_bit_range(4..8) == 0b1001 && instruction.get_bit_range(22..25) == 0 {
+                return DecodedArm {
+                    condition,
+                    instruction: ArmInstruction::Multiply {
+                        rm: instruction.get_bit_range(0..4) as u8,
+                        rs: instruction.get_bit_range(8..12) as u8,
+                        rn: instruction.get_bit_range(12..16) as u8,
+                        rd: instruction.get_bit_range(16..20) as u8,
+                        accumulate: instruction.is_set(21),
+                        set_flags: instruction.is_set(20),
+                    },
+                };
+            }
+
+            if instruction.get_bit_range(4..8) == 0b1001 && instruction.get_bit_range(23..25) == 1 {
+                return DecodedArm {
+                    condition,
+                    instruction: ArmInstruction::MultiplyLong {
+                        rm: instruction.get_bit_range(0..4) as u8,
+                        rs: instruction.get_bit_range(8..12) as u8,
+                        rdlo: instruction.get_bit_range(12..16) as u8,
+                        rdhi: instruction.get_bit_range(16..20) as u8,
+                        accumulate: instruction.is_set(21),
+                        set_flags: instruction.is_set(20),
+                        signed: instruction.is_set(22),
+                    },
+                };
+            }
+
+            if instruction.get_bit_range(4..12) == 0b00001001
+                && instruction.get_bit_range(20..25) & 0b11011 == 0b10000
+            {
+                return DecodedArm {
+                    condition,
+                    instruction: ArmInstruction::SingleDataSwap {
+                        rm: instruction.get_bit_range(0..4) as u8,
+                        rd: instruction.get_bit_range(12..16) as u8,
+                        rn: instruction.get_bit_range(16..20) as u8,
+                        swap_size: if instruction.is_set(22) {
+                            BitSize::Byte
+                        } else {
+                            BitSize::Word
+                        },
+                    },
+                };
             } else {
                 DecodedArm {
                     condition,
                     instruction: ArmInstruction::Undefined,
-                } // placeholder, remember to actually decode the instructions in here
+                } // placeholder, remember to actually decode the instructions in here; for reamining decoding think about the best masking approach, perhaps make the psr & data processing last
             }
         }
         0b010 | 0b011 => {
