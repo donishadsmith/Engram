@@ -109,8 +109,8 @@ pub enum Condition {
 }
 
 impl Condition {
-    fn from_arm_instruction(opcode: u32) -> Condition {
-        match opcode.get_bit_range(28..32) {
+    fn from_bits(bits: u8) -> Condition {
+        match bits {
             0b0000 => Condition::Eq,
             0b0001 => Condition::Ne,
             0b0010 => Condition::Cs,
@@ -467,6 +467,7 @@ pub struct Arm7tdmi {
     pipeline: Pipeline,
     pub halt_state: HaltState,
     branched: bool,
+    next_fetch_access: AccessType,
 }
 
 impl Arm7tdmi {
@@ -476,6 +477,7 @@ impl Arm7tdmi {
             pipeline: Pipeline::new(),
             halt_state: HaltState::Running,
             branched: false,
+            next_fetch_access: AccessType::Sequential,
         }
     }
 
@@ -487,13 +489,15 @@ impl Arm7tdmi {
 
     pub fn step<A: AddressBus>(&mut self, bus: &mut A) {
         self.branched = false;
+        let access = self.next_fetch_access;
+        self.next_fetch_access = AccessType::Sequential;
         let new_fetch = match self.registers.state() {
             ProcessorState::Arm => {
-                FetchedInstruction::Arm(bus.read_u32(self.registers.r[15], AccessType::Sequential))
-            } // TODO: Just assume always sequential for now
-            ProcessorState::Thumb => FetchedInstruction::Thumb(
-                bus.read_u16(self.registers.r[15], AccessType::Sequential),
-            ),
+                FetchedInstruction::Arm(bus.read_u32(self.registers.r[15], access))
+            }
+            ProcessorState::Thumb => {
+                FetchedInstruction::Thumb(bus.read_u16(self.registers.r[15], access))
+            }
         };
 
         let decoded_instruction = self.pipeline.advance(new_fetch);
@@ -534,6 +538,7 @@ impl Arm7tdmi {
     fn flush_pipeline(&mut self) {
         self.pipeline.flush();
         self.branched = true;
+        self.next_fetch_access = AccessType::Nonsequential;
     }
 
     fn pc_offset(&self) -> u32 {
