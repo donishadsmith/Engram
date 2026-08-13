@@ -22,7 +22,7 @@ pub enum DataOp {
 
 impl DataOp {
     // [24:21]
-    fn from_bits(bits: u8) -> Self {
+    fn from_arm_bits(bits: u8) -> DataOp {
         match bits {
             0b0000 => DataOp::And,
             0b0001 => DataOp::Eor,
@@ -43,6 +43,16 @@ impl DataOp {
             _ => unreachable!(),
         }
     }
+
+    pub fn from_thumb_bits(bits: u8) -> DataOp {
+        match bits {
+            0 => DataOp::Mov,
+            1 => DataOp::Cmp,
+            2 => DataOp::Add,
+            3 => DataOp::Sub,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,7 +65,7 @@ pub enum ShiftType {
 
 impl ShiftType {
     // [6:5] for arm
-    fn from_bits(bits: u32) -> ShiftType {
+    pub fn from_bits(bits: u8) -> ShiftType {
         match bits {
             0b00 => ShiftType::LogicalLeft,
             0b01 => ShiftType::LogicalRight,
@@ -111,19 +121,19 @@ pub enum TransferAction {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AddressingMode {
-    PostDecrement,
-    PreDecrement,
-    PostIncrement,
-    PreIncrement,
+    DecrementAfter,
+    DecrementBefore,
+    IncrementAfter,
+    IncrementBefore,
 }
 
 impl AddressingMode {
     fn from_bits(bits: u8) -> AddressingMode {
         match bits {
-            0b00 => AddressingMode::PostDecrement,
-            0b01 => AddressingMode::PostIncrement,
-            0b10 => AddressingMode::PreDecrement,
-            0b11 => AddressingMode::PreIncrement,
+            0b00 => AddressingMode::DecrementAfter,
+            0b01 => AddressingMode::IncrementAfter,
+            0b10 => AddressingMode::DecrementBefore,
+            0b11 => AddressingMode::IncrementBefore,
             _ => unreachable!(),
         }
     }
@@ -137,7 +147,7 @@ pub enum TransferKind {
 }
 
 impl TransferKind {
-    fn from_bits(bits: u8) -> TransferKind {
+    pub fn from_bits(bits: u8) -> TransferKind {
         match bits {
             0b01 => TransferKind::UnsignedHalfword,
             0b10 => TransferKind::SignedByte,
@@ -246,7 +256,7 @@ pub struct DecodedArm {
 }
 
 pub fn decode_arm(instruction: u32) -> DecodedArm {
-    let condition = Condition::from_arm_instruction(instruction);
+    let condition = Condition::from_bits(instruction.get_bit_range(28..32) as u8);
 
     match instruction.get_bit_range(25..28) {
         0b000 | 0b001 => {
@@ -391,7 +401,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                     let operand2 = if !instruction.is_set(25) {
                         Operand2::Register(ShiftedRegister {
                             rm: instruction.get_bit_range(0..4) as u8,
-                            shift_type: ShiftType::from_bits(instruction.get_bit_range(5..7)),
+                            shift_type: ShiftType::from_bits(instruction.get_bit_range(5..7) as u8),
                             shift_amount: ShiftAmount::Immediate(
                                 instruction.get_bit_range(7..12) as u8
                             ),
@@ -406,7 +416,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                     return DecodedArm {
                         condition,
                         instruction: ArmInstruction::DataProcessing {
-                            opcode: DataOp::from_bits(instruction.get_bit_range(21..25) as u8),
+                            opcode: DataOp::from_arm_bits(instruction.get_bit_range(21..25) as u8),
                             set_flags: instruction.is_set(20),
                             rn: instruction.get_bit_range(16..20) as u8,
                             rd: instruction.get_bit_range(12..16) as u8,
@@ -426,7 +436,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                 let offset = if instruction.is_set(25) {
                     SdtOffset::Register(ShiftedRegister {
                         rm: instruction.get_bit_range(0..4) as u8,
-                        shift_type: ShiftType::from_bits(instruction.get_bit_range(5..7)),
+                        shift_type: ShiftType::from_bits(instruction.get_bit_range(5..7) as u8),
                         shift_amount: ShiftAmount::Immediate(instruction.get_bit_range(7..12) as u8),
                     })
                 } else {
@@ -587,7 +597,7 @@ mod tests {
                 write_back: false,
                 transfer_action: TransferAction::Load,
                 transfer_kind: TransferKind::UnsignedHalfword,
-                addressing_mode: AddressingMode::PreIncrement
+                addressing_mode: AddressingMode::IncrementBefore
             }
         ));
 
@@ -602,7 +612,7 @@ mod tests {
                 write_back: false,
                 transfer_action: TransferAction::Load,
                 transfer_kind: TransferKind::UnsignedHalfword,
-                addressing_mode: AddressingMode::PreIncrement
+                addressing_mode: AddressingMode::IncrementBefore
             }
         ));
     }
@@ -621,7 +631,7 @@ mod tests {
                 write_back: false,
                 transfer_action: TransferAction::Load,
                 transfer_size: BitSize::Word,
-                addressing_mode: AddressingMode::PreIncrement,
+                addressing_mode: AddressingMode::IncrementBefore,
             }
         ))
     }
@@ -655,7 +665,7 @@ mod tests {
                 rn: 13,
                 write_back: true,
                 transfer_action: TransferAction::Load,
-                addressing_mode: AddressingMode::PostIncrement,
+                addressing_mode: AddressingMode::IncrementAfter,
                 psr: false,
                 register_list: 0b1111
             }
