@@ -425,6 +425,26 @@ impl Registers {
 
         passed
     }
+
+    fn increment_pc(&mut self) {
+        let offset = self.pc_offset();
+        self.r[15] = self.r[15].wrapping_add(offset);
+    }
+
+    fn pc_offset(&self) -> u32 {
+        if self.state() == ProcessorState::Arm {
+            4
+        } else {
+            2
+        }
+    }
+
+    fn copy_pc_to_lr(&mut self) {
+        // Reminder that pc is always +2 instructions ahead of the current executing address,
+        // Need to copy the pc - 1 instruction, to return to the instruction that has not been
+        // executed yet.
+        self.r[14] = self.r[15].wrapping_sub(self.pc_offset());
+    }
 }
 
 // https://support.arm.com/documentation/ddi0029/g/introduction/about-the-arm7tdmi-core/the-instruction-pipeline
@@ -501,7 +521,7 @@ impl Arm7tdmi {
         };
 
         let decoded_instruction = self.pipeline.advance(new_fetch);
-        let executing_address = self.registers.r[15].wrapping_sub(2 * self.pc_offset());
+        let executing_address = self.registers.r[15].wrapping_sub(2 * self.registers.pc_offset());
 
         let side_effect = match decoded_instruction {
             Some(decoded_arm) => {
@@ -531,7 +551,7 @@ impl Arm7tdmi {
         }
 
         if !self.branched {
-            self.increment_pc();
+            self.registers.increment_pc();
         }
     }
 
@@ -539,19 +559,6 @@ impl Arm7tdmi {
         self.pipeline.flush();
         self.branched = true;
         self.next_fetch_access = AccessType::Nonsequential;
-    }
-
-    fn pc_offset(&self) -> u32 {
-        if self.registers.state() == ProcessorState::Arm {
-            4
-        } else {
-            2
-        }
-    }
-
-    fn increment_pc(&mut self) {
-        let offset = self.pc_offset();
-        self.registers.r[15] = self.registers.r[15].wrapping_add(offset);
     }
 
     pub fn branch_to(&mut self, address: u32) {
@@ -572,7 +579,7 @@ impl Arm7tdmi {
     }
 
     pub fn raise_irq(&mut self) {
-        let next = self.registers.r[15].wrapping_sub(self.pc_offset());
+        let next = self.registers.r[15].wrapping_sub(self.registers.pc_offset());
         self.raise_exception(ProcessorMode::Irq, VectorTable::Irq, next.wrapping_add(4));
     }
 

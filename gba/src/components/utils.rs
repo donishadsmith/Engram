@@ -126,6 +126,82 @@ impl BitOps for u32 {
     const ONE: Self = 1;
 }
 
+pub trait ShiftOps: BitOps {
+    fn handle_right_shift(self, shift_amount: u8) -> Self {
+        if (shift_amount as usize) >= Self::BIT_WIDTH {
+            Self::ZERO
+        } else {
+            self >> shift_amount as usize
+        }
+    }
+
+    fn lsl(self, shift_amount: u8) -> (Self, u8) {
+        if shift_amount == 0 {
+            panic!("a shift amount of 0 is not allowed here")
+        }
+
+        let carry_out = self.get_bit(Self::BIT_WIDTH - shift_amount as usize);
+        let value = self << shift_amount.into();
+
+        (value, carry_out)
+    }
+
+    fn lsr(self, mut shift_amount: u8) -> (Self, u8) {
+        if shift_amount == 0 {
+            shift_amount = Self::BIT_WIDTH as u8;
+        }
+
+        let carry_out = self.get_bit((shift_amount - 1) as usize);
+        let value = self.handle_right_shift(shift_amount);
+
+        (value, carry_out)
+    }
+
+    fn asr(self, mut shift_amount: u8) -> (Self, u8) {
+        if shift_amount == 0 {
+            shift_amount = Self::BIT_WIDTH as u8;
+        }
+
+        let set_bits = self.is_set(Self::BIT_WIDTH - 1);
+        let (mut value, carry_out) = Self::lsr(self, shift_amount);
+        let start = Self::BIT_WIDTH - shift_amount as usize;
+
+        if set_bits {
+            value.set_bit_range(start..Self::BIT_WIDTH);
+        }
+        (value, carry_out)
+    }
+
+    fn perform_rotate_right(self, shift_amount: u32) -> Self;
+
+    fn ror(self, shift_amount: u8, c_set: bool) -> (Self, u8) {
+        if shift_amount == 0 {
+            return self.rrx(c_set);
+        }
+
+        let carry_out = self.get_bit((shift_amount - 1) as usize);
+        let value = self.perform_rotate_right(shift_amount as u32);
+
+        (value, carry_out)
+    }
+
+    fn rrx(self, c_set: bool) -> (Self, u8) {
+        let carry_out = self.get_bit(0);
+
+        let carry_in = if c_set { Self::ONE } else { Self::ZERO };
+        let mut value = self >> 1;
+        value |= carry_in << (Self::BIT_WIDTH - 1);
+
+        (value, carry_out)
+    }
+}
+
+impl ShiftOps for u32 {
+    fn perform_rotate_right(self, shift_amount: u32) -> Self {
+        self.rotate_right(shift_amount)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +238,77 @@ mod tests {
         let mut x: u16 = 0xFFFF;
         x.clear_bit_range(8..16);
         assert_eq!(x, 0x00FF);
+    }
+
+    #[test]
+    fn test_lsl() {
+        let word = 0b1110_0000_0000_0000_0000_0010_1001_0001;
+        let (value, carry) = word.lsl(3);
+
+        assert_eq!(value, 0b0000_0000_0000_0000_0001_0100_1000_1000);
+        assert_eq!(carry, 1);
+    }
+
+    #[test]
+    fn test_lsr() {
+        let word = 0b1110_0000_0000_0000_0000_0010_1001_0001;
+        let (value, carry) = word.lsr(5);
+
+        assert_eq!(value, 0b0000_0111_0000_0000_0000_0000_0001_0100);
+        assert_eq!(carry, 1);
+
+        let (value, carry) = word.lsr(0);
+
+        assert_eq!(value, 0);
+        assert_eq!(carry, 1);
+    }
+
+    #[test]
+    fn test_asr() {
+        let word = 0b1110_0000_0000_0000_0000_0010_1001_0001;
+        let (value, carry) = word.asr(5);
+
+        assert_eq!(value, 0b1111_1111_0000_0000_0000_0000_0001_0100);
+        assert_eq!(carry, 1);
+
+        let word = 0b0110_0000_0000_0000_0000_0010_1001_0001;
+        let (value, carry) = word.asr(5);
+
+        assert_eq!(value, 0b0000_0011_0000_0000_0000_0000_0001_0100);
+        assert_eq!(carry, 1);
+
+        let word = 0b1110_0000_0000_0000_0000_0010_1001_0001;
+        let (value, carry) = word.asr(0);
+
+        assert_eq!(value, 0b1111_1111_1111_1111_1111_1111_1111_1111);
+        assert_eq!(carry, 1);
+    }
+
+    #[test]
+    fn test_ror() {
+        let word = 0b1110_0000_0000_0000_0000_0010_1001_0001;
+        let (value, carry) = word.ror(5, true);
+
+        assert_eq!(value, 0b1000_1111_0000_0000_0000_0000_0001_0100);
+        assert_eq!(carry, 1);
+
+        let (value, carry) = word.ror(32, true);
+
+        assert_eq!(value, 0b1110_0000_0000_0000_0000_0010_1001_0001);
+        assert_eq!(carry, 1);
+    }
+
+    #[test]
+    fn test_rrx() {
+        let word = 0b1110_0000_0000_0000_0000_0010_1001_0001;
+        let (value, carry) = word.rrx(false);
+
+        assert_eq!(value, 0b0111_0000_0000_0000_0000_0001_0100_1000);
+        assert_eq!(carry, 1);
+
+        let (value, carry) = word.rrx(true);
+
+        assert_eq!(value, 0b1111_0000_0000_0000_0000_0001_0100_1000);
+        assert_eq!(carry, 1);
     }
 }
