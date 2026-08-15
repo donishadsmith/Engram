@@ -1,5 +1,5 @@
 // https://www.advanscene.com/html/dbstart.php#
-
+//** REMEMBER TO IMPLEMENT EEPROM*****
 use std::{
     fs::{read, write},
     io::Error,
@@ -134,7 +134,7 @@ impl GamePak {
 
     // https://densinh.github.io/DenSinH/emulation/2021/02/01/gba-eeprom.html
     // https://problemkaputt.de/gbatek.htm#gbacartbackupeeprom
-    // We will leave this eeprom for later, apparently, the hardware is a
+    // **** REMEMBER TO IMPLEMENT EEPROM***** the hardware is a
     // single wire that writes one bit at a time and the number of bits determined
     // the size but only somewhat reliably, this seems to also require DMA, since DMA3
     // can access rom, maybe this should be done closer to the emulator end than trying
