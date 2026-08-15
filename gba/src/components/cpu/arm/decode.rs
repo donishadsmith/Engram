@@ -260,7 +260,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
 
     match instruction.get_bit_range(25..28) {
         0b000 | 0b001 => {
-            if instruction.is_set(4) && instruction.is_set(7) && !instruction.is_set(25) {
+            if instruction.is_set(4) && instruction.is_set(7) && instruction.is_clear(25) {
                 if instruction.get_bit_range(5..7) != 0 {
                     if instruction.is_set(22) {
                         return DecodedArm {
@@ -366,7 +366,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
 
                 let bits = instruction.get_bit_range(12..22);
                 if bits == 0b1010011111 || bits == 0b1010001111 {
-                    let flags_only = !instruction.is_set(16);
+                    let flags_only = instruction.is_clear(16);
                     let source = if instruction.is_set(25) {
                         MsrSource::Immediate {
                             value: instruction.get_bit_range(0..8) as u8,
@@ -398,13 +398,17 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                         },
                     };
                 } else {
-                    let operand2 = if !instruction.is_set(25) {
+                    let operand2 = if instruction.is_clear(25) {
+                        let shift_amount = if instruction.is_set(4) {
+                            ShiftAmount::Register(instruction.get_bit_range(8..12) as u8)
+                        } else {
+                            ShiftAmount::Immediate(instruction.get_bit_range(7..12) as u8)
+                        };
+
                         Operand2::Register(ShiftedRegister {
                             rm: instruction.get_bit_range(0..4) as u8,
                             shift_type: ShiftType::from_bits(instruction.get_bit_range(5..7) as u8),
-                            shift_amount: ShiftAmount::Immediate(
-                                instruction.get_bit_range(7..12) as u8
-                            ),
+                            shift_amount: shift_amount,
                         })
                     } else {
                         Operand2::Immediate {
@@ -771,6 +775,27 @@ mod tests {
                 },
                 use_spsr: false,
                 flags_only: true
+            }
+        );
+    }
+
+    #[test]
+    fn test_data_processing_register_shift() {
+        let data_processing = 0b1110_0000_1000_0001_0000_0011_0001_0010;
+        let instruction = decode_arm(data_processing);
+
+        assert_eq!(
+            instruction.instruction,
+            ArmInstruction::DataProcessing {
+                opcode: DataOp::Add,
+                set_flags: false,
+                rn: 1,
+                rd: 0,
+                operand2: Operand2::Register(ShiftedRegister {
+                    rm: 2,
+                    shift_type: ShiftType::LogicalLeft,
+                    shift_amount: ShiftAmount::Register(3),
+                })
             }
         );
     }

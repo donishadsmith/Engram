@@ -324,7 +324,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
             }
         }
         0b101 => {
-            if !instruction.is_set(12) {
+            if instruction.is_clear(12) {
                 // format 12
                 let rn = if instruction.is_set(11) { 13 } else { 15 };
                 let operand2 = Operand2::Immediate {
@@ -391,7 +391,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
             }
         }
         0b110 => {
-            if !instruction.is_set(12) {
+            if instruction.is_clear(12) {
                 // format 15
                 return DecodedArm {
                     condition,
