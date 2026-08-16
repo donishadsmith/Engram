@@ -250,6 +250,7 @@ pub enum ArmInstruction {
     },
 }
 
+#[derive(PartialEq)]
 pub struct DecodedArm {
     pub condition: Condition,
     pub instruction: ArmInstruction,

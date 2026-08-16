@@ -134,6 +134,11 @@ impl BitOps for u32 {
     const ONE: Self = 1;
 }
 
+impl BitOps for u64 {
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+}
+
 // Pages 4-13 of arm7tdmi data sheet, special meanings for how assembler handles 32 for lsr, ror, asr
 // Basically 0 treated as 32
 pub trait ShiftOps: BitOps {

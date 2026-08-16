@@ -39,6 +39,8 @@ pub mod sealed {
     impl Sealed for u16 {}
 
     impl Sealed for u32 {}
+
+    impl Sealed for u64 {} // Just to give ceertain traits to u64 for multiply long
 }
 
 pub trait BusValue: sealed::Sealed + Sized + Copy {

@@ -312,33 +312,26 @@ fn sqrt(registers: &mut Registers) -> u64 {
 }
 
 // https://github.com/mgba-emu/mgba/blob/afd6f14eaf8bd35214ed3fb9dc69a92bfc3877a9/src/gba/bios.c#L23
-fn multiply_stall(operand: i32) -> u64 {
-    let operand = operand as u32;
-
-    let n_leading_ones = operand.leading_ones();
-    let n_leading_zeros = operand.leading_zeros();
-
-    if n_leading_zeros >= 24 || n_leading_ones >= 24 {
-        1
-    } else if n_leading_zeros >= 16 || n_leading_ones >= 16 {
-        2
-    } else if n_leading_zeros >= 8 || n_leading_ones >= 8 {
-        3
-    } else {
-        4
+pub fn multiply_stall(operand: u32) -> u64 {
+    let n = operand.leading_zeros().max(operand.leading_ones());
+    match n {
+        24..=32 => 1,
+        16..=23 => 2,
+        8..=15 => 3,
+        _ => 4,
     }
 }
 
 // https://github.com/mgba-emu/mgba/blob/afd6f14eaf8bd35214ed3fb9dc69a92bfc3877a9/src/gba/bios.c#L291
 fn apply_arctan_coefficients(operand: i32) -> (i16, i32, i32, u64) {
     let mut cycles: u64 = 37;
-    cycles += multiply_stall(operand.wrapping_mul(operand));
+    cycles += multiply_stall(operand.wrapping_mul(operand) as u32);
 
     let a = -(operand.wrapping_mul(operand) >> 14);
     let mut b: i32 = 0xA9;
 
     for c in ARCTAN_COEFFICIENTS {
-        cycles += multiply_stall(b.wrapping_mul(a));
+        cycles += multiply_stall(b.wrapping_mul(a) as u32);
         b = (b.wrapping_mul(a) >> 14) + c;
     }
 

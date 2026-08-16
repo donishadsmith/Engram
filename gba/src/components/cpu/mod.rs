@@ -71,7 +71,7 @@ enum ProcessorState {
 
 impl ProcessorState {
     fn from_cpsr(cpsr: u32) -> ProcessorState {
-        match (cpsr >> 5) & 0x01 {
+        match cpsr.get_bit(5) {
             0 => ProcessorState::Arm,
             1 => ProcessorState::Thumb,
             _ => unreachable!(),
@@ -144,6 +144,7 @@ enum VectorTable {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u32)]
 enum ProcessorMode {
     Usr = 0x10, // Typical mode most tasks run on (Unprivileged)
     Fiq = 0x11, // Entered when high priority (fast) interrupt is raised (Privileged) - Banks out r8-14, and spsr
@@ -156,7 +157,7 @@ enum ProcessorMode {
 
 impl ProcessorMode {
     fn from_cpsr(cpsr: u32) -> ProcessorMode {
-        match cpsr & 0x1F {
+        match cpsr.get_bit_range(0..5) {
             0x10 => ProcessorMode::Usr,
             0x11 => ProcessorMode::Fiq,
             0x12 => ProcessorMode::Irq,
@@ -243,51 +244,51 @@ impl Registers {
         }
     }
 
-    fn N(&self) -> bool {
+    fn is_n_set(&self) -> bool {
         self.cpsr.is_set(CpuFlag::N as usize)
     }
 
-    fn set_N(&mut self) {
+    fn set_n(&mut self) {
         self.cpsr.set_bit(CpuFlag::N as usize)
     }
 
-    fn clear_N(&mut self) {
+    fn clear_n(&mut self) {
         self.cpsr.clear_bit(CpuFlag::N as usize)
     }
 
-    fn Z(&self) -> bool {
+    fn is_z_set(&self) -> bool {
         self.cpsr.is_set(CpuFlag::Z as usize)
     }
 
-    fn set_Z(&mut self) {
+    fn set_z(&mut self) {
         self.cpsr.set_bit(CpuFlag::Z as usize)
     }
 
-    fn clear_Z(&mut self) {
+    fn clear_z(&mut self) {
         self.cpsr.clear_bit(CpuFlag::Z as usize)
     }
 
-    fn C(&self) -> bool {
+    fn is_c_set(&self) -> bool {
         self.cpsr.is_set(CpuFlag::C as usize)
     }
 
-    fn set_C(&mut self) {
+    fn set_c(&mut self) {
         self.cpsr.set_bit(CpuFlag::C as usize)
     }
 
-    fn clear_C(&mut self) {
+    fn clear_c(&mut self) {
         self.cpsr.clear_bit(CpuFlag::C as usize)
     }
 
-    fn V(&self) -> bool {
+    fn is_v_set(&self) -> bool {
         self.cpsr.is_set(CpuFlag::V as usize)
     }
 
-    fn set_V(&mut self) {
+    fn set_v(&mut self) {
         self.cpsr.set_bit(CpuFlag::V as usize)
     }
 
-    fn clear_V(&mut self) {
+    fn clear_v(&mut self) {
         self.cpsr.clear_bit(CpuFlag::V as usize)
     }
 
@@ -340,7 +341,6 @@ impl Registers {
             self.r[14] = self.banked_special_registers[new_sp][1];
         }
 
-        // Likely will never trigger because apparantly the gba never enters FIQ but keep anyway
         let (old_high_index, new_high_index) = (
             old_mode.high_register_index(),
             new_mode.high_register_index(),
@@ -393,16 +393,16 @@ impl Registers {
         // https://support.arm.com/documentation/ddi0027/latest/ - page 26
         // https://support.arm.com/documentation/ddi0029/g/introduction/instruction-set-summary/arm-instruction-summary?lang=en - Table 1.6
         let passed = match condition {
-            Condition::Eq => self.Z(),
-            Condition::Ne => !self.Z(),
-            Condition::Cs => self.C(),
-            Condition::Cc => !self.C(),
-            Condition::Mi => self.N(),
-            Condition::Pl => !self.N(),
-            Condition::Vs => self.V(),
-            Condition::Vc => !self.V(),
-            Condition::Hi => self.C() && !self.Z(),
-            Condition::Ls => !self.C() || self.Z(),
+            Condition::Eq => self.is_z_set(),
+            Condition::Ne => !self.is_z_set(),
+            Condition::Cs => self.is_c_set(),
+            Condition::Cc => !self.is_c_set(),
+            Condition::Mi => self.is_n_set(),
+            Condition::Pl => !self.is_n_set(),
+            Condition::Vs => self.is_v_set(),
+            Condition::Vc => !self.is_v_set(),
+            Condition::Hi => self.is_c_set() && !self.is_z_set(),
+            Condition::Ls => !self.is_c_set() || self.is_z_set(),
             Condition::Ge => {
                 self.cpsr.get_bit(CpuFlag::N as usize) == self.cpsr.get_bit(CpuFlag::V as usize)
             }
@@ -410,12 +410,12 @@ impl Registers {
                 self.cpsr.get_bit(CpuFlag::N as usize) != self.cpsr.get_bit(CpuFlag::V as usize)
             }
             Condition::Gt => {
-                !self.Z()
+                !self.is_z_set()
                     && self.cpsr.get_bit(CpuFlag::N as usize)
                         == self.cpsr.get_bit(CpuFlag::V as usize)
             }
             Condition::Le => {
-                self.Z()
+                self.is_z_set()
                     || self.cpsr.get_bit(CpuFlag::N as usize)
                         != self.cpsr.get_bit(CpuFlag::V as usize)
             }
