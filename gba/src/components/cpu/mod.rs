@@ -367,7 +367,7 @@ impl Registers {
     fn reset_to_boot(&mut self) {
         self.r[13] = 0x03007F00;
         self.r[15] = 0x08000000;
-        self.cpsr = 0x00000013;
+        self.cpsr = 0x0000001F;
 
         self.banked_special_registers[3][0] = 0x03007FE0; // sp_svc
         self.banked_special_registers[2][0] = 0x03007FA0; // sp_irq
@@ -521,6 +521,9 @@ impl Arm7tdmi {
         };
 
         let decoded_instruction = self.pipeline.advance(new_fetch);
+
+        // Assumes pc is +8 (arm) or +4 (thumb) aheah, essentially used to
+        // to keep reversing the pipeline when the instruction wait bios command is called
         let executing_address = self.registers.r[15].wrapping_sub(2 * self.registers.pc_offset());
 
         let side_effect = match decoded_instruction {
@@ -578,9 +581,23 @@ impl Arm7tdmi {
         self.branch_to(vector as u32);
     }
 
+    fn next_executing_address(&self) -> u32 {
+        let offset = self.registers.pc_offset();
+        if self.pipeline.decoded.is_some() {
+            self.registers.r[15].wrapping_sub(2 * offset)
+        } else if self.pipeline.fetched.is_some() {
+            self.registers.r[15].wrapping_sub(offset)
+        } else {
+            self.registers.r[15]
+        }
+    }
+
     pub fn raise_irq(&mut self) {
-        let next = self.registers.r[15].wrapping_sub(self.registers.pc_offset());
-        self.raise_exception(ProcessorMode::Irq, VectorTable::Irq, next.wrapping_add(4));
+        self.raise_exception(
+            ProcessorMode::Irq,
+            VectorTable::Irq,
+            self.next_executing_address().wrapping_add(4),
+        );
     }
 
     pub fn is_halted(&self) -> bool {

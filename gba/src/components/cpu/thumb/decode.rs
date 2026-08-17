@@ -3,7 +3,8 @@ use crate::components::{
         Condition,
         arm::decode::{
             AddressingMode, ArmInstruction, BitSize, DataOp, DecodedArm, HalfwordOffset, Operand2,
-            SdtOffset, ShiftAmount, ShiftType, ShiftedRegister, TransferAction, TransferKind,
+            SdtOffset, ShiftAmount, ShiftType, ShiftedRegister, ThumbBranchType, TransferAction,
+            TransferKind,
         },
     },
     utils::BitOps,
@@ -436,7 +437,8 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                     // format 19
                     return DecodedArm {
                         condition,
-                        instruction: ArmInstruction::ThumbBlLow {
+                        instruction: ArmInstruction::ThumbBranch {
+                            branch_type: ThumbBranchType::Low,
                             offset: (instruction.get_bit_range(0..11) as u32) << 1,
                         },
                     };
@@ -444,7 +446,10 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                     let offset = ((instruction.get_bit_range(0..11) as u32) << 21) as i32 >> 9;
                     return DecodedArm {
                         condition,
-                        instruction: ArmInstruction::ThumbBlHigh { offset },
+                        instruction: ArmInstruction::ThumbBranch {
+                            branch_type: ThumbBranchType::High,
+                            offset: offset as u32,
+                        },
                     };
                 }
             } else {
@@ -805,7 +810,10 @@ mod tests {
 
         assert_eq!(
             instruction.instruction,
-            ArmInstruction::ThumbBlHigh { offset: -4096 }
+            ArmInstruction::ThumbBranch {
+                branch_type: ThumbBranchType::High,
+                offset: 0xFFFFF000
+            }
         );
     }
 }

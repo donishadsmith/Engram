@@ -314,7 +314,7 @@ impl Bus {
         }
     }
 
-    fn write_register_16(&mut self, address: u32, value: u16) {
+    fn write_register_16(&mut self, address: u32, mut value: u16) {
         match address {
             // LCD I/O Registers
             0x4000000 => {} // LCD Control (DISPCNT), 16 bit register (read + write)
@@ -439,17 +439,23 @@ impl Bus {
             0x400015A => {} // Not Used
 
             //Interrupt, Waitstate, and Power-Down Control
-            0x4000200 => self.interrupt_enable = value & 0x3FFF, // Interrupt Enable Register (IE), 16 bit register (read + write)
+            0x4000200 => {
+                self.interrupt_enable = {
+                    value.clear_bit_range(14..16);
+
+                    value
+                }
+            } // Interrupt Enable Register (IE), 16 bit register (read + write)
             0x4000202 => self.interrupt_flag &= !value, // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write), 1's erase bits, write to clear
             0x4000204 => {} // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
             0x4000206 => {} // Not used
-            0x4000208 => self.interrupt_master_enable = (value & 1) as u32, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
-            0x400020A => {}                                                 // Not used
+            0x4000208 => self.interrupt_master_enable = value.get_bit(0) as u32, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
+            0x400020A => {}                                                      // Not used
             0x4000300 => {
-                self.postflg = (value & 1) as u8;
+                self.postflg = value.get_bit(0) as u8;
                 self.haltcnt = Some((value >> 8) as u8);
             } // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
-            0x4000302 => {}                                                 // Not used
+            0x4000302 => {}                                                      // Not used
             0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
             0x4000411 => {} // Not used
             0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
@@ -493,7 +499,7 @@ impl BusValue for u8 {
             0x03 => bus.iwram[Bus::iwram_index(address)],
             0x04 => {
                 let half_word = bus.read_register_16(address & !1);
-                if address & 1 == 0 {
+                if address.is_clear(0) {
                     half_word as u8
                 } else {
                     (half_word >> 8) as u8
@@ -528,7 +534,7 @@ impl BusValue for u8 {
 
         // Some game could right to 203
         if address & !1 == 0x4000202 {
-            let mask = (value as u16) << ((address & 1) * 8);
+            let mask = (value as u16) << (address.get_bit(0) * 8);
             bus.interrupt_flag &= !mask;
 
             return;
@@ -542,7 +548,7 @@ impl BusValue for u8 {
         */
 
         if address & !1 == 0x4000300 {
-            if address & 1 == 0 {
+            if address.is_clear(0) {
                 bus.postflg = value & 1; // postflag is touched in boot sequence, consider if want to support bios
             } else {
                 bus.haltcnt = Some(value)
@@ -557,7 +563,7 @@ impl BusValue for u8 {
             0x03 => bus.iwram[Bus::iwram_index(address)] = value,
             0x04 => {
                 let mut half_word = bus.read_register_16(address & !1);
-                let new_half_word = if address & 1 == 0 {
+                let new_half_word = if address.is_clear(0) {
                     half_word.clear_bit_range(0..8);
                     half_word | value as u16
                 } else {
@@ -588,9 +594,9 @@ impl BusValue for u8 {
 }
 
 impl BusValue for u16 {
-    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self {
+    fn read(bus: &mut Bus, mut address: u32, access_type: AccessType) -> Self {
         bus.cost(address, 16, access_type);
-        let address = address & !1; // ensure even
+        address.clear_bit(0); //ensure even
         let little_endian =
             |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
 
@@ -614,10 +620,10 @@ impl BusValue for u16 {
         }
     }
 
-    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
+    fn write(bus: &mut Bus, mut address: u32, value: Self, access_type: AccessType) {
         bus.cost(address, 16, access_type);
         let bytes = value.to_le_bytes();
-        let address = address & !1; // ensure even
+        address.clear_bit(0); //ensure even
 
         match address >> 24 {
             0x00 => {} // BIOS no write,
@@ -656,9 +662,9 @@ impl BusValue for u16 {
 }
 
 impl BusValue for u32 {
-    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self {
+    fn read(bus: &mut Bus, mut address: u32, access_type: AccessType) -> Self {
         bus.cost(address, 32, access_type);
-        let address = address & !3; // every 4th address
+        address.clear_bit_range(0..2); // every 4th address
 
         let little_endian = |arr: &[u8], index: usize| {
             u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
@@ -691,10 +697,10 @@ impl BusValue for u32 {
         }
     }
 
-    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
+    fn write(bus: &mut Bus, mut address: u32, value: Self, access_type: AccessType) {
         bus.cost(address, 32, access_type);
         let bytes = value.to_le_bytes();
-        let address = address & !3; // every 4th address
+        address.clear_bit_range(0..2); // every 4th address
 
         match address >> 24 {
             0x00 => {} // BIOS no write,

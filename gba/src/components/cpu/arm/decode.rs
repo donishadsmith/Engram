@@ -163,6 +163,12 @@ pub enum MsrSource {
     Immediate { value: u8, rotate: u8 },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ThumbBranchType {
+    High,
+    Low,
+}
+
 // 4-2; Table 4.1.1
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ArmInstruction {
@@ -242,10 +248,8 @@ pub enum ArmInstruction {
     SoftwareInterrupt {
         comment: u32,
     },
-    ThumbBlHigh {
-        offset: i32,
-    },
-    ThumbBlLow {
+    ThumbBranch {
+        branch_type: ThumbBranchType,
         offset: u32,
     },
 }
