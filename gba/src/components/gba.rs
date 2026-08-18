@@ -6,19 +6,19 @@ use crate::components::{
 };
 
 pub struct GBA {
-    bus: Bus,
-    cpu: Arm7tdmi,
+    pub bus: Bus,
+    pub cpu: Arm7tdmi,
 }
 
 impl GBA {
-    pub fn start(gamepak: GamePak) -> Self {
+    pub fn boot(gamepak: GamePak) -> Self {
         Self {
             bus: Bus::new(gamepak),
             cpu: Arm7tdmi::new(),
         }
     }
 
-    pub fn advance(&mut self) {
+    pub fn run(&mut self) {
         let bus = &mut self.bus;
 
         if self.cpu.is_halted() {

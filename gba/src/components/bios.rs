@@ -93,6 +93,10 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
             BitSize::SixteenBit,
         ),
         0x1F => midi_key_2_freq(&mut cpu.registers, bus),
+        0xFF => println!(
+            "Rom completed with the following exit code: {}",
+            cpu.registers.r[0]
+        ),
         _ => {
             eprintln!(
                 "The following SWI function not implemented: {:#04X}",

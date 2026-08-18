@@ -72,7 +72,7 @@ pub struct Bus {
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
     apu: APU,
     ppu: PPU,
-    gamepak: GamePak,
+    pub gamepak: GamePak,
     interrupt_master_enable: u32,
     interrupt_enable: u16,
     interrupt_flag: u16,

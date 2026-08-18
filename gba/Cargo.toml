@@ -2,6 +2,8 @@
 name = "engram_gba"
 version = "0.1.0"
 edition = "2024"
+authors = ["Donisha Smith <donishasmith@outlook.com>"]
+license-file = "LICENSE"
 
 [dependencies]
 

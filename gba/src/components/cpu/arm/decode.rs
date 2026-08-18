@@ -186,7 +186,7 @@ pub enum ArmInstruction {
     Msr {
         source: MsrSource,
         use_spsr: bool,
-        flags_only: bool,
+        field_mask: u8,
     },
     Multiply {
         rm: u8,
@@ -369,9 +369,10 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                     };
                 }
 
-                let bits = instruction.get_bit_range(12..22);
-                if bits == 0b1010011111 || bits == 0b1010001111 {
-                    let flags_only = instruction.is_clear(16);
+                if instruction.get_bit_range(23..25) == 0b10
+                    && instruction.is_clear(20)
+                    && instruction.is_set(21)
+                {
                     let source = if instruction.is_set(25) {
                         MsrSource::Immediate {
                             value: instruction.get_bit_range(0..8) as u8,
@@ -386,7 +387,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                         instruction: ArmInstruction::Msr {
                             source,
                             use_spsr: instruction.is_set(22),
-                            flags_only,
+                            field_mask: instruction.get_bit_range(16..20) as u8,
                         },
                     };
                 }
@@ -761,7 +762,7 @@ mod tests {
             ArmInstruction::Msr {
                 source: MsrSource::Register(0),
                 use_spsr: false,
-                flags_only: false
+                field_mask: 0b1001
             }
         );
     }
@@ -779,7 +780,7 @@ mod tests {
                     rotate: 0b100
                 },
                 use_spsr: false,
-                flags_only: true
+                field_mask: 0b1000
             }
         );
     }
@@ -801,6 +802,20 @@ mod tests {
                     shift_type: ShiftType::LogicalLeft,
                     shift_amount: ShiftAmount::Register(3),
                 })
+            }
+        );
+    }
+
+    #[test]
+    fn test_msr_additional() {
+        //  echo "msr cpsr_c, r1" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
+        let instruction = decode_arm(0xe121f001);
+        assert_eq!(
+            instruction.instruction,
+            ArmInstruction::Msr {
+                source: MsrSource::Register(1),
+                use_spsr: false,
+                field_mask: 0b0001
             }
         );
     }

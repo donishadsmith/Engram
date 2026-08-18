@@ -226,11 +226,11 @@ pub enum SideEffect {
 
 pub struct Registers {
     pub r: [u32; 16],
-    banked_high_registers: [[u32; 5]; 2],
-    banked_special_registers: [[u32; 2]; 6],
-    banked_spsr: [u32; 6],
-    cpsr: u32, // Holds current mode, status flags; bits 31-28 (N, Z, C, V, Q), mode bits (lower 5 bits), state bits
-               // bit 5 (T) is ARM or THUMB
+    pub banked_high_registers: [[u32; 5]; 2],
+    pub banked_special_registers: [[u32; 2]; 6],
+    pub banked_spsr: [u32; 6],
+    pub cpsr: u32, // Holds current mode, status flags; bits 31-28 (N, Z, C, V, Q), mode bits (lower 5 bits), state bits
+                   // bit 5 (T) is ARM or THUMB
 }
 
 impl Registers {
@@ -525,7 +525,6 @@ impl Arm7tdmi {
         // Assumes pc is +8 (arm) or +4 (thumb) aheah, essentially used to
         // to keep reversing the pipeline when the instruction wait bios command is called
         let executing_address = self.registers.r[15].wrapping_sub(2 * self.registers.pc_offset());
-
         let side_effect = match decoded_instruction {
             Some(decoded_arm) => {
                 if self.registers.condition_passed(decoded_arm.condition) {

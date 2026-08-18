@@ -5,6 +5,7 @@
 // https://problemkaputt.de/gbatek-arm-cpu-memory-alignments.htm
 // https://github.com/jsmolka/gba-tests - **IMPLEMNT MORE TESTS**
 
+// ***SEVERAL FIXES STILL NEED TO BE ADDED BASED ON GBATEK***
 use super::decode::{
     AddressingMode, ArmInstruction, BitSize, DataOp, HalfwordOffset, MsrSource, Operand2,
     SdtOffset, ShiftAmount, ShiftType, ThumbBranchType, TransferAction, TransferKind,
@@ -282,8 +283,8 @@ fn mrs(registers: &mut Registers, rd: u8, use_spsr: bool) {
     registers.r[rd as usize] = source_psr;
 }
 
-fn msr(registers: &mut Registers, source: MsrSource, use_spsr: bool, flags_only: bool) {
-    let mut source_value = match source {
+fn msr(registers: &mut Registers, source: MsrSource, use_spsr: bool, field_mask: u8) {
+    let source_value = match source {
         MsrSource::Register(rs) => registers.r[rs as usize],
         MsrSource::Immediate { value, rotate } => (value as u32).rotate_right((rotate as u32) * 2),
     };
@@ -296,15 +297,33 @@ fn msr(registers: &mut Registers, source: MsrSource, use_spsr: bool, flags_only:
         &mut registers.cpsr
     };
 
-    if flags_only {
-        destination.clear_bit_range(28..32);
-        source_value.clear_bit_range(0..28);
-        *destination |= source_value;
-    } else {
-        *destination = source_value;
+    let c = field_mask.is_set(0);
+    let x = field_mask.is_set(1);
+    let s = field_mask.is_set(2);
+    let f = field_mask.is_set(3);
+
+    let mut mask: u32 = 0;
+    if old_mode != ProcessorMode::Usr {
+        if c {
+            mask |= 0x000000FF;
+        }
+
+        if x {
+            mask |= 0x0000FF00;
+        }
+
+        if s {
+            mask |= 0x00FF0000;
+        }
     }
 
-    if !use_spsr && !flags_only {
+    if f {
+        mask |= 0xFF000000;
+    }
+
+    *destination = (*destination & !mask) | (source_value & mask);
+
+    if !use_spsr {
         let new_mode = registers.mode();
         registers.bank_registers(old_mode, new_mode);
     }
@@ -775,6 +794,7 @@ pub fn execute_arm<A: AddressBus>(
     registers: &mut Registers,
     bus: &mut A,
 ) -> Option<SideEffect> {
+    //eprintln!("{:?}", instruction);
     match instruction {
         ArmInstruction::DataProcessing {
             opcode,
@@ -792,9 +812,9 @@ pub fn execute_arm<A: AddressBus>(
         ArmInstruction::Msr {
             source,
             use_spsr,
-            flags_only,
+            field_mask,
         } => {
-            msr(registers, source, use_spsr, flags_only);
+            msr(registers, source, use_spsr, field_mask);
 
             None
         }

@@ -9,6 +9,7 @@ Cargo.lock
 gb/tests/blargg/**/*source*
 gb/tests/blargg/*/source/
 *.s
+!gba/tests/**/*.s
 mooneye/
 *ppu_registers.txt*
 *hexdump.txt*
@@ -16,3 +17,4 @@ mooneye/
 *.bin
 *.sav
 *.gba
+!gba/tests/**/*.gba
