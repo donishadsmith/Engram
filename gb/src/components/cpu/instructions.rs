@@ -968,7 +968,7 @@ mod tests {
             .collect();
 
         for opcode in implemented_instructions.iter() {
-            let path = format!("tests/sm83/v2/{}.json", opcode);
+            let path = format!("tests/vendored/sm83/v2/{}.json", opcode);
             let text = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
             let cases: Vec<TestCase> = serde_json::from_str(&text).unwrap();

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 fn run_blargg_cpu_rom(rom: &str) {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/blargg/cpu_instrs/individual")
+        .join("tests/vendored/blargg/cpu_instrs/individual")
         .join(rom);
 
     let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
@@ -67,8 +67,8 @@ fn test_op_a_hl() {
 
 #[test]
 fn test_instr_timing() {
-    let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/instr_timing/instr_timing.gb");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/vendored/blargg/instr_timing/instr_timing.gb");
 
     let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
@@ -77,7 +77,7 @@ fn test_instr_timing() {
 #[test]
 fn test_interrupt_timing() {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/blargg/interrupt_time/interrupt_time.gb");
+        .join("tests/vendored/blargg/interrupt_time/interrupt_time.gb");
 
     let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
@@ -85,8 +85,8 @@ fn test_interrupt_timing() {
 
 #[test]
 fn test_mem_timing() {
-    let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/mem_timing/mem_timing.gb");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/vendored/blargg/mem_timing/mem_timing.gb");
 
     let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
@@ -94,8 +94,8 @@ fn test_mem_timing() {
 
 #[test]
 fn test_mem_timing2() {
-    let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/mem_timing-2/mem_timing.gb");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/vendored/blargg/mem_timing-2/mem_timing.gb");
 
     let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
@@ -103,7 +103,8 @@ fn test_mem_timing2() {
 
 #[test]
 fn test_oam_bug() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/oam_bug/oam_bug.gb");
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/vendored/blargg/oam_bug/oam_bug.gb");
 
     let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);
@@ -111,7 +112,7 @@ fn test_oam_bug() {
 
 #[test]
 fn test_halt_bug() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/blargg/halt_bug.gb");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/vendored/blargg/halt_bug.gb");
 
     let mut gameboy = GameBoy::boot(GamePak::load(Some(path)).unwrap());
     gameboy.run([false; 8], 87);

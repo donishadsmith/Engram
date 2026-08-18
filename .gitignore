@@ -3,14 +3,15 @@
 /roms
 *.gb
 # These roms should be fine though
-!gb/tests/blargg/**/*.gb
+!gb/tests/vendored/blargg/**/*.gb
 Cargo.lock
 *.sav
-gb/tests/blargg/**/*source*
-gb/tests/blargg/*/source/
+gb/tests/vendored/blargg/**/*source*
+gb/tests/vendored/blargg/*/source/
 *.s
 !gba/tests/**/*.s
 mooneye/
+acid/
 *ppu_registers.txt*
 *hexdump.txt*
 *.txt
