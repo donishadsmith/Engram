@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 fn initialize_gba(rom: &str) -> GBA {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/asm")
+        .join("tests/custom_roms")
         .join(rom);
 
     let gba = GBA::boot(GamePak::load(Some(path)).unwrap());
