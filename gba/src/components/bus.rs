@@ -18,7 +18,7 @@
 
 use crate::components::{
     apu::APU,
-    gamepak::GamePak,
+    gamepak::{BackupChip, GamePak},
     ppu::PPU,
     scheduler::EventScheduler,
     utils::{BitOps, zero_arr},
@@ -108,13 +108,21 @@ impl Bus {
         index
     }
 
+    // Maybe reconsider design of the backup functions
+    // just fix enough for code to compile
     fn backup_byte(&self, address: u32) -> Option<usize> {
-        if self.gamepak.backup_memory.is_empty() {
+        if matches!(self.gamepak.backup_chip, BackupChip::None) {
             return None;
         }
 
         let base_address = 0x0E000000;
-        let mask = (self.gamepak.backup_memory.len() - 1) as u32;
+        let mask = match &self.gamepak.backup_chip {
+            BackupChip::Eeprom(eeprom) => (eeprom.memory.len() - 1) as u32,
+            BackupChip::Sram(sram) => (sram.memory.len() - 1) as u32,
+            BackupChip::Flash(flash) => (flash.memory.len() - 1) as u32,
+            _ => unreachable!(),
+        };
+
         let index = ((address - base_address) & mask) as usize;
 
         Some(index)
@@ -123,7 +131,12 @@ impl Bus {
     #[inline]
     pub fn read_backup_byte(&self, address: u32) -> u8 {
         match self.backup_byte(address) {
-            Some(index) => self.gamepak.backup_memory[index],
+            Some(index) => match &self.gamepak.backup_chip {
+                BackupChip::Eeprom(eeprom) => eeprom.memory[index],
+                BackupChip::Sram(sram) => sram.memory[index],
+                BackupChip::Flash(flash) => flash.memory[index],
+                _ => unreachable!(),
+            },
             None => 0,
         }
     }
@@ -131,10 +144,12 @@ impl Bus {
     #[inline]
     pub fn write_backup_byte(&mut self, address: u32, value: u8) {
         match self.backup_byte(address) {
-            Some(index) => {
-                self.gamepak.backup_memory[index] = value;
-                self.gamepak.ram_updated = true;
-            }
+            Some(index) => match &mut self.gamepak.backup_chip {
+                BackupChip::Eeprom(eeprom) => eeprom.write(index, value),
+                BackupChip::Sram(sram) => sram.write(index, value),
+                BackupChip::Flash(flash) => flash.write(index, value),
+                _ => unreachable!(),
+            },
             None => {}
         }
     }

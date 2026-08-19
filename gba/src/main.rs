@@ -17,6 +17,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     let gamepak = GamePak::load(file).unwrap();
     //hexdump(&gamepak.rom, DumpWidth::Byte)?;
 
-    println!("{}", gamepak.backup_type.to_str());
     Ok(())
 }

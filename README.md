@@ -1,5 +1,9 @@
 # Engram
 
+[![Run Tests](https://github.com/donishadsmith/Engram/actions/workflows/test.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/test.yml)
+
+[![Publish](https://github.com/donishadsmith/Engram/actions/workflows/build.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/build.yml)
+
 A Game Boy Color emulator (supports DMG games too) written in Rust. Game Boy Advance emulator is a work-in-progress and will eventually have a unified interface with the Game Boy emulator.
 
 <table align="center">

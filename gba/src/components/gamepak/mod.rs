@@ -1,10 +1,16 @@
 // https://www.advanscene.com/html/dbstart.php#
 //** REMEMBER TO IMPLEMENT EEPROM*****
-use std::{
-    fs::{read, write},
-    io::Error,
-    path::PathBuf,
-};
+
+mod eeprom;
+mod flash;
+mod sram;
+
+use eeprom::{EEPROM_4KBIT, Eeprom};
+use flash::Flash;
+use sram::Sram;
+
+use crate::components::utils::BitOps;
+use std::{fs::read, io::Error, path::PathBuf};
 
 // https://problemkaputt.de/gbatek-gba-cart-backup-ids.htm
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -19,25 +25,17 @@ pub enum BackupType {
 }
 
 impl BackupType {
-    fn to_vec(self) -> Vec<u8> {
+    fn to_enum(self) -> BackupChip {
         match self {
-            BackupType::Sram | BackupType::SramF => vec![0u8; kilobytes(32)],
-            BackupType::Flash | BackupType::Flash512 => vec![0u8; kilobytes(64)],
-            BackupType::Flash1M => vec![0u8; kilobytes(128)],
-            _ => Vec::<u8>::new(),
-        }
-    }
-
-    // Just for checking purposes
-    pub fn to_str(self) -> &'static str {
-        match self {
-            BackupType::Eeprom => "EEPROM_V",
-            BackupType::Sram => "SRAM_V",
-            BackupType::SramF => "SRAM_F_V",
-            BackupType::Flash => "FLASH_V",
-            BackupType::Flash512 => "FLASH512_V",
-            BackupType::Flash1M => "FLASH1M_V",
-            BackupType::None => "None",
+            BackupType::Sram | BackupType::SramF => {
+                BackupChip::Sram(Sram::new(vec![0u8; kilobytes(32)]))
+            }
+            BackupType::Flash | BackupType::Flash512 => {
+                BackupChip::Flash(Flash::new(vec![0u8; kilobytes(64)]))
+            }
+            BackupType::Flash1M => BackupChip::Flash(Flash::new(vec![0u8; kilobytes(128)])),
+            BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0u8; EEPROM_4KBIT])), // default to the small version
+            BackupType::None => BackupChip::None,
         }
     }
 }
@@ -59,6 +57,14 @@ fn detect_save_type(rom: &[u8]) -> BackupType {
     BackupType::None
 }
 
+#[derive(PartialEq, Eq)]
+pub enum BackupChip {
+    None,
+    Eeprom(Eeprom),
+    Sram(Sram),
+    Flash(Flash),
+}
+
 fn error_message(message: String) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::InvalidData, message)
 }
@@ -70,9 +76,7 @@ fn kilobytes(value: usize) -> usize {
 pub struct GamePak {
     pub rom: Vec<u8>,
     sav_path: PathBuf,
-    pub backup_memory: Vec<u8>,
-    pub backup_type: BackupType,
-    pub ram_updated: bool,
+    pub backup_chip: BackupChip,
 }
 
 impl GamePak {
@@ -86,50 +90,59 @@ impl GamePak {
         let rom = std::fs::read(&rom_path)?;
 
         let sav_path = rom_path.with_extension("sav");
-        let backup_type = detect_save_type(&rom);
-        let backup_memory = Self::read_sav(&sav_path, backup_type)?;
+        let mut backup_chip = detect_save_type(&rom).to_enum();
+        Self::read_sav(&sav_path, &mut backup_chip)?;
 
         Ok(Self {
             rom,
             sav_path,
-            backup_type,
-            backup_memory,
-            ram_updated: false,
+            backup_chip,
         })
     }
 
-    // Eventually append RTC data to the end
-    pub fn read_sav(sav_path: &PathBuf, backup_type: BackupType) -> Result<Vec<u8>, Error> {
-        let mut backup_memory = backup_type.to_vec();
-
+    // Eventually incorporate RTC data
+    pub fn read_sav(sav_path: &PathBuf, backup_chip: &mut BackupChip) -> Result<(), Error> {
         if !sav_path.exists() {
-            return Ok(backup_memory);
+            return Ok(());
         }
 
         let buffer = read(sav_path)?;
 
-        if backup_type == BackupType::Eeprom {
-            return Ok(buffer);
+        match backup_chip {
+            BackupChip::Eeprom(eeprom) => {
+                if buffer.len() > eeprom.memory.len() {
+                    eeprom.increase_capacity();
+                }
+
+                Self::copy_sav_data(buffer, &mut eeprom.memory)
+            }
+            BackupChip::Flash(flash) => {
+                Self::copy_sav_data(buffer, &mut flash.memory);
+            }
+            BackupChip::Sram(sram) => {
+                Self::copy_sav_data(buffer, &mut sram.memory);
+            }
+            BackupChip::None => {}
         }
-
-        let n = buffer.len().min(backup_memory.len());
-        backup_memory[..n].copy_from_slice(&buffer[..n]);
-
-        Ok(backup_memory)
-    }
-
-    pub fn write_sav(&mut self) -> Result<(), Error> {
-        if self.ram_updated && self.has_backup() {
-            write(&self.sav_path, &self.backup_memory)?;
-        }
-
-        self.ram_updated = false;
 
         Ok(())
     }
 
-    pub fn has_backup(&self) -> bool {
-        self.backup_type != BackupType::None
+    pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>) {
+        let n = save_buffer.len().min(memory.len());
+
+        memory[..n].copy_from_slice(&save_buffer[..n]);
+    }
+
+    pub fn write_sav(&mut self) -> Result<(), Error> {
+        match &mut self.backup_chip {
+            BackupChip::Eeprom(eeprom) => eeprom.write_sav(&self.sav_path)?,
+            BackupChip::Sram(sram) => sram.write_sav(&self.sav_path)?,
+            BackupChip::Flash(flash) => flash.write_sav(&self.sav_path)?,
+            BackupChip::None => {}
+        }
+
+        Ok(())
     }
 
     // https://densinh.github.io/DenSinH/emulation/2021/02/01/gba-eeprom.html
@@ -140,7 +153,7 @@ impl GamePak {
     // can access rom, maybe this should be done closer to the emulator end than trying
     // to wire up right now
     fn is_eeprom_address(&self, address: u32) -> bool {
-        if self.backup_type != BackupType::Eeprom {
+        if !matches!(self.backup_chip, BackupChip::Eeprom(_)) {
             return false;
         }
 
@@ -154,7 +167,6 @@ impl GamePak {
 
     pub fn read_rom_region(&self, address: u32) -> u8 {
         if self.is_eeprom_address(address) {
-            //self.eeprom_read_bit()
             0
         } else {
             self.rom_byte(address)
@@ -163,21 +175,15 @@ impl GamePak {
 
     #[inline]
     fn rom_byte(&self, address: u32) -> u8 {
-        let index = (address & 0x01FFFFFF) as usize;
+        let index = (address.get_bit_range(0..25)) as usize;
         self.rom.get(index).copied().unwrap_or(0)
     }
 
     pub fn mock() -> Self {
-        let mut rom = vec![8u8; kilobytes(32000)];
-        let index = rom.len() - 1;
-        rom[index] = 0;
-
         Self {
             rom: vec![8u8; kilobytes(32000)],
             sav_path: PathBuf::from("mock.sav"),
-            backup_memory: vec![0u8; kilobytes(32)],
-            backup_type: BackupType::Sram,
-            ram_updated: false,
+            backup_chip: BackupType::to_enum(BackupType::Flash1M),
         }
     }
 }
