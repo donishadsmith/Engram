@@ -4,16 +4,16 @@ use std::{
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Range, Shl, Shr},
 };
 
-pub mod sealed {
-    pub trait Sealed {}
+pub mod unsigned_int {
+    pub trait UnsignedInt {}
 
-    impl Sealed for u8 {}
+    impl UnsignedInt for u8 {}
 
-    impl Sealed for u16 {}
+    impl UnsignedInt for u16 {}
 
-    impl Sealed for u32 {}
+    impl UnsignedInt for u32 {}
 
-    impl Sealed for u64 {} // Just to give ceertain traits to u64 for multiply long
+    impl UnsignedInt for u64 {} // Just to give ceertain traits to u64 for multiply long
 }
 
 pub fn zero_arr<const N: usize>() -> Box<[u8; N]> {
@@ -23,7 +23,7 @@ pub fn zero_arr<const N: usize>() -> Box<[u8; N]> {
 // Inspired to create a trait for bit setting after seeing this:
 // https://github.com/michelhe/rustboyadvance-ng/blob/master/arm7tdmi/src/psr.rs
 pub trait BitOps:
-    sealed::Sealed
+    unsigned_int::UnsignedInt
     + Sized
     + Copy
     + Shl<usize, Output = Self>

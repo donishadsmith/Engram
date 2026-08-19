@@ -531,7 +531,7 @@ impl Arm7tdmi {
             }
         };
 
-        bus.latest_pipeline_fetch(latest_instruction);
+        bus.last_instruction_read = latest_instruction;
 
         let decoded_instruction = self.pipeline.advance(new_fetch);
 

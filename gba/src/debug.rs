@@ -5,18 +5,21 @@ use std::{
     path::PathBuf,
 };
 
+#[allow(dead_code)]
 pub enum DumpWidth {
     Byte,
     HalfWord,
     Word,
 }
 
+#[allow(dead_code)]
 pub fn read_rom(source: PathBuf) -> Result<Vec<u8>, std::io::Error> {
     let buffer = read(source)?;
 
     Ok(buffer)
 }
 
+#[allow(dead_code)]
 pub fn hexdump(buffer: &[u8], width: DumpWidth) -> Result<(), Box<dyn Error>> {
     let mut output = String::new();
     match width {
@@ -28,6 +31,7 @@ pub fn hexdump(buffer: &[u8], width: DumpWidth) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn dump_lines<const N: usize>(
     buffer: &[u8],
     output: &mut String,

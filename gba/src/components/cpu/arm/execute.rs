@@ -534,7 +534,7 @@ fn single_data_transfer(
             registers.r[rd as usize] = value
         }
         TransferAction::Store => {
-            let mut value = if rd == 15 {
+            let value = if rd == 15 {
                 registers.r[15].wrapping_add(4)
             } else {
                 registers.r[rd as usize]

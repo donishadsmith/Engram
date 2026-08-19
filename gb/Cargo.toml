@@ -1,6 +1,6 @@
 [package]
 name = "engram_gb"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
@@ -10,7 +10,7 @@ macroquad = { version = "0.4", default-features = false }
 rfd = "0.17"
 chrono = "0.4"
 cpal = "0.18.1"
-rtrb = "0.3.4"
+rtrb = "0.4.0"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

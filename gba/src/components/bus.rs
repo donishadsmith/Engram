@@ -30,26 +30,16 @@ pub enum AccessType {
     Nonsequential, // Memory address is fetched and has nothing to do with the previous instruction
 }
 
-// Note, there is an addition GBA cycle type: Internal, no memory access, performing a complex internal operation like a multiply, only 1 cycle
-
-pub trait BusValue: sealed::Sealed + Sized + Copy {
-    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self;
-
-    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType);
-}
-
-// need to add a generic with trait bound to cpu to create a mock bus for testing
-
 pub struct Bus {
     pub scheduler: EventScheduler,
     _bios: Box<[u8; 0x4000]>,
     pub ewram: Box<[u8; 0x40000]>,
     pub iwram: Box<[u8; 0x8000]>,
-    last_instruction_read: u32,
+    pub last_instruction_read: u32,
     last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
-    apu: APU,
-    ppu: PPU,
+    pub apu: APU,
+    pub ppu: PPU,
     pub gamepak: GamePak,
     interrupt_master_enable: u32,
     interrupt_enable: u16,
@@ -149,31 +139,263 @@ impl Bus {
         }
     }
 
-    fn read_u8(&mut self, address: u32, access: AccessType) -> u8 {
-        self.read::<u8>(address, access)
+    pub fn read_u8(&mut self, address: u32, access_type: AccessType) -> u8 {
+        self.cost(address, 8, access_type);
+
+        match address >> 24 {
+            0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u8,
+            0x02 => self.ewram[Bus::ewram_index(address)],
+            0x03 => self.iwram[Bus::iwram_index(address)],
+            0x04 => {
+                let half_word = self.read_register_16(address & !1);
+                if address.is_clear(0) {
+                    half_word as u8
+                } else {
+                    (half_word >> 8) as u8
+                }
+            }
+            0x05 => self.ppu.palette_ram[Bus::palette_index(address)],
+            0x06 => self.ppu.vram[Bus::vram_index(address)],
+            0x07 => self.ppu.oam[Bus::oam_index(address)],
+            0x08..=0x0D => self.gamepak.read_rom_region(address),
+            0x0E | 0x0F => self.read_backup_byte(address),
+            _ => (self.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u8,
+        }
     }
 
-    fn read_u16(&mut self, address: u32, access: AccessType) -> u16 {
-        self.read::<u16>(address, access)
+    pub fn write_u8(&mut self, address: u32, value: u8, access_type: AccessType) {
+        self.cost(address, 8, access_type);
+        // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
+
+        /*
+        _00000300:
+            mov  r3, #0x4000000 = base 0x4000000 in r3
+            ldr  r2, [r3, #0x200] = 32 bit read of x4000200 stored in r2
+            and  r2, r2, r2, lsr #16 = bitwise and; r2 & (r2 >> 16) - IE & IF flags
+            ands r1, r2, #0x80 = r1 = r2 & 0x80 checking bit 7 (serial), which i will never implement - s updates condition flag
+            ldrne r0, _00000AB8 = if (ne = Z flag is clear = !0) load value at _00000AB8 to r0
+            andeq r1, r2, #1 = r1 = r2 & 1, if (eq = Z flag is set = 0) - bit 1 is vblank
+            ldreq r0, _00000ABC - load address from _00000ABC into r0 if Z flag set
+            strheq r2, [r3, #-8] - if z is set, take lowest half word of r2 and store at r3 + - 8 = 0x03FFFFF8
+            strb r1, [r3, #0x202] - store lowest byte in to 0x4000202
+            bx r0
+        */
+
+        // Some game could right to 203
+        if address & !1 == 0x4000202 {
+            let mask = (value as u16) << (address.get_bit(0) * 8);
+            self.interrupt_flag &= !mask;
+
+            return;
+        }
+
+        /*
+           _000001AC:
+               moves lowest 8 bits of the 32 bit value in r2 to address 0x40000301 - HALTCNT register
+               mov r12, #0x4000000
+               strb r2, [r12, #0x301]
+        */
+
+        if address & !1 == 0x4000300 {
+            if address.is_clear(0) {
+                self.postflg = value & 1; // postflag is touched in boot sequence, consider if want to support bios
+            } else {
+                self.haltcnt = Some(value)
+            }
+
+            return;
+        }
+
+        match address >> 24 {
+            0x00 => {}
+            0x02 => self.ewram[Bus::ewram_index(address)] = value,
+            0x03 => self.iwram[Bus::iwram_index(address)] = value,
+            0x04 => {
+                let mut half_word = self.read_register_16(address & !1);
+                let new_half_word = if address.is_clear(0) {
+                    half_word.clear_bit_range(0..8);
+                    half_word | value as u16
+                } else {
+                    half_word.clear_bit_range(8..16);
+                    half_word | (value as u16) << 8
+                };
+
+                self.write_register_16(address & !1, new_half_word);
+            }
+            0x05 => {
+                let index = Bus::palette_index(address) & !1;
+                self.ppu.palette_ram[index] = value;
+                self.ppu.palette_ram[index + 1] = value;
+            }
+            0x06 => {
+                // https://gbadev.net/tonc/bitmaps.html
+                // https://www.patater.com/gbaguy/gba/ch5.htm
+                let index = Bus::vram_index(address) & !1;
+                self.ppu.vram[index] = value;
+                self.ppu.vram[index + 1] = value;
+            }
+            0x07 => {}
+            0x08..=0x0D => {}
+            0x0E | 0x0F => self.write_backup_byte(address, value),
+            _ => {}
+        }
     }
 
-    fn read_u32(&mut self, address: u32, access: AccessType) -> u32 {
-        self.read::<u32>(address, access)
+    pub fn read_u16(&mut self, mut address: u32, access_type: AccessType) -> u16 {
+        self.cost(address, 16, access_type);
+        address.clear_bit(0); //ensure even
+        let little_endian =
+            |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
+
+        match address >> 24 {
+            0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
+            0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
+            0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
+            0x04 => self.read_register_16(address),
+            0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
+            0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
+            0x07 => little_endian(&*self.ppu.oam, Bus::oam_index(address)),
+            0x08..=0x0D => u16::from_le_bytes([
+                self.gamepak.read_rom_region(address),
+                self.gamepak.read_rom_region(address + 1),
+            ]),
+            0x0E | 0x0F => {
+                let byte = self.read_backup_byte(address) as u16;
+                (byte << 8) | byte
+            }
+            _ => (self.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u16,
+        }
     }
 
-    fn write_u8(&mut self, address: u32, value: u8, access: AccessType) {
-        self.write::<u8>(address, value, access);
+    pub fn write_u16(&mut self, mut address: u32, value: u16, access_type: AccessType) {
+        self.cost(address, 16, access_type);
+        let bytes = value.to_le_bytes();
+        address.clear_bit(0); //ensure even
+
+        match address >> 24 {
+            0x00 => {} // BIOS no write,
+            0x02 => {
+                let index = Bus::ewram_index(address);
+                self.ewram[index] = bytes[0];
+                self.ewram[index + 1] = bytes[1];
+            }
+            0x03 => {
+                let index = Bus::iwram_index(address);
+                self.iwram[index] = bytes[0];
+                self.iwram[index + 1] = bytes[1];
+            }
+            0x04 => self.write_register_16(address, value),
+            0x05 => {
+                let index = Bus::palette_index(address);
+                self.ppu.palette_ram[index] = bytes[0];
+                self.ppu.palette_ram[index + 1] = bytes[1];
+            }
+            0x06 => {
+                let index = Bus::vram_index(address);
+                self.ppu.vram[index] = bytes[0];
+                self.ppu.vram[index + 1] = bytes[1];
+            }
+            0x07 => {
+                let index = Bus::oam_index(address);
+                self.ppu.oam[index] = bytes[0];
+                self.ppu.oam[index + 1] = bytes[1];
+            }
+
+            0x08..=0x0D => {}
+            0x0E | 0x0F => self.write_backup_byte(address, bytes[0]),
+            _ => {}
+        }
     }
 
-    fn write_u16(&mut self, address: u32, value: u16, access: AccessType) {
-        self.write::<u16>(address, value, access);
+    pub fn read_u32(&mut self, mut address: u32, access_type: AccessType) -> u32 {
+        self.cost(address, 32, access_type);
+        address.clear_bit_range(0..2); // every 4th address
+
+        let little_endian = |arr: &[u8], index: usize| {
+            u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
+        };
+
+        match address >> 24 {
+            0x00 => self.last_bios_fetch,
+            0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
+            0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
+            0x04 => {
+                let low_half_word = self.read_register_16(address);
+                let high_half_word = self.read_register_16(address + 2);
+
+                (high_half_word as u32) << 16 | low_half_word as u32
+            }
+            0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
+            0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
+            0x07 => little_endian(&*self.ppu.oam, Bus::oam_index(address)),
+            0x08..=0x0D => u32::from_le_bytes([
+                self.gamepak.read_rom_region(address),
+                self.gamepak.read_rom_region(address + 1),
+                self.gamepak.read_rom_region(address + 2),
+                self.gamepak.read_rom_region(address + 3),
+            ]),
+            0x0E | 0x0F => {
+                let byte = self.read_backup_byte(address) as u32;
+                (byte << 24) | (byte << 16) | (byte << 8) | byte
+            }
+            _ => self.last_instruction_read,
+        }
     }
 
-    fn write_u32(&mut self, address: u32, value: u32, access: AccessType) {
-        self.write::<u32>(address, value, access);
+    pub fn write_u32(&mut self, mut address: u32, value: u32, access_type: AccessType) {
+        self.cost(address, 32, access_type);
+        let bytes = value.to_le_bytes();
+        address.clear_bit_range(0..2); // every 4th address
+
+        match address >> 24 {
+            0x00 => {} // BIOS no write,
+            0x02 => {
+                let index = Bus::ewram_index(address);
+                self.ewram[index] = bytes[0];
+                self.ewram[index + 1] = bytes[1];
+                self.ewram[index + 2] = bytes[2];
+                self.ewram[index + 3] = bytes[3];
+            }
+            0x03 => {
+                let index = Bus::iwram_index(address);
+                self.iwram[index] = bytes[0];
+                self.iwram[index + 1] = bytes[1];
+                self.iwram[index + 2] = bytes[2];
+                self.iwram[index + 3] = bytes[3];
+            }
+            0x04 => {
+                self.write_register_16(address, u16::from_le_bytes([bytes[0], bytes[1]]));
+                self.write_register_16(address + 2, u16::from_le_bytes([bytes[2], bytes[3]]));
+            }
+            0x05 => {
+                let index = Bus::palette_index(address);
+                self.ppu.palette_ram[index] = bytes[0];
+                self.ppu.palette_ram[index + 1] = bytes[1];
+                self.ppu.palette_ram[index + 2] = bytes[2];
+                self.ppu.palette_ram[index + 3] = bytes[3];
+            }
+            0x06 => {
+                let index = Bus::vram_index(address);
+                self.ppu.vram[index] = bytes[0];
+                self.ppu.vram[index + 1] = bytes[1];
+                self.ppu.vram[index + 2] = bytes[2];
+                self.ppu.vram[index + 3] = bytes[3];
+            }
+            0x07 => {
+                let index = Bus::oam_index(address);
+                self.ppu.oam[index] = bytes[0];
+                self.ppu.oam[index + 1] = bytes[1];
+                self.ppu.oam[index + 2] = bytes[2];
+                self.ppu.oam[index + 3] = bytes[3];
+            }
+
+            0x08..=0x0D => {}
+            0x0E | 0x0F => self.write_backup_byte(address, bytes[0]),
+            _ => {}
+        }
     }
 
-    fn idle(&mut self, cycles: u64) {
+    pub fn idle(&mut self, cycles: u64) {
         self.scheduler.current += cycles;
     }
 
@@ -491,268 +713,6 @@ impl Bus {
     }
 }
 
-impl BusValue for u8 {
-    fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self {
-        bus.cost(address, 8, access_type);
-
-        match address >> 24 {
-            0x00 => (bus.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u8,
-            0x02 => bus.ewram[Bus::ewram_index(address)],
-            0x03 => bus.iwram[Bus::iwram_index(address)],
-            0x04 => {
-                let half_word = bus.read_register_16(address & !1);
-                if address.is_clear(0) {
-                    half_word as u8
-                } else {
-                    (half_word >> 8) as u8
-                }
-            }
-            0x05 => bus.ppu.palette_ram[Bus::palette_index(address)],
-            0x06 => bus.ppu.vram[Bus::vram_index(address)],
-            0x07 => bus.ppu.oam[Bus::oam_index(address)],
-            0x08..=0x0D => bus.gamepak.read_rom_region(address),
-            0x0E | 0x0F => bus.read_backup_byte(address),
-            _ => (bus.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u8,
-        }
-    }
-
-    fn write(bus: &mut Bus, address: u32, value: Self, access_type: AccessType) {
-        bus.cost(address, 8, access_type);
-        // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
-
-        /*
-        _00000300:
-            mov  r3, #0x4000000 = base 0x4000000 in r3
-            ldr  r2, [r3, #0x200] = 32 bit read of x4000200 stored in r2
-            and  r2, r2, r2, lsr #16 = bitwise and; r2 & (r2 >> 16) - IE & IF flags
-            ands r1, r2, #0x80 = r1 = r2 & 0x80 checking bit 7 (serial), which i will never implement - s updates condition flag
-            ldrne r0, _00000AB8 = if (ne = Z flag is clear = !0) load value at _00000AB8 to r0
-            andeq r1, r2, #1 = r1 = r2 & 1, if (eq = Z flag is set = 0) - bit 1 is vblank
-            ldreq r0, _00000ABC - load address from _00000ABC into r0 if Z flag set
-            strheq r2, [r3, #-8] - if z is set, take lowest half word of r2 and store at r3 + - 8 = 0x03FFFFF8
-            strb r1, [r3, #0x202] - store lowest byte in to 0x4000202
-            bx r0
-        */
-
-        // Some game could right to 203
-        if address & !1 == 0x4000202 {
-            let mask = (value as u16) << (address.get_bit(0) * 8);
-            bus.interrupt_flag &= !mask;
-
-            return;
-        }
-
-        /*
-           _000001AC:
-               moves lowest 8 bits of the 32 bit value in r2 to address 0x40000301 - HALTCNT register
-               mov r12, #0x4000000
-               strb r2, [r12, #0x301]
-        */
-
-        if address & !1 == 0x4000300 {
-            if address.is_clear(0) {
-                bus.postflg = value & 1; // postflag is touched in boot sequence, consider if want to support bios
-            } else {
-                bus.haltcnt = Some(value)
-            }
-
-            return;
-        }
-
-        match address >> 24 {
-            0x00 => {}
-            0x02 => bus.ewram[Bus::ewram_index(address)] = value,
-            0x03 => bus.iwram[Bus::iwram_index(address)] = value,
-            0x04 => {
-                let mut half_word = bus.read_register_16(address & !1);
-                let new_half_word = if address.is_clear(0) {
-                    half_word.clear_bit_range(0..8);
-                    half_word | value as u16
-                } else {
-                    half_word.clear_bit_range(8..16);
-                    half_word | (value as u16) << 8
-                };
-
-                bus.write_register_16(address & !1, new_half_word);
-            }
-            0x05 => {
-                let index = Bus::palette_index(address) & !1;
-                bus.ppu.palette_ram[index] = value;
-                bus.ppu.palette_ram[index + 1] = value;
-            }
-            0x06 => {
-                // https://gbadev.net/tonc/bitmaps.html
-                // https://www.patater.com/gbaguy/gba/ch5.htm
-                let index = Bus::vram_index(address) & !1;
-                bus.ppu.vram[index] = value;
-                bus.ppu.vram[index + 1] = value;
-            }
-            0x07 => {}
-            0x08..=0x0D => {}
-            0x0E | 0x0F => bus.write_backup_byte(address, value),
-            _ => {}
-        }
-    }
-}
-
-impl BusValue for u16 {
-    fn read(bus: &mut Bus, mut address: u32, access_type: AccessType) -> Self {
-        bus.cost(address, 16, access_type);
-        address.clear_bit(0); //ensure even
-        let little_endian =
-            |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
-
-        match address >> 24 {
-            0x00 => (bus.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
-            0x02 => little_endian(&*bus.ewram, Bus::ewram_index(address)),
-            0x03 => little_endian(&*bus.iwram, Bus::iwram_index(address)),
-            0x04 => bus.read_register_16(address),
-            0x05 => little_endian(&*bus.ppu.palette_ram, Bus::palette_index(address)),
-            0x06 => little_endian(&*bus.ppu.vram, Bus::vram_index(address)),
-            0x07 => little_endian(&*bus.ppu.oam, Bus::oam_index(address)),
-            0x08..=0x0D => u16::from_le_bytes([
-                bus.gamepak.read_rom_region(address),
-                bus.gamepak.read_rom_region(address + 1),
-            ]),
-            0x0E | 0x0F => {
-                let byte = bus.read_backup_byte(address) as u16;
-                (byte << 8) | byte
-            }
-            _ => (bus.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u16,
-        }
-    }
-
-    fn write(bus: &mut Bus, mut address: u32, value: Self, access_type: AccessType) {
-        bus.cost(address, 16, access_type);
-        let bytes = value.to_le_bytes();
-        address.clear_bit(0); //ensure even
-
-        match address >> 24 {
-            0x00 => {} // BIOS no write,
-            0x02 => {
-                let index = Bus::ewram_index(address);
-                bus.ewram[index] = bytes[0];
-                bus.ewram[index + 1] = bytes[1];
-            }
-            0x03 => {
-                let index = Bus::iwram_index(address);
-                bus.iwram[index] = bytes[0];
-                bus.iwram[index + 1] = bytes[1];
-            }
-            0x04 => bus.write_register_16(address, value),
-            0x05 => {
-                let index = Bus::palette_index(address);
-                bus.ppu.palette_ram[index] = bytes[0];
-                bus.ppu.palette_ram[index + 1] = bytes[1];
-            }
-            0x06 => {
-                let index = Bus::vram_index(address);
-                bus.ppu.vram[index] = bytes[0];
-                bus.ppu.vram[index + 1] = bytes[1];
-            }
-            0x07 => {
-                let index = Bus::oam_index(address);
-                bus.ppu.oam[index] = bytes[0];
-                bus.ppu.oam[index + 1] = bytes[1];
-            }
-
-            0x08..=0x0D => {}
-            0x0E | 0x0F => bus.write_backup_byte(address, bytes[0]),
-            _ => {}
-        }
-    }
-}
-
-impl BusValue for u32 {
-    fn read(bus: &mut Bus, mut address: u32, access_type: AccessType) -> Self {
-        bus.cost(address, 32, access_type);
-        address.clear_bit_range(0..2); // every 4th address
-
-        let little_endian = |arr: &[u8], index: usize| {
-            u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
-        };
-
-        match address >> 24 {
-            0x00 => bus.last_bios_fetch,
-            0x02 => little_endian(&*bus.ewram, Bus::ewram_index(address)),
-            0x03 => little_endian(&*bus.iwram, Bus::iwram_index(address)),
-            0x04 => {
-                let low_half_word = bus.read_register_16(address);
-                let high_half_word = bus.read_register_16(address + 2);
-
-                (high_half_word as u32) << 16 | low_half_word as u32
-            }
-            0x05 => little_endian(&*bus.ppu.palette_ram, Bus::palette_index(address)),
-            0x06 => little_endian(&*bus.ppu.vram, Bus::vram_index(address)),
-            0x07 => little_endian(&*bus.ppu.oam, Bus::oam_index(address)),
-            0x08..=0x0D => u32::from_le_bytes([
-                bus.gamepak.read_rom_region(address),
-                bus.gamepak.read_rom_region(address + 1),
-                bus.gamepak.read_rom_region(address + 2),
-                bus.gamepak.read_rom_region(address + 3),
-            ]),
-            0x0E | 0x0F => {
-                let byte = bus.read_backup_byte(address) as u32;
-                (byte << 24) | (byte << 16) | (byte << 8) | byte
-            }
-            _ => bus.last_instruction_read,
-        }
-    }
-
-    fn write(bus: &mut Bus, mut address: u32, value: Self, access_type: AccessType) {
-        bus.cost(address, 32, access_type);
-        let bytes = value.to_le_bytes();
-        address.clear_bit_range(0..2); // every 4th address
-
-        match address >> 24 {
-            0x00 => {} // BIOS no write,
-            0x02 => {
-                let index = Bus::ewram_index(address);
-                bus.ewram[index] = bytes[0];
-                bus.ewram[index + 1] = bytes[1];
-                bus.ewram[index + 2] = bytes[2];
-                bus.ewram[index + 3] = bytes[3];
-            }
-            0x03 => {
-                let index = Bus::iwram_index(address);
-                bus.iwram[index] = bytes[0];
-                bus.iwram[index + 1] = bytes[1];
-                bus.iwram[index + 2] = bytes[2];
-                bus.iwram[index + 3] = bytes[3];
-            }
-            0x04 => {
-                bus.write_register_16(address, u16::from_le_bytes([bytes[0], bytes[1]]));
-                bus.write_register_16(address + 2, u16::from_le_bytes([bytes[2], bytes[3]]));
-            }
-            0x05 => {
-                let index = Bus::palette_index(address);
-                bus.ppu.palette_ram[index] = bytes[0];
-                bus.ppu.palette_ram[index + 1] = bytes[1];
-                bus.ppu.palette_ram[index + 2] = bytes[2];
-                bus.ppu.palette_ram[index + 3] = bytes[3];
-            }
-            0x06 => {
-                let index = Bus::vram_index(address);
-                bus.ppu.vram[index] = bytes[0];
-                bus.ppu.vram[index + 1] = bytes[1];
-                bus.ppu.vram[index + 2] = bytes[2];
-                bus.ppu.vram[index + 3] = bytes[3];
-            }
-            0x07 => {
-                let index = Bus::oam_index(address);
-                bus.ppu.oam[index] = bytes[0];
-                bus.ppu.oam[index + 1] = bytes[1];
-                bus.ppu.oam[index + 2] = bytes[2];
-                bus.ppu.oam[index + 3] = bytes[3];
-            }
-
-            0x08..=0x0D => {}
-            0x0E | 0x0F => bus.write_backup_byte(address, bytes[0]),
-            _ => {}
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -766,14 +726,14 @@ mod tests {
         let address = 0x05000001;
         let value = 0b100000001 as u32;
         let access_type = AccessType::Sequential;
-        bus.write::<u32>(address, value, access_type);
+        bus.write_u32(address, value, access_type);
 
         assert_eq!(bus.scheduler.current, 2);
         assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
 
         let gamepak = GamePak::mock();
         let mut bus = Bus::new(gamepak);
-        bus.write(address, value, access_type);
+        bus.write_u32(address, value, access_type);
 
         assert_eq!(bus.scheduler.current, 2);
         assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);

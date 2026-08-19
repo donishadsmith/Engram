@@ -133,23 +133,23 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
     let reset_flags = cpu.registers.r[0];
 
     if reset_flags.is_set(0) {
-        bus.clear_bytes(0x02000000, 0x40000);
+        bus.ewram.fill(0);
     }
 
     if reset_flags.is_set(1) {
-        bus.clear_bytes(0x03000000, 0x7E00);
+        bus.iwram.fill(0);
     }
 
     if reset_flags.is_set(2) {
-        bus.clear_bytes(0x05000000, 0x400);
+        bus.ppu.palette_ram.fill(0);
     }
 
     if reset_flags.is_set(3) {
-        bus.clear_bytes(0x06000000, 0x18000);
+        bus.ppu.vram.fill(0);
     }
 
     if reset_flags.is_set(4) {
-        bus.clear_bytes(0x07000000, 0x400);
+        bus.ppu.oam.fill(0);
     }
 
     // do rest later bits 5-7
