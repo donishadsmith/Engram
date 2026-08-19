@@ -71,6 +71,10 @@ pub trait AddressBus {
     fn latest_pipeline_fetch(&mut self, instruction: u32) {
         0;
     }
+
+    fn clear_bytes(&mut self, address: u32, length: u32) {
+        0;
+    }
 }
 
 pub struct Bus {
@@ -797,6 +801,33 @@ impl AddressBus for Bus {
 
     fn latest_pipeline_fetch(&mut self, instruction: u32) {
         self.last_instruction_read = instruction;
+    }
+
+    fn clear_bytes(&mut self, address: u32, length: u32) {
+        let len = length as usize;
+        match address >> 24 {
+            0x02 => {
+                let i = Bus::ewram_index(address);
+                self.ewram[i..i + len].fill(0);
+            }
+            0x03 => {
+                let i = Bus::iwram_index(address);
+                self.iwram[i..i + len].fill(0);
+            }
+            0x05 => {
+                let i = Bus::palette_index(address);
+                self.ppu.palette_ram[i..i + len].fill(0);
+            }
+            0x06 => {
+                let i = Bus::vram_index(address);
+                self.ppu.vram[i..i + len].fill(0);
+            }
+            0x07 => {
+                let i = Bus::oam_index(address);
+                self.ppu.oam[i..i + len].fill(0);
+            }
+            _ => {}
+        }
     }
 }
 

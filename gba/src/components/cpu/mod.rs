@@ -551,7 +551,10 @@ impl Arm7tdmi {
 
         if let Some(request) = side_effect {
             match request {
-                SideEffect::Swi(function) => handle_swi(function, self, bus),
+                SideEffect::Swi(function) => {
+                    bus.idle(45);
+                    handle_swi(function, self, bus)
+                }
                 SideEffect::Branch(address) => {
                     if address == Self::IRQ_RETURN_ADDRESS {
                         self.handle_irq_return(bus);

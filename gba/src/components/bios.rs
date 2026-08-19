@@ -40,6 +40,7 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
     // https://github.com/mgba-emu/mgba/blob/b54fc45b4ddab1c493122f6644f6d290dce319ce/src/gba/hle-bios.s#L69
     match function {
         0x00 => soft_reset(cpu, bus), // https://problemkaputt.de/gbatek-bios-reset-functions.htm
+        0x01 => register_ram_reset(cpu, bus),
         0x02 => cpu.halt_state = HaltState::Halted,
         0x04 => intr_wait(cpu, bus, cpu.registers.r[0] != 0, cpu.registers.r[1] as u16),
         0x05 => {
@@ -126,6 +127,40 @@ fn soft_reset<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A) {
     cpu.branch_to(entry_point);
 }
 
+// https://github.com/Cult-of-GBA/BIOS/blob/master/bios_calls/register_ram_reset.s
+// https://problemkaputt.de/gbatek-bios-reset-functions.htm
+fn register_ram_reset<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A) {
+    let reset_flags = cpu.registers.r[0];
+
+    if reset_flags.is_set(0) {
+        bus.clear_bytes(0x02000000, 0x40000);
+    }
+
+    if reset_flags.is_set(1) {
+        bus.clear_bytes(0x03000000, 0x7E00);
+    }
+
+    if reset_flags.is_set(2) {
+        bus.clear_bytes(0x05000000, 0x400);
+    }
+
+    if reset_flags.is_set(3) {
+        bus.clear_bytes(0x06000000, 0x18000);
+    }
+
+    if reset_flags.is_set(4) {
+        bus.clear_bytes(0x07000000, 0x400);
+    }
+
+    // do rest later bits 5-7
+
+    if reset_flags.is_set(7) {
+        bus.write_u16(0x04000200, 0, AccessType::Nonsequential);
+        bus.write_u16(0x04000202, 0, AccessType::Sequential);
+        bus.write_u16(0x04000208, 0, AccessType::Sequential);
+    }
+}
+
 fn intr_wait<A: AddressBus>(
     cpu: &mut Arm7tdmi,
     bus: &mut A,
@@ -136,11 +171,11 @@ fn intr_wait<A: AddressBus>(
 
     // Since the cpu rewinds the program counter to execute the swi until wait is satisfied
     // cant keep clearing the IF flag and need the re-execution to check if the flag is cleared
-    let bios_flags = bus.read_u16(0x03FFFFF8, AccessType::Nonsequential);
+    let bios_flags = bus.read_u16(0x03007FF8, AccessType::Nonsequential);
 
     if clear_interrupt_flag {
         bus.write_u16(
-            0x03FFFFF8,
+            0x03007FF8,
             bios_flags & !target_flags,
             AccessType::Nonsequential,
         );
@@ -148,7 +183,7 @@ fn intr_wait<A: AddressBus>(
         cpu.halt_state = HaltState::IntrWait
     } else if bios_flags & target_flags != 0 {
         bus.write_u16(
-            0x03FFFFF8,
+            0x03007FF8,
             bios_flags & !target_flags,
             AccessType::Nonsequential,
         );
