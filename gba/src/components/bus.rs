@@ -8,6 +8,7 @@
 // https://www.cs.rit.edu/~tjh8300/CowBite/CowBiteSpec.htm#Memory%20Map
 // https://www.chibiakumas.com/arm/gba.php
 // https://gbadev.net/gbadoc/interrupts.html
+// https://mgba.io/2017/05/29/holy-grail-bugs/
 
 // https://blog.asie.pl/2025/09/wonderful-update-september-2025/
 // https://github.com/michelhe/rustboyadvance-ng/blob/master/arm7tdmi/src/memory.rs
@@ -19,7 +20,7 @@ use crate::components::{
     apu::APU,
     gamepak::GamePak,
     ppu::PPU,
-    scheduler::Scheduler,
+    scheduler::EventScheduler,
     utils::{BitOps, zero_arr},
 };
 
@@ -52,22 +53,32 @@ pub trait BusValue: sealed::Sealed + Sized + Copy {
 // need to add a generic with trait bound to cpu to create a mock bus for testing
 pub trait AddressBus {
     fn read_u8(&mut self, address: u32, access: AccessType) -> u8;
+
     fn read_u16(&mut self, address: u32, access: AccessType) -> u16;
+
     fn read_u32(&mut self, address: u32, access: AccessType) -> u32;
+
     fn write_u8(&mut self, address: u32, value: u8, access: AccessType);
+
     fn write_u16(&mut self, address: u32, value: u16, access: AccessType);
+
     fn write_u32(&mut self, address: u32, value: u32, access: AccessType);
+
     fn idle(&mut self, cycles: u64) {
+        0;
+    }
+
+    fn latest_pipeline_fetch(&mut self, instruction: u32) {
         0;
     }
 }
 
 pub struct Bus {
-    pub scheduler: Scheduler,
-    bios: Box<[u8; 0x4000]>,
+    pub scheduler: EventScheduler,
+    _bios: Box<[u8; 0x4000]>,
     pub ewram: Box<[u8; 0x40000]>,
     pub iwram: Box<[u8; 0x8000]>,
-    last_read: u32,
+    last_instruction_read: u32,
     last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
     apu: APU,
@@ -83,11 +94,11 @@ pub struct Bus {
 impl Bus {
     pub fn new(gamepak: GamePak) -> Self {
         Self {
-            scheduler: Scheduler::new(),
-            bios: zero_arr(),
+            scheduler: EventScheduler::new(),
+            _bios: zero_arr(),
             ewram: zero_arr(),
             iwram: zero_arr(),
-            last_read: 0,
+            last_instruction_read: 0,
             last_bios_fetch: 0xE129F000,
             ppu: PPU::new(),
             gamepak,
@@ -102,27 +113,35 @@ impl Bus {
 
     #[inline]
     pub fn ewram_index(address: u32) -> usize {
-        (address & 0x3FFFF) as usize
+        let address = address.get_bit_range(0..18);
+
+        address as usize
     }
 
     #[inline]
     pub fn iwram_index(address: u32) -> usize {
-        (address & 0x7FFF) as usize
+        let address = address.get_bit_range(0..15);
+
+        address as usize
     }
 
     #[inline]
     pub fn palette_index(address: u32) -> usize {
-        (address & 0x3FF) as usize
+        let address = address.get_bit_range(0..10);
+
+        address as usize
     }
 
     #[inline]
     pub fn oam_index(address: u32) -> usize {
-        (address & 0x3FF) as usize
+        let address = address.get_bit_range(0..10);
+
+        address as usize
     }
 
     #[inline]
     pub fn vram_index(address: u32) -> usize {
-        let index = (address & 0x1FFFE) as usize;
+        let index = address.get_bit_range(0..17) as usize;
         let index = if index >= 0x18000 {
             index - 0x8000
         } else {
@@ -465,10 +484,6 @@ impl Bus {
         }
     }
 
-    fn open(&self) -> u32 {
-        0
-    }
-
     pub fn pending_interrupt(&self) -> usize {
         let mut pending = self.interrupt_enable & self.interrupt_flag;
         pending.clear_bit_range(14..16);
@@ -494,7 +509,7 @@ impl BusValue for u8 {
         bus.cost(address, 8, access_type);
 
         match address >> 24 {
-            0x00 => bus.bios[(address & 0x3FFF) as usize],
+            0x00 => (bus.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u8,
             0x02 => bus.ewram[Bus::ewram_index(address)],
             0x03 => bus.iwram[Bus::iwram_index(address)],
             0x04 => {
@@ -510,7 +525,7 @@ impl BusValue for u8 {
             0x07 => bus.ppu.oam[Bus::oam_index(address)],
             0x08..=0x0D => bus.gamepak.read_rom_region(address),
             0x0E | 0x0F => bus.read_backup_byte(address),
-            _ => bus.open() as u8,
+            _ => (bus.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u8,
         }
     }
 
@@ -601,7 +616,7 @@ impl BusValue for u16 {
             |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
 
         match address >> 24 {
-            0x00 => little_endian(&*bus.bios, (address & 0x3FFE) as usize),
+            0x00 => (bus.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
             0x02 => little_endian(&*bus.ewram, Bus::ewram_index(address)),
             0x03 => little_endian(&*bus.iwram, Bus::iwram_index(address)),
             0x04 => bus.read_register_16(address),
@@ -616,7 +631,7 @@ impl BusValue for u16 {
                 let byte = bus.read_backup_byte(address) as u16;
                 (byte << 8) | byte
             }
-            _ => bus.open() as u16,
+            _ => (bus.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u16,
         }
     }
 
@@ -671,7 +686,7 @@ impl BusValue for u32 {
         };
 
         match address >> 24 {
-            0x00 => little_endian(&*bus.bios, (address & 0x3FFF) as usize),
+            0x00 => bus.last_bios_fetch,
             0x02 => little_endian(&*bus.ewram, Bus::ewram_index(address)),
             0x03 => little_endian(&*bus.iwram, Bus::iwram_index(address)),
             0x04 => {
@@ -693,7 +708,7 @@ impl BusValue for u32 {
                 let byte = bus.read_backup_byte(address) as u32;
                 (byte << 24) | (byte << 16) | (byte << 8) | byte
             }
-            _ => bus.open() as u32,
+            _ => bus.last_instruction_read,
         }
     }
 
@@ -778,6 +793,10 @@ impl AddressBus for Bus {
 
     fn idle(&mut self, cycles: u64) {
         self.scheduler.current += cycles;
+    }
+
+    fn latest_pipeline_fetch(&mut self, instruction: u32) {
+        self.last_instruction_read = instruction;
     }
 }
 

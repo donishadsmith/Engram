@@ -1,5 +1,5 @@
 use crate::components::{
-    bus::Bus,
+    bus::{AddressBus, Bus},
     cpu::{Arm7tdmi, HaltState},
     gamepak::GamePak,
     scheduler::Event,
@@ -22,7 +22,7 @@ impl GBA {
         let bus = &mut self.bus;
 
         if self.cpu.is_halted() {
-            bus.scheduler.go_to_next_event();
+            bus.scheduler.skip_to_next_event();
         } else {
             self.cpu.step(bus)
         };
@@ -51,7 +51,7 @@ impl GBA {
         if self.bus.pending_interrupt() != 0 {
             self.cpu.awake();
             if self.bus.ime_enabled() && self.cpu.registers.irq_enabled() {
-                self.cpu.raise_irq()
+                self.cpu.raise_irq(&mut self.bus)
             }
         }
     }

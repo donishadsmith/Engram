@@ -63,6 +63,20 @@ STRNEB r2, [r3, r4] => if (NE) *(r3 + r4) = r2 [B is byte size stor; least signi
 // Section 2.7 in https://vision.gel.ulaval.ca/~jflalonde/cours/1001/h19/docs/ARM7TDMI.pdf
 // Mode is determined by the bits 0-4
 
+/*
+Maybe bring the table back in the future, if add direct bios support
+enum VectorTable {
+    Fiq = 0x1C,
+    Irq = 0x18,
+    Reserved = 0x14,
+    Abt = 0x10,
+    PrefetchAbt = 0x0C,
+    SoftwareIrq = 0x08,
+    Und = 0x04,
+    Reset = 0x00,
+}
+*/
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ProcessorState {
     Arm,
@@ -130,17 +144,6 @@ impl Condition {
             _ => unreachable!(),
         }
     }
-}
-
-enum VectorTable {
-    Fiq = 0x1C,
-    Irq = 0x18,
-    Reserved = 0x14,
-    Abt = 0x10,
-    PrefetchAbt = 0x0C,
-    SoftwareIrq = 0x08,
-    Und = 0x04,
-    Reset = 0x00,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -216,6 +219,7 @@ pub enum HaltState {
     Running,
     Halted,
     IntrWait,
+    TestExit(u32),
 }
 
 pub enum SideEffect {
@@ -520,6 +524,15 @@ impl Arm7tdmi {
             }
         };
 
+        let latest_instruction = match new_fetch {
+            FetchedInstruction::Arm(instruction) => instruction,
+            FetchedInstruction::Thumb(instruction) => {
+                instruction as u32 | (instruction as u32) << 16
+            }
+        };
+
+        bus.latest_pipeline_fetch(latest_instruction);
+
         let decoded_instruction = self.pipeline.advance(new_fetch);
 
         // Assumes pc is +8 (arm) or +4 (thumb) aheah, essentially used to
@@ -539,7 +552,13 @@ impl Arm7tdmi {
         if let Some(request) = side_effect {
             match request {
                 SideEffect::Swi(function) => handle_swi(function, self, bus),
-                SideEffect::Branch(address) => self.branch_to(address),
+                SideEffect::Branch(address) => {
+                    if address == Self::IRQ_RETURN_ADDRESS {
+                        self.handle_irq_return(bus);
+                    } else {
+                        self.branch_to(address)
+                    }
+                }
                 SideEffect::BranchRestoreCpsr(address) => {
                     self.registers.restore_cpsr_from_spsr();
                     self.branch_to(address);
@@ -563,21 +582,81 @@ impl Arm7tdmi {
         self.next_fetch_access = AccessType::Nonsequential;
     }
 
-    pub fn branch_to(&mut self, address: u32) {
+    pub fn branch_to(&mut self, mut address: u32) {
+        if self.registers.state() == ProcessorState::Thumb {
+            address.clear_bit(0);
+        } else {
+            address.clear_bit_range(0..2);
+        }
+
         self.registers.r[15] = address;
         self.flush_pipeline();
     }
 
-    fn raise_exception(&mut self, mode: ProcessorMode, vector: VectorTable, lr: u32) {
-        let old_cpsr = self.registers.cpsr;
+    const IRQ_RETURN_ADDRESS: u32 = 0x00000138;
+    pub fn handle_irq_entry<A: AddressBus>(&mut self, bus: &mut A) {
+        /*
+            From gbatek:
 
-        self.registers.set_mode(mode);
-        self.registers.set_spsr(old_cpsr);
-        self.registers.r[14] = lr;
-        self.registers.set_state(ProcessorState::Arm);
-        self.registers.disable_irq();
+            BIOS Interrupt handling
+            Upon interrupt execution, the CPU is switched into IRQ mode, and the physical interrupt vector is called - as this address is located in BIOS ROM, the BIOS will always execute the following code before it forwards control to the user handler:
+            00000018  b      128h                ;IRQ vector: jump to actual BIOS handler
+            00000128  stmfd  r13!,r0-r3,r12,r14  ;save registers to SP_irq
+            0000012C  mov    r0,4000000h         ;ptr+4 to 03FFFFFC (mirror of 03007FFC)
+            00000130  add    r14,r15,0h          ;retadr for USER handler $+8=138h
+            00000134  ldr    r15,[r0,-4h]        ;jump to [03FFFFFC] USER handler
+            00000138  ldmfd  r13!,r0-r3,r12,r14  ;restore registers from SP_irq
+            0000013C  subs   r15,r14,4h          ;return from IRQ (PC=LR-4, CPSR=SPSR)
+            As shown above, a pointer to the 32bit/ARM-code user handler must be setup in [03007FFCh]. By default, 160 bytes of memory are reserved for interrupt stack at 03007F00h-03007F9Fh.
+        */
 
-        self.branch_to(vector as u32);
+        let mut sp = self.registers.r[13].wrapping_sub(24);
+        self.registers.r[13] = sp;
+
+        let mut first_access = true;
+        for i in [0, 1, 2, 3, 12, 14] {
+            bus.write_u32(
+                sp,
+                self.registers.r[i],
+                if first_access {
+                    AccessType::Nonsequential
+                } else {
+                    AccessType::Sequential
+                },
+            );
+            sp = sp.wrapping_add(4);
+            first_access = false;
+        }
+
+        self.registers.r[14] = Self::IRQ_RETURN_ADDRESS;
+        let handler = bus.read_u32(0x03FFFFFC, AccessType::Nonsequential);
+
+        bus.idle(8); // estination
+        self.branch_to(handler);
+    }
+
+    pub fn handle_irq_return<A: AddressBus>(&mut self, bus: &mut A) {
+        let mut sp = self.registers.r[13];
+
+        let mut first_access = true;
+        for i in [0, 1, 2, 3, 12, 14] {
+            self.registers.r[i] = bus.read_u32(
+                sp,
+                if first_access {
+                    AccessType::Nonsequential
+                } else {
+                    AccessType::Sequential
+                },
+            );
+            sp = sp.wrapping_add(4);
+            first_access = false;
+        }
+
+        self.registers.r[13] = sp;
+        bus.idle(3); // estination
+
+        self.registers.restore_cpsr_from_spsr();
+        self.branch_to(self.registers.r[14].wrapping_sub(4));
     }
 
     fn next_executing_address(&self) -> u32 {
@@ -591,12 +670,17 @@ impl Arm7tdmi {
         }
     }
 
-    pub fn raise_irq(&mut self) {
-        self.raise_exception(
-            ProcessorMode::Irq,
-            VectorTable::Irq,
-            self.next_executing_address().wrapping_add(4),
-        );
+    pub fn raise_irq<A: AddressBus>(&mut self, bus: &mut A) {
+        let lr = self.next_executing_address().wrapping_add(4);
+        let old_cpsr = self.registers.cpsr;
+
+        self.registers.set_mode(ProcessorMode::Irq);
+        self.registers.set_spsr(old_cpsr);
+        self.registers.r[14] = lr;
+        self.registers.set_state(ProcessorState::Arm);
+        self.registers.disable_irq();
+
+        self.handle_irq_entry(bus);
     }
 
     pub fn is_halted(&self) -> bool {
@@ -611,6 +695,7 @@ impl Arm7tdmi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::{bus::Bus, gamepak::GamePak};
 
     const N: u32 = 0x80000000;
     const Z: u32 = 0x40000000;
@@ -648,11 +733,13 @@ mod tests {
     #[test]
     fn test_raise_irq() {
         let mut cpu = Arm7tdmi::new();
+        let gamepak = GamePak::mock();
+        let mut bus = Bus::new(gamepak);
 
         cpu.registers.cpsr = ProcessorMode::Sys as u32;
         assert_eq!(cpu.registers.mode(), ProcessorMode::Sys);
 
-        cpu.raise_irq();
+        cpu.raise_irq(&mut bus);
         assert_eq!(cpu.registers.mode(), ProcessorMode::Irq);
 
         cpu.registers.restore_cpsr_from_spsr();

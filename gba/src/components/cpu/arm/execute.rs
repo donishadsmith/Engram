@@ -5,7 +5,6 @@
 // https://problemkaputt.de/gbatek-arm-cpu-memory-alignments.htm
 // https://github.com/jsmolka/gba-tests - **IMPLEMNT MORE TESTS**
 
-// ***SEVERAL FIXES STILL NEED TO BE ADDED BASED ON GBATEK***
 use super::decode::{
     AddressingMode, ArmInstruction, BitSize, DataOp, HalfwordOffset, MsrSource, Operand2,
     SdtOffset, ShiftAmount, ShiftType, ThumbBranchType, TransferAction, TransferKind,
@@ -29,17 +28,14 @@ fn branch(registers: &mut Registers, link: bool, offset: i32) -> SideEffect {
 }
 
 fn branch_and_exchange(registers: &mut Registers, rn: u8) -> SideEffect {
-    let mut value = registers.r[rn as usize];
-
+    let value = registers.r[rn as usize];
     if value.is_set(0) {
         registers.set_state(ProcessorState::Thumb);
 
-        value.clear_bit(0);
         SideEffect::Branch(value)
     } else {
         registers.set_state(ProcessorState::Arm);
 
-        value.clear_bit_range(0..2);
         SideEffect::Branch(value)
     }
 }
@@ -61,6 +57,11 @@ fn barrel_shifter(
     }
 }
 
+fn offset_pc(registers: &Registers, rn: u8) -> u32 {
+    let value = registers.r[rn as usize];
+    if rn == 15 { value + 4 } else { value }
+}
+
 fn process_operand2(registers: &Registers, operand2: Operand2) -> (u32, Option<bool>, bool) {
     match operand2 {
         Operand2::Immediate { value, rotate } => {
@@ -74,9 +75,14 @@ fn process_operand2(registers: &Registers, operand2: Operand2) -> (u32, Option<b
             (value, carry_out, false)
         }
         Operand2::Register(shifted_register) => {
-            let base_value = registers.r[shifted_register.rm as usize];
             let is_register_shift =
                 matches!(shifted_register.shift_amount, ShiftAmount::Register(_));
+
+            let base_value = if is_register_shift {
+                offset_pc(registers, shifted_register.rm)
+            } else {
+                registers.r[shifted_register.rm as usize]
+            };
 
             let (value, carry_out) = barrel_shifter(
                 base_value,
@@ -144,12 +150,23 @@ fn data_processing<A: AddressBus>(
     rd: u8,
     operand2: Operand2,
 ) -> Option<SideEffect> {
-    let op1 = registers.r[rn as usize];
+    let pc_relative_add = rn == 15
+        && registers.state() == ProcessorState::Thumb
+        && matches!(operand2, Operand2::Immediate { .. });
     let (op2, shifter_carry_out, shifted_register) = process_operand2(registers, operand2);
 
-    if shifted_register {
+    let op1 = if shifted_register {
         bus.idle(1);
-    }
+
+        offset_pc(registers, rn)
+    } else if pc_relative_add {
+        let mut value = registers.r[15];
+        value.clear_bit_range(0..2);
+
+        value
+    } else {
+        registers.r[rn as usize]
+    };
 
     let (result, n, z, c, v) = match opcode {
         DataOp::And
@@ -458,6 +475,17 @@ fn compute_new_start_address(
     }
 }
 
+fn align_pc(registers: &Registers, rn: u8) -> u32 {
+    let mut value = registers.r[rn as usize];
+    if rn == 15 {
+        value.clear_bit_range(0..2);
+
+        value
+    } else {
+        value
+    }
+}
+
 fn single_data_transfer<A: AddressBus>(
     bus: &mut A,
     registers: &mut Registers,
@@ -469,7 +497,7 @@ fn single_data_transfer<A: AddressBus>(
     addressing_mode: AddressingMode,
     offset: SdtOffset,
 ) -> Option<SideEffect> {
-    let mut start_address = registers.r[rn as usize];
+    let mut start_address = align_pc(registers, rn);
     let address_offset = process_sdt_address_offset(registers, offset);
 
     if matches!(
@@ -506,7 +534,7 @@ fn single_data_transfer<A: AddressBus>(
             registers.r[rd as usize] = value
         }
         TransferAction::Store => {
-            let value = if rd == 15 {
+            let mut value = if rd == 15 {
                 registers.r[15].wrapping_add(4)
             } else {
                 registers.r[rd as usize]
@@ -526,7 +554,7 @@ fn single_data_transfer<A: AddressBus>(
     ) {
         start_address = compute_new_start_address(start_address, address_offset, addressing_mode);
 
-        if rd != rn {
+        if !(transfer_action == TransferAction::Load && rd == rn) {
             registers.r[rn as usize] = start_address;
         }
     }
@@ -541,14 +569,18 @@ fn get_transfer_data(
     registers: &mut Registers,
     current_register: u16,
     use_user_bank: bool,
-) -> &mut u32 {
+) -> (&mut u32, bool) {
     let in_usr_mode = matches!(registers.mode(), ProcessorMode::Usr | ProcessorMode::Sys);
 
     if !use_user_bank || in_usr_mode || current_register < 13 {
-        return &mut registers.r[current_register as usize];
+        let offset_pc = current_register == 15;
+        return (&mut (registers.r[current_register as usize]), offset_pc);
     } else {
         let index = ProcessorMode::Usr.sp_and_lr_index();
-        return &mut registers.banked_special_registers[index][(current_register - 13) as usize];
+        return (
+            &mut registers.banked_special_registers[index][(current_register - 13) as usize],
+            false,
+        );
     }
 }
 
@@ -570,13 +602,23 @@ fn block_data_transfer<A: AddressBus>(
     let loads_pc = transfer_action == TransferAction::Load && register_list.is_set(15);
     let use_user_bank = psr && !loads_pc;
 
-    let n_ones = register_list.count_ones();
+    let (register_list, n_ones) = if register_list == 0 {
+        (1u16 << 15, 16)
+    } else {
+        (register_list, register_list.count_ones())
+    };
+
     let mut start_address = match addressing_mode {
         AddressingMode::IncrementAfter => base_address,
         AddressingMode::IncrementBefore => base_address.wrapping_add(4),
         AddressingMode::DecrementAfter => base_address.wrapping_sub(n_ones * 4).wrapping_add(4),
         AddressingMode::DecrementBefore => base_address.wrapping_sub(n_ones * 4),
     };
+
+    let old_base = registers.r[rn as usize];
+    let base_is_first = transfer_action == TransferAction::Store
+        && register_list.is_set(rn as usize)
+        && (register_list.trailing_zeros() == rn as u32);
 
     if write_back {
         registers.r[rn as usize] = match addressing_mode {
@@ -596,7 +638,8 @@ fn block_data_transfer<A: AddressBus>(
             continue;
         }
 
-        let value = get_transfer_data(registers, bit as u16, use_user_bank);
+        let (value, offset_pc) = get_transfer_data(registers, bit as u16, use_user_bank);
+
         match transfer_action {
             TransferAction::Load => {
                 let word = bus.read_u32(
@@ -619,9 +662,15 @@ fn block_data_transfer<A: AddressBus>(
                 *value = word;
             }
             TransferAction::Store => {
+                let value = if bit == rn as usize && base_is_first {
+                    old_base
+                } else {
+                    *value
+                };
+
                 bus.write_u32(
                     start_address,
-                    *value,
+                    value + if offset_pc { 4 } else { 0 },
                     if is_first_access {
                         AccessType::Nonsequential
                     } else {
@@ -661,6 +710,8 @@ fn single_data_swap<A: AddressBus>(
         }
         BitSize::Word => {
             let word = bus.read_u32(swap_address, AccessType::Nonsequential) as u32;
+            let misalignment_bits = swap_address.get_bit_range(0..2) * 8;
+            let word = word.rotate_right(misalignment_bits);
             bus.write_u32(
                 swap_address,
                 registers.r[rm as usize],
@@ -737,7 +788,9 @@ fn halfword_data_transfer<A: AddressBus>(
                 TransferKind::SignedHalfword => {
                     let mut word = bus.read_u16(start_address, AccessType::Nonsequential) as u32;
 
-                    word.set_bit_range(16..32);
+                    if word.is_set(15) {
+                        word.set_bit_range(16..32);
+                    }
 
                     word
                 }
@@ -752,7 +805,7 @@ fn halfword_data_transfer<A: AddressBus>(
                 registers.r[rd as usize]
             };
 
-            bus.write_u32(start_address, value, AccessType::Nonsequential);
+            bus.write_u16(start_address, value as u16, AccessType::Nonsequential);
         }
     }
 
@@ -762,7 +815,7 @@ fn halfword_data_transfer<A: AddressBus>(
     ) {
         start_address = compute_new_start_address(start_address, address_offset, addressing_mode);
 
-        if rd != rn {
+        if !(transfer_action == TransferAction::Load && rd == rn) {
             registers.r[rn as usize] = start_address;
         }
     }
@@ -1034,7 +1087,7 @@ mod tests {
         let decoded_arm = decode_arm(instruction);
         let side_effect = execute_arm(decoded_arm.instruction, &mut registers, &mut bus);
 
-        assert!(matches!(side_effect, Some(SideEffect::Branch(100))));
+        assert!(matches!(side_effect, Some(SideEffect::Branch(101))));
         assert_eq!(registers.state(), ProcessorState::Thumb);
     }
 }

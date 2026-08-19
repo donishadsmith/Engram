@@ -93,10 +93,13 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
             BitSize::SixteenBit,
         ),
         0x1F => midi_key_2_freq(&mut cpu.registers, bus),
-        0xFF => println!(
-            "Rom completed with the following exit code: {}",
-            cpu.registers.r[0]
-        ),
+        0xFF => {
+            cpu.halt_state = HaltState::TestExit(cpu.registers.r[0]);
+            println!(
+                "Rom completed with the following exit code: {}",
+                cpu.registers.r[0]
+            )
+        }
         _ => {
             eprintln!(
                 "The following SWI function not implemented: {:#04X}",
@@ -133,11 +136,11 @@ fn intr_wait<A: AddressBus>(
 
     // Since the cpu rewinds the program counter to execute the swi until wait is satisfied
     // cant keep clearing the IF flag and need the re-execution to check if the flag is cleared
-    let bios_flags = bus.read_u16(0x03007FF8, AccessType::Nonsequential);
+    let bios_flags = bus.read_u16(0x03FFFFF8, AccessType::Nonsequential);
 
     if clear_interrupt_flag {
         bus.write_u16(
-            0x03007FF8,
+            0x03FFFFF8,
             bios_flags & !target_flags,
             AccessType::Nonsequential,
         );
@@ -145,7 +148,7 @@ fn intr_wait<A: AddressBus>(
         cpu.halt_state = HaltState::IntrWait
     } else if bios_flags & target_flags != 0 {
         bus.write_u16(
-            0x03007FF8,
+            0x03FFFFF8,
             bios_flags & !target_flags,
             AccessType::Nonsequential,
         );

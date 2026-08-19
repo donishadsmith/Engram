@@ -74,6 +74,7 @@ pub struct Bus {
     pub interrupt_flag: u8,
     pub interrupt_enable: u8,
     pub serial_data: u8,
+    pub serial_output: String,
     pub serial_control: u8,
     pub key_register: u8,
     pub svbk_register: u8,
@@ -115,6 +116,7 @@ impl Bus {
             interrupt_flag: 0x00,
             serial_data: 0x00,
             serial_control: 0,
+            serial_output: String::new(),
             key_register: 0,
             svbk_register: 0,
             hdma_registers: [0; 5],
@@ -346,6 +348,7 @@ impl AddressBus for Bus {
             0xFF02 => {
                 if value == 0x81 {
                     self.interrupt_flag |= InterruptMode::Serial.mask();
+                    self.serial_output.push(self.serial_data as char);
                 }
             }
             0xFF04..=0xFF07 => self.timer.write_register(address, value),

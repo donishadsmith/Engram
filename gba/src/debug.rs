@@ -35,18 +35,18 @@ fn dump_lines<const N: usize>(
 ) -> Result<(), Box<dyn Error>> {
     let (units, _) = buffer.as_chunks::<N>();
     for (i, row) in units.chunks(per_row).enumerate() {
-        write!(output, "{:#010X}: ", i * per_row * N)?;
+        write!(output, "{:#010x}: ", i * per_row * N)?;
         for &unit in row {
             match N {
-                2 => write!(output, "{:04X} ", u16::from_le_bytes([unit[0], unit[1]]))?,
+                2 => write!(output, "{:04x} ", u16::from_le_bytes([unit[0], unit[1]]))?,
                 4 => write!(
                     output,
-                    "{:08X} ",
+                    "{:08x} ",
                     u32::from_le_bytes([unit[0], unit[1], unit[2], unit[3]])
                 )?,
                 _ => {
                     for b in unit {
-                        write!(output, "{b:02X} ")?;
+                        write!(output, "{b:02x} ")?;
                     }
                 }
             }

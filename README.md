@@ -4,14 +4,32 @@ A Game Boy Color emulator (supports DMG games too) written in Rust. Game Boy Adv
 
 <table align="center">
   <tr>
-    <td><img src="assets/shantae.gif" width="250"></td>
-    <td><img src="assets/pkmn_crystal.gif" width="250"></td>
-    <td><img src="assets/road_rash.gif" width="250"></td>
+    <td align="center">
+      <img src="assets/shantae.gif" width="250">
+      <br>Shantae
+    </td>
+    <td align="center">
+      <img src="assets/pkmn_crystal.gif" width="250">
+      <br>Pokemon Crystal
+    </td>
+    <td align="center">
+      <img src="assets/road_rash.gif" width="250">
+      <br>Road Rash
+    </td>
   </tr>
   <tr>
-    <td><img src="assets/pkmn_pinball.png" width="250"></td>
-    <td><img src="assets/mario.png" width="250"></td>
-    <td><img src="assets/loz.png" width="250"></td>
+    <td align="center">
+      <img src="assets/pkmn_pinball.png" width="250">
+      <br>Pokemon Pinball
+    </td>
+    <td align="center">
+      <img src="assets/mario.png" width="250">
+      <br>Super Mario Land
+    </td>
+    <td align="center">
+      <img src="assets/loz.png" width="250">
+      <br>Legend of Zelda: Oracle of Ages
+    </td>
   </tr>
 </table>
 
