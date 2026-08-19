@@ -1,8 +1,20 @@
-use crate::components::{bus::sealed, cpu::arm::decode::ShiftType};
+use crate::components::cpu::arm::decode::ShiftType;
 use std::{
     mem::size_of,
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Range, Shl, Shr},
 };
+
+pub mod sealed {
+    pub trait Sealed {}
+
+    impl Sealed for u8 {}
+
+    impl Sealed for u16 {}
+
+    impl Sealed for u32 {}
+
+    impl Sealed for u64 {} // Just to give ceertain traits to u64 for multiply long
+}
 
 pub fn zero_arr<const N: usize>() -> Box<[u8; N]> {
     vec![0u8; N].into_boxed_slice().try_into().unwrap()

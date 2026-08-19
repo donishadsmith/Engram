@@ -12,7 +12,7 @@ use super::decode::{
 
 use crate::components::{
     bios::multiply_stall,
-    bus::{AccessType, AddressBus},
+    bus::{AccessType, Bus},
     cpu::{ProcessorMode, ProcessorState, Registers, SideEffect},
     utils::{BitOps, ShiftOps},
 };
@@ -141,8 +141,8 @@ fn discards_result(opcode: DataOp) -> bool {
     )
 }
 
-fn data_processing<A: AddressBus>(
-    bus: &mut A,
+fn data_processing(
+    bus: &mut Bus,
     registers: &mut Registers,
     opcode: DataOp,
     set_flags: bool,
@@ -346,8 +346,8 @@ fn msr(registers: &mut Registers, source: MsrSource, use_spsr: bool, field_mask:
     }
 }
 
-fn multiply<A: AddressBus>(
-    bus: &mut A,
+fn multiply(
+    bus: &mut Bus,
     registers: &mut Registers,
     rm: u8,
     rs: u8,
@@ -390,8 +390,8 @@ fn multiply_stall_umull(operand: u32) -> u64 {
     }
 }
 
-fn multiply_long<A: AddressBus>(
-    bus: &mut A,
+fn multiply_long(
+    bus: &mut Bus,
     registers: &mut Registers,
     rm: u8,
     rs: u8,
@@ -486,8 +486,8 @@ fn align_pc(registers: &Registers, rn: u8) -> u32 {
     }
 }
 
-fn single_data_transfer<A: AddressBus>(
-    bus: &mut A,
+fn single_data_transfer(
+    bus: &mut Bus,
     registers: &mut Registers,
     rn: u8,
     rd: u8,
@@ -584,8 +584,8 @@ fn get_transfer_data(
     }
 }
 
-fn block_data_transfer<A: AddressBus>(
-    bus: &mut A,
+fn block_data_transfer(
+    bus: &mut Bus,
     registers: &mut Registers,
     rn: u8,
     transfer_action: TransferAction,
@@ -687,8 +687,8 @@ fn block_data_transfer<A: AddressBus>(
     side_effect
 }
 
-fn single_data_swap<A: AddressBus>(
-    bus: &mut A,
+fn single_data_swap(
+    bus: &mut Bus,
     registers: &mut Registers,
     rn: u8,
     rd: u8,
@@ -725,8 +725,8 @@ fn single_data_swap<A: AddressBus>(
     registers.r[rd as usize] = word;
 }
 
-fn halfword_data_transfer<A: AddressBus>(
-    bus: &mut A,
+fn halfword_data_transfer(
+    bus: &mut Bus,
     registers: &mut Registers,
     offset: HalfwordOffset,
     transfer_kind: TransferKind,
@@ -842,10 +842,10 @@ fn thumb_branch(
 }
 
 // Note always use overflowing_add and overflowing_sub
-pub fn execute_arm<A: AddressBus>(
+pub fn execute_arm(
     instruction: ArmInstruction,
     registers: &mut Registers,
-    bus: &mut A,
+    bus: &mut Bus,
 ) -> Option<SideEffect> {
     //eprintln!("{:?}", instruction);
     match instruction {

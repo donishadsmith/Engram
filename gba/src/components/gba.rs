@@ -1,5 +1,5 @@
 use crate::components::{
-    bus::{AddressBus, Bus},
+    bus::Bus,
     cpu::{Arm7tdmi, HaltState},
     gamepak::GamePak,
     scheduler::Event,

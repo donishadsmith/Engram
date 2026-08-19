@@ -32,18 +32,6 @@ pub enum AccessType {
 
 // Note, there is an addition GBA cycle type: Internal, no memory access, performing a complex internal operation like a multiply, only 1 cycle
 
-pub mod sealed {
-    pub trait Sealed {}
-
-    impl Sealed for u8 {}
-
-    impl Sealed for u16 {}
-
-    impl Sealed for u32 {}
-
-    impl Sealed for u64 {} // Just to give ceertain traits to u64 for multiply long
-}
-
 pub trait BusValue: sealed::Sealed + Sized + Copy {
     fn read(bus: &mut Bus, address: u32, access_type: AccessType) -> Self;
 
@@ -51,31 +39,6 @@ pub trait BusValue: sealed::Sealed + Sized + Copy {
 }
 
 // need to add a generic with trait bound to cpu to create a mock bus for testing
-pub trait AddressBus {
-    fn read_u8(&mut self, address: u32, access: AccessType) -> u8;
-
-    fn read_u16(&mut self, address: u32, access: AccessType) -> u16;
-
-    fn read_u32(&mut self, address: u32, access: AccessType) -> u32;
-
-    fn write_u8(&mut self, address: u32, value: u8, access: AccessType);
-
-    fn write_u16(&mut self, address: u32, value: u16, access: AccessType);
-
-    fn write_u32(&mut self, address: u32, value: u32, access: AccessType);
-
-    fn idle(&mut self, cycles: u64) {
-        0;
-    }
-
-    fn latest_pipeline_fetch(&mut self, instruction: u32) {
-        0;
-    }
-
-    fn clear_bytes(&mut self, address: u32, length: u32) {
-        0;
-    }
-}
 
 pub struct Bus {
     pub scheduler: EventScheduler,
@@ -186,12 +149,32 @@ impl Bus {
         }
     }
 
-    pub fn read<T: BusValue>(&mut self, address: u32, access_type: AccessType) -> T {
-        T::read(self, address, access_type)
+    fn read_u8(&mut self, address: u32, access: AccessType) -> u8 {
+        self.read::<u8>(address, access)
     }
 
-    pub fn write<T: BusValue>(&mut self, address: u32, value: T, access_type: AccessType) {
-        T::write(self, address, value, access_type)
+    fn read_u16(&mut self, address: u32, access: AccessType) -> u16 {
+        self.read::<u16>(address, access)
+    }
+
+    fn read_u32(&mut self, address: u32, access: AccessType) -> u32 {
+        self.read::<u32>(address, access)
+    }
+
+    fn write_u8(&mut self, address: u32, value: u8, access: AccessType) {
+        self.write::<u8>(address, value, access);
+    }
+
+    fn write_u16(&mut self, address: u32, value: u16, access: AccessType) {
+        self.write::<u16>(address, value, access);
+    }
+
+    fn write_u32(&mut self, address: u32, value: u32, access: AccessType) {
+        self.write::<u32>(address, value, access);
+    }
+
+    fn idle(&mut self, cycles: u64) {
+        self.scheduler.current += cycles;
     }
 
     pub fn cost(&mut self, address: u32, width: u32, access_type: AccessType) {
@@ -765,67 +748,6 @@ impl BusValue for u32 {
 
             0x08..=0x0D => {}
             0x0E | 0x0F => bus.write_backup_byte(address, bytes[0]),
-            _ => {}
-        }
-    }
-}
-
-impl AddressBus for Bus {
-    fn read_u8(&mut self, address: u32, access: AccessType) -> u8 {
-        self.read::<u8>(address, access)
-    }
-
-    fn read_u16(&mut self, address: u32, access: AccessType) -> u16 {
-        self.read::<u16>(address, access)
-    }
-
-    fn read_u32(&mut self, address: u32, access: AccessType) -> u32 {
-        self.read::<u32>(address, access)
-    }
-
-    fn write_u8(&mut self, address: u32, value: u8, access: AccessType) {
-        self.write::<u8>(address, value, access);
-    }
-
-    fn write_u16(&mut self, address: u32, value: u16, access: AccessType) {
-        self.write::<u16>(address, value, access);
-    }
-
-    fn write_u32(&mut self, address: u32, value: u32, access: AccessType) {
-        self.write::<u32>(address, value, access);
-    }
-
-    fn idle(&mut self, cycles: u64) {
-        self.scheduler.current += cycles;
-    }
-
-    fn latest_pipeline_fetch(&mut self, instruction: u32) {
-        self.last_instruction_read = instruction;
-    }
-
-    fn clear_bytes(&mut self, address: u32, length: u32) {
-        let len = length as usize;
-        match address >> 24 {
-            0x02 => {
-                let i = Bus::ewram_index(address);
-                self.ewram[i..i + len].fill(0);
-            }
-            0x03 => {
-                let i = Bus::iwram_index(address);
-                self.iwram[i..i + len].fill(0);
-            }
-            0x05 => {
-                let i = Bus::palette_index(address);
-                self.ppu.palette_ram[i..i + len].fill(0);
-            }
-            0x06 => {
-                let i = Bus::vram_index(address);
-                self.ppu.vram[i..i + len].fill(0);
-            }
-            0x07 => {
-                let i = Bus::oam_index(address);
-                self.ppu.oam[i..i + len].fill(0);
-            }
             _ => {}
         }
     }

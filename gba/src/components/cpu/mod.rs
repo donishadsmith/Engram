@@ -6,7 +6,7 @@ use thumb::decode::*;
 
 use crate::components::{
     bios::handle_swi,
-    bus::{AccessType, AddressBus},
+    bus::{AccessType, Bus},
     utils::BitOps,
 };
 /*
@@ -511,7 +511,7 @@ impl Arm7tdmi {
         self.pipeline.flush();
     }
 
-    pub fn step<A: AddressBus>(&mut self, bus: &mut A) {
+    pub fn step(&mut self, bus: &mut Bus) {
         self.branched = false;
         let access = self.next_fetch_access;
         self.next_fetch_access = AccessType::Sequential;
@@ -597,7 +597,7 @@ impl Arm7tdmi {
     }
 
     const IRQ_RETURN_ADDRESS: u32 = 0x00000138;
-    pub fn handle_irq_entry<A: AddressBus>(&mut self, bus: &mut A) {
+    pub fn handle_irq_entry(&mut self, bus: &mut Bus) {
         /*
             From gbatek:
 
@@ -638,7 +638,7 @@ impl Arm7tdmi {
         self.branch_to(handler);
     }
 
-    pub fn handle_irq_return<A: AddressBus>(&mut self, bus: &mut A) {
+    pub fn handle_irq_return(&mut self, bus: &mut Bus) {
         let mut sp = self.registers.r[13];
 
         let mut first_access = true;
@@ -673,7 +673,7 @@ impl Arm7tdmi {
         }
     }
 
-    pub fn raise_irq<A: AddressBus>(&mut self, bus: &mut A) {
+    pub fn raise_irq(&mut self, bus: &mut Bus) {
         let lr = self.next_executing_address().wrapping_add(4);
         let old_cpsr = self.registers.cpsr;
 

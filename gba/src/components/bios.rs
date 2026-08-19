@@ -6,7 +6,7 @@
 
 // ***** IF THE EMULATOR IS NOTICEABLY SLOW BECAUSE LESS CPU STEPS OCCUR, CHECK THE THREE ADITIONAL IDLE CHARGES IN THE LZ COMPRESSION *******
 use crate::components::{
-    bus::{AccessType, AddressBus},
+    bus::{AccessType, Bus},
     cpu::{Arm7tdmi, HaltState, Registers},
     utils::BitOps,
 };
@@ -35,7 +35,7 @@ enum CpuSetMode {
 
 // Yeah, im just going to ifnore, multiboot, stop, and the entire sound driver family
 // Need to determine if stop is a priority swi
-pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A) {
+pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
     // https://gbadev.net/gbadoc/bios.html
     // https://github.com/mgba-emu/mgba/blob/b54fc45b4ddab1c493122f6644f6d290dce319ce/src/gba/hle-bios.s#L69
     match function {
@@ -110,7 +110,7 @@ pub fn handle_swi<A: AddressBus>(function: u32, cpu: &mut Arm7tdmi, bus: &mut A)
     }
 }
 
-fn soft_reset<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A) {
+fn soft_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
     let return_flag = bus.read_u8(0x03007FFA, AccessType::Nonsequential);
 
     for address in 0x03007E00..0x03008000 {
@@ -129,7 +129,7 @@ fn soft_reset<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A) {
 
 // https://github.com/Cult-of-GBA/BIOS/blob/master/bios_calls/register_ram_reset.s
 // https://problemkaputt.de/gbatek-bios-reset-functions.htm
-fn register_ram_reset<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A) {
+fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
     let reset_flags = cpu.registers.r[0];
 
     if reset_flags.is_set(0) {
@@ -161,12 +161,7 @@ fn register_ram_reset<A: AddressBus>(cpu: &mut Arm7tdmi, bus: &mut A) {
     }
 }
 
-fn intr_wait<A: AddressBus>(
-    cpu: &mut Arm7tdmi,
-    bus: &mut A,
-    clear_interrupt_flag: bool,
-    target_flags: u16,
-) {
+fn intr_wait(cpu: &mut Arm7tdmi, bus: &mut Bus, clear_interrupt_flag: bool, target_flags: u16) {
     bus.write_u16(0x4000208, 1, AccessType::Nonsequential);
 
     // Since the cpu rewinds the program counter to execute the swi until wait is satisfied
@@ -192,7 +187,7 @@ fn intr_wait<A: AddressBus>(
     }
 }
 
-fn cpuset<A: AddressBus>(cpu: &Arm7tdmi, bus: &mut A, cpu_mode: CpuSetMode) {
+fn cpuset(cpu: &Arm7tdmi, bus: &mut Bus, cpu_mode: CpuSetMode) {
     let mut source_address = cpu.registers.r[0];
     let mut destination_address = cpu.registers.r[1];
     let metadata = cpu.registers.r[2];
@@ -458,7 +453,7 @@ fn arctan2(registers: &mut Registers) -> u64 {
 // [ sx   0  0 ]   [ cos(theta)  -sin(theta)  0 ]   [ 1  0  cx - ox ]   [ A B rx ]
 // [  0  sy  0 ] * [ sin(theta)   cos(theta)  0 ] * [ 0  1  cy - oy ] = [ C D ry ]
 // [  0   0  1 ]   [     0            0       1 ]   [ 0  0     1    ]   [ 0 0  1 ]
-fn bg_affine_set<A: AddressBus>(registers: &Registers, bus: &mut A) {
+fn bg_affine_set(registers: &Registers, bus: &mut Bus) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
     let mut number_of_calculations = registers.r[2];
@@ -532,7 +527,7 @@ fn bg_affine_set<A: AddressBus>(registers: &Registers, bus: &mut A) {
 // Took comment from mgba
 // [ sx   0 ]   [ cos(theta)  -sin(theta) ]   [ A B ]
 // [  0  sy ] * [ sin(theta)   cos(theta) ] = [ C D ]
-fn obj_affine_set<A: AddressBus>(registers: &Registers, bus: &mut A) {
+fn obj_affine_set(registers: &Registers, bus: &mut Bus) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
     let mut number_of_calculations = registers.r[2];
@@ -583,7 +578,7 @@ fn obj_affine_set<A: AddressBus>(registers: &Registers, bus: &mut A) {
     }
 }
 
-fn midi_key_2_freq<A: AddressBus>(registers: &mut Registers, bus: &mut A) {
+fn midi_key_2_freq(registers: &mut Registers, bus: &mut Bus) {
     let key = bus.read_u32(registers.r[0] + 4, AccessType::Nonsequential);
     let exponent = (180.0 - registers.r[1] as f32 - registers.r[2] as f32 / 256.0) / 12.0;
     registers.r[0] = (key as f32 / exponent.exp2()) as u32;
@@ -597,7 +592,7 @@ struct BitUnpackMetadata {
 }
 
 impl BitUnpackMetadata {
-    fn from_register<A: AddressBus>(pointer: u32, bus: &mut A) -> Self {
+    fn from_register(pointer: u32, bus: &mut Bus) -> Self {
         let source_length = bus.read_u16(pointer, AccessType::Nonsequential);
         let source_width = bus.read_u8(pointer + 2, AccessType::Sequential);
         let destination_width = bus.read_u8(pointer + 3, AccessType::Sequential);
@@ -650,7 +645,7 @@ impl WordBuffer {
     }
 }
 
-fn bit_unpack<A: AddressBus>(registers: &Registers, bus: &mut A) {
+fn bit_unpack(registers: &Registers, bus: &mut Bus) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
     let metadata = BitUnpackMetadata::from_register(registers.r[2], bus);
@@ -690,7 +685,7 @@ struct DiffMetadata {
 }
 
 impl DiffMetadata {
-    fn from_register<A: AddressBus>(pointer: u32, bus: &mut A) -> Self {
+    fn from_register(pointer: u32, bus: &mut Bus) -> Self {
         let data_header = bus.read_u32(pointer, AccessType::Nonsequential);
         let source_data_size = data_header.get_bit_range(8..32);
 
@@ -700,7 +695,7 @@ impl DiffMetadata {
         }
     }
 
-    fn transform_data<A: AddressBus>(&self, bus: &mut A, read_width: BitSize) -> Vec<u8> {
+    fn transform_data(&self, bus: &mut Bus, read_width: BitSize) -> Vec<u8> {
         let mut arr = vec![0u8; self.source_data_size as usize];
         let data_start = self.source_address + 4;
 
@@ -729,12 +724,7 @@ impl DiffMetadata {
     }
 }
 
-fn diff_unfilter<A: AddressBus>(
-    registers: &Registers,
-    bus: &mut A,
-    read_width: BitSize,
-    write_width: BitSize,
-) {
+fn diff_unfilter(registers: &Registers, bus: &mut Bus, read_width: BitSize, write_width: BitSize) {
     let metadata = DiffMetadata::from_register(registers.r[0], bus);
     let destination_address = registers.r[1];
 
@@ -793,7 +783,7 @@ impl Packer {
         }
     }
 
-    fn push<A: AddressBus>(&mut self, bus: &mut A, destination_address: &mut u32, byte: u8) {
+    fn push(&mut self, bus: &mut Bus, destination_address: &mut u32, byte: u8) {
         match self.write_width {
             BitSize::EightBit => {
                 bus.write_u8(*destination_address, byte, AccessType::Sequential);
@@ -811,7 +801,7 @@ impl Packer {
         }
     }
 
-    fn flush_unpaired_byte<A: AddressBus>(&mut self, bus: &mut A, destination_address: u32) {
+    fn flush_unpaired_byte(&mut self, bus: &mut Bus, destination_address: u32) {
         match self.pending.take() {
             Some(low_byte) => {
                 bus.write_u16(destination_address, low_byte as u16, AccessType::Sequential);
@@ -821,7 +811,7 @@ impl Packer {
     }
 }
 
-fn rl_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {
+fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
 
@@ -876,7 +866,7 @@ fn rl_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: Bit
 }
 
 // Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
-fn lz77_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A, write_width: BitSize) {
+fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
     bus.idle(20); // CHECK THIS LATER
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
@@ -953,7 +943,7 @@ impl Tree {
         }
     }
 
-    fn step<A: AddressBus>(&mut self, bus: &mut A, current_bit: u32) -> Option<u8> {
+    fn step(&mut self, bus: &mut Bus, current_bit: u32) -> Option<u8> {
         let node = bus.read_u8(self.current_address, AccessType::Nonsequential);
         let offset = node.get_bit_range(0..6) as u32;
         let child_address = (self.current_address & !1) + offset * 2 + 2 + current_bit;
@@ -975,7 +965,7 @@ impl Tree {
     }
 }
 
-fn huff_uncomp<A: AddressBus>(registers: &Registers, bus: &mut A) {
+fn huff_uncomp(registers: &Registers, bus: &mut Bus) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
 
