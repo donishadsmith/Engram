@@ -8,8 +8,6 @@ Cargo.lock
 *.sav
 gb/tests/vendored/blargg/**/*source*
 gb/tests/vendored/blargg/*/source/
-*.s
-!gba/tests/**/*.s
 mooneye/
 acid/
 *ppu_registers.txt*
@@ -19,3 +17,4 @@ acid/
 *.sav
 *.gba
 !gba/tests/**/*.gba
+!gba/tests/**/**/*.gba

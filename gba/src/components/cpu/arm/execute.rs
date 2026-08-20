@@ -271,7 +271,13 @@ fn data_processing(
     // future note: page A2-10 & A1-7 result to PC is a jump
     // A2-55 when s bit is set and rd is 15, copy spsr from cpsr, thhis is an
     // exception return
-    if !discards_result(opcode) {
+    if discards_result(opcode) {
+        if rd == 15 && registers.state() == ProcessorState::Arm {
+            registers.restore_cpsr_from_spsr();
+
+            return None;
+        }
+    } else {
         if rd == 15 {
             return Some(if set_flags {
                 SideEffect::BranchRestoreCpsr(result)
@@ -291,7 +297,7 @@ fn data_processing(
 }
 
 fn mrs(registers: &mut Registers, rd: u8, use_spsr: bool) {
-    let source_psr = if use_spsr {
+    let source_psr = if use_spsr && registers.has_spsr() {
         registers.banked_spsr[registers.mode().spsr_index()]
     } else {
         registers.cpsr
@@ -301,6 +307,10 @@ fn mrs(registers: &mut Registers, rd: u8, use_spsr: bool) {
 }
 
 fn msr(registers: &mut Registers, source: MsrSource, use_spsr: bool, field_mask: u8) {
+    if use_spsr && !registers.has_spsr() {
+        return;
+    }
+
     let source_value = match source {
         MsrSource::Register(rs) => registers.r[rs as usize],
         MsrSource::Immediate { value, rotate } => (value as u32).rotate_right((rotate as u32) * 2),
@@ -497,6 +507,16 @@ fn single_data_transfer(
     addressing_mode: AddressingMode,
     offset: SdtOffset,
 ) -> Option<SideEffect> {
+    let store_value = if transfer_action == TransferAction::Store {
+        Some(if rd == 15 {
+            registers.r[15].wrapping_add(4)
+        } else {
+            registers.r[rd as usize]
+        })
+    } else {
+        None
+    };
+
     let mut start_address = align_pc(registers, rn);
     let address_offset = process_sdt_address_offset(registers, offset);
 
@@ -534,11 +554,7 @@ fn single_data_transfer(
             registers.r[rd as usize] = value
         }
         TransferAction::Store => {
-            let value = if rd == 15 {
-                registers.r[15].wrapping_add(4)
-            } else {
-                registers.r[rd as usize]
-            };
+            let value = store_value.unwrap();
 
             if transfer_size == BitSize::Byte {
                 bus.write_u8(start_address, value as u8, AccessType::Nonsequential);
@@ -562,25 +578,29 @@ fn single_data_transfer(
     side_effect
 }
 
-// S bit for load on PC means cpsr is loaded from the spsr
-// if no load on pc and all stm, if on privelefed mode, the user mode bank registers are transferred
-// **assuming that gba should never be in fiq mode, so shouldnt need high register user mode banking**
 fn get_transfer_data(
     registers: &mut Registers,
     current_register: u16,
     use_user_bank: bool,
 ) -> (&mut u32, bool) {
+    let offset_pc = current_register == 15;
     let in_usr_mode = matches!(registers.mode(), ProcessorMode::Usr | ProcessorMode::Sys);
 
-    if !use_user_bank || in_usr_mode || current_register < 13 {
-        let offset_pc = current_register == 15;
-        return (&mut (registers.r[current_register as usize]), offset_pc);
-    } else {
-        let index = ProcessorMode::Usr.sp_and_lr_index();
-        return (
-            &mut registers.banked_special_registers[index][(current_register - 13) as usize],
+    if !use_user_bank {
+        return (&mut registers.r[current_register as usize], offset_pc);
+    }
+
+    let mode = registers.mode();
+    match current_register {
+        8..=12 if mode == ProcessorMode::Fiq => (
+            &mut registers.banked_high_registers[0][(current_register - 8) as usize],
             false,
-        );
+        ),
+        13 | 14 if !matches!(mode, ProcessorMode::Usr | ProcessorMode::Sys) => (
+            &mut registers.banked_special_registers[0][(current_register - 13) as usize],
+            false,
+        ),
+        _ => (&mut registers.r[current_register as usize], offset_pc),
     }
 }
 
@@ -598,6 +618,7 @@ fn block_data_transfer(
 
     let base_address = registers.r[rn as usize];
     let mut is_first_access = true;
+    let pc_offset = registers.pc_offset();
 
     let loads_pc = transfer_action == TransferAction::Load && register_list.is_set(15);
     let use_user_bank = psr && !loads_pc;
@@ -670,7 +691,7 @@ fn block_data_transfer(
 
                 bus.write_u32(
                     start_address,
-                    value + if offset_pc { 4 } else { 0 },
+                    value + if offset_pc { pc_offset } else { 0 },
                     if is_first_access {
                         AccessType::Nonsequential
                     } else {
@@ -736,6 +757,16 @@ fn halfword_data_transfer(
     addressing_mode: AddressingMode,
     transfer_action: TransferAction,
 ) {
+    let store_value = if transfer_action == TransferAction::Store {
+        Some(if rd == 15 {
+            registers.r[15].wrapping_add(4)
+        } else {
+            registers.r[rd as usize]
+        })
+    } else {
+        None
+    };
+
     let mut start_address = registers.r[rn as usize];
     let address_offset = match offset {
         HalfwordOffset::Register(rn) => registers.r[rn as usize],
@@ -799,13 +830,11 @@ fn halfword_data_transfer(
             registers.r[rd as usize] = word;
         }
         TransferAction::Store => {
-            let value = if rd == 15 {
-                registers.r[15].wrapping_add(4)
-            } else {
-                registers.r[rd as usize]
-            };
-
-            bus.write_u16(start_address, value as u16, AccessType::Nonsequential);
+            bus.write_u16(
+                start_address,
+                store_value.unwrap() as u16,
+                AccessType::Nonsequential,
+            );
         }
     }
 

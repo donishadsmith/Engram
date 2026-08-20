@@ -78,7 +78,7 @@ enum VectorTable {
 */
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ProcessorState {
+pub enum ProcessorState {
     Arm,
     Thumb,
 }
@@ -168,7 +168,10 @@ impl ProcessorMode {
             0x17 => ProcessorMode::Abt,
             0x1B => ProcessorMode::Und,
             0x1F => ProcessorMode::Sys,
-            _ => ProcessorMode::Usr,
+            _ => {
+                dbg!("invalid mode: {}", cpsr.get_bit_range(0..5));
+                ProcessorMode::Usr
+            }
         }
     }
 
@@ -362,7 +365,15 @@ impl Registers {
         self.banked_spsr[index] = cpsr
     }
 
+    fn has_spsr(&self) -> bool {
+        !matches!(self.mode(), ProcessorMode::Usr | ProcessorMode::Sys)
+    }
+
     fn restore_cpsr_from_spsr(&mut self) {
+        if !self.has_spsr() {
+            return;
+        }
+
         let old_mode = self.mode();
         self.cpsr = self.banked_spsr[old_mode.spsr_index()];
         self.bank_registers(old_mode, self.mode());
