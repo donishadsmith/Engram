@@ -4,7 +4,7 @@
 
 // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
-// ***** IF THE EMULATOR IS NOTICEABLY SLOW BECAUSE LESS CPU STEPS OCCUR, CHECK THE THREE ADITIONAL IDLE CHARGES IN THE LZ COMPRESSION *******
+// *****CHECK THE THREE ADITIONAL IDLE CHARGES IN THE LZ COMPRESSION *******
 use crate::components::{
     bus::{AccessType, Bus},
     cpu::{Arm7tdmi, HaltState, Registers},
@@ -44,9 +44,12 @@ pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
         0x02 => cpu.halt_state = HaltState::Halted,
         0x04 => intr_wait(cpu, bus, cpu.registers.r[0] != 0, cpu.registers.r[1] as u16),
         0x05 => {
-            cpu.registers.r[0] = 1;
-            cpu.registers.r[1] = 1;
-            intr_wait(cpu, bus, true, 0x01);
+            if !cpu.intr_wait_resume {
+                cpu.registers.r[0] = 1;
+                cpu.registers.r[1] = 1;
+            }
+
+            intr_wait(cpu, bus, cpu.registers.r[0] != 0, 0x01);
         }
         0x06 => {
             let registers = &mut cpu.registers;
@@ -123,7 +126,7 @@ fn soft_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
         0x02000000
     };
 
-    cpu.registers.soft_reset(entry_point);
+    cpu.soft_reset(entry_point);
 
     bus.last_bios_fetch = 0xE129F000;
 
@@ -159,7 +162,9 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
 
     if reset_flags.is_set(7) {
         bus.write_u16(0x04000200, 0, AccessType::Nonsequential);
-        bus.write_u16(0x04000202, 0, AccessType::Sequential);
+
+        bus.interrupt_flag = 0;
+
         bus.write_u16(0x04000208, 0, AccessType::Sequential);
     }
 }
@@ -178,6 +183,7 @@ fn intr_wait(cpu: &mut Arm7tdmi, bus: &mut Bus, clear_interrupt_flag: bool, targ
             AccessType::Nonsequential,
         );
         cpu.registers.r[0] = 0;
+        cpu.intr_wait_resume = true;
         cpu.halt_state = HaltState::IntrWait
     } else if bios_flags & target_flags != 0 {
         bus.write_u16(
@@ -185,7 +191,9 @@ fn intr_wait(cpu: &mut Arm7tdmi, bus: &mut Bus, clear_interrupt_flag: bool, targ
             bios_flags & !target_flags,
             AccessType::Nonsequential,
         );
+        cpu.intr_wait_resume = false;
     } else {
+        cpu.intr_wait_resume = true;
         cpu.halt_state = HaltState::IntrWait
     }
 }
@@ -869,6 +877,7 @@ fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
 }
 
 // Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
+// Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
 fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
     bus.idle(20); // CHECK THIS LATER
     let mut source_address = registers.r[0];
@@ -904,7 +913,7 @@ fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
 
                 let msb_displacement = metadata.get_bit_range(0..4);
                 let lsb_displacement = metadata.get_bit_range(8..16);
-                let displacment = ((msb_displacement as u32) << 8) | lsb_displacement as u32;
+                let displacement = ((msb_displacement as u32) << 8) | lsb_displacement as u32;
 
                 for _ in 0..n_bytes {
                     if remaining_bytes == 0 {
@@ -914,10 +923,17 @@ fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
                     bus.idle(10); // CHECK THIS LATER
                     remaining_bytes -= 1;
 
-                    let byte = bus.read_u8(
-                        destination_address - displacment - 1,
-                        AccessType::Sequential,
-                    );
+                    let byte = if displacement == 0 && packer.pending.is_some() {
+                        packer.pending.unwrap()
+                    } else {
+                        bus.read_u8(
+                            destination_address + packer.pending.is_some() as u32
+                                - displacement
+                                - 1,
+                            AccessType::Sequential,
+                        )
+                    };
+
                     packer.push(bus, &mut destination_address, byte);
                 }
             } else {

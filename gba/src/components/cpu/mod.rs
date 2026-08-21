@@ -389,20 +389,6 @@ impl Registers {
         self.banked_special_registers[0][0] = 0x03007F00; // sp_usr/sys
     }
 
-    pub fn soft_reset(&mut self, entry_point: u32) {
-        self.r[0..13].fill(0);
-        self.r[14] = entry_point;
-
-        self.banked_special_registers[3] = [0x03007FE0, 0];
-        self.banked_special_registers[2] = [0x03007FA0, 0];
-        self.banked_special_registers[0][0] = 0x03007F00;
-        self.banked_spsr[3] = 0;
-        self.banked_spsr[2] = 0;
-
-        self.cpsr = ProcessorMode::Sys as u32;
-        self.r[13] = 0x03007F00;
-    }
-
     fn condition_passed(&self, condition: Condition) -> bool {
         // cpsr condition flag order NZCV, is 31:28
         // https://support.arm.com/documentation/ddi0027/latest/ - page 26
@@ -503,6 +489,7 @@ pub struct Arm7tdmi {
     pub halt_state: HaltState,
     branched: bool,
     next_fetch_access: AccessType,
+    pub intr_wait_resume: bool,
 }
 
 impl Arm7tdmi {
@@ -513,6 +500,7 @@ impl Arm7tdmi {
             halt_state: HaltState::Running,
             branched: false,
             next_fetch_access: AccessType::Sequential,
+            intr_wait_resume: false,
         }
     }
 
@@ -704,7 +692,25 @@ impl Arm7tdmi {
     }
 
     pub fn awake(&mut self) {
-        self.halt_state = HaltState::Running;
+        if matches!(self.halt_state, HaltState::Halted | HaltState::IntrWait) {
+            self.halt_state = HaltState::Running;
+        }
+    }
+
+    pub fn soft_reset(&mut self, entry_point: u32) {
+        self.registers.r[0..13].fill(0);
+        self.registers.r[14] = entry_point;
+
+        self.registers.banked_special_registers[3] = [0x03007FE0, 0];
+        self.registers.banked_special_registers[2] = [0x03007FA0, 0];
+        self.registers.banked_special_registers[0][0] = 0x03007F00;
+        self.registers.banked_spsr[3] = 0;
+        self.registers.banked_spsr[2] = 0;
+
+        self.registers.cpsr = ProcessorMode::Sys as u32;
+        self.registers.r[13] = 0x03007F00;
+
+        self.intr_wait_resume = false;
     }
 }
 

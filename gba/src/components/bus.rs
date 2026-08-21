@@ -18,6 +18,7 @@
 
 use crate::components::{
     apu::APU,
+    dma::DmaChannels,
     gamepak::{BackupChip, GamePak},
     ppu::PPU,
     scheduler::EventScheduler,
@@ -41,6 +42,7 @@ pub struct Bus {
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
     pub apu: APU,
     pub ppu: PPU,
+    pub dma: DmaChannels,
     pub timers: Timers,
     pub gamepak: GamePak,
     interrupt_master_enable: u32,
@@ -62,6 +64,7 @@ impl Bus {
             ppu: PPU::new(),
             gamepak,
             apu: APU::new(),
+            dma: DmaChannels::new(),
             timers: Timers::new(),
             interrupt_master_enable: 0,
             interrupt_flag: 0,
@@ -729,6 +732,8 @@ impl Bus {
     pub fn take_halt_request(&mut self) -> Option<u8> {
         self.haltcnt.take()
     }
+
+    pub fn run_dma(&mut self, channel: usize) {}
 }
 
 #[cfg(test)]

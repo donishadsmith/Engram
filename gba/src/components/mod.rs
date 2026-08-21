@@ -2,6 +2,7 @@ pub mod apu;
 pub mod bios;
 pub mod bus;
 pub mod cpu;
+pub mod dma;
 pub mod gamepak;
 pub mod gba;
 pub mod joypad;
