@@ -1,4 +1,4 @@
-use crate::components::cpu::arm::decode::ShiftType;
+use crate::components::{bus::Bus, cpu::arm::decode::ShiftType, gamepak::GamePak};
 use std::{
     mem::size_of,
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Range, Shl, Shr},
@@ -18,6 +18,13 @@ pub mod unsigned_int {
 
 pub fn zero_arr<const N: usize>() -> Box<[u8; N]> {
     vec![0u8; N].into_boxed_slice().try_into().unwrap()
+}
+
+pub fn create_bus() -> Bus {
+    let gamepak = GamePak::mock();
+    let bus = Bus::new(gamepak);
+
+    bus
 }
 
 // Inspired to create a trait for bit setting after seeing this:

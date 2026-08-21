@@ -1010,20 +1010,12 @@ pub fn execute_arm(
 mod tests {
     use super::*;
     use crate::components::{
-        bus::Bus,
         cpu::{
             Condition, ProcessorMode,
             arm::decode::{ArmInstruction, DataOp, decode_arm},
         },
-        gamepak::GamePak,
+        utils::create_bus,
     };
-
-    fn create_bus() -> Bus {
-        let gamepak = GamePak::mock();
-        let bus = Bus::new(gamepak);
-
-        bus
-    }
 
     #[test]
     fn test_mov() {

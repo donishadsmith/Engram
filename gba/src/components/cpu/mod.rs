@@ -564,7 +564,8 @@ impl Arm7tdmi {
             match request {
                 SideEffect::Swi(function) => {
                     bus.idle(45);
-                    handle_swi(function, self, bus)
+                    handle_swi(function, self, bus);
+                    bus.last_bios_fetch = 0xE3A02004;
                 }
                 SideEffect::Branch(address) => {
                     if address == Self::IRQ_RETURN_ADDRESS {
@@ -623,7 +624,7 @@ impl Arm7tdmi {
             0000013C  subs   r15,r14,4h          ;return from IRQ (PC=LR-4, CPSR=SPSR)
             As shown above, a pointer to the 32bit/ARM-code user handler must be setup in [03007FFCh]. By default, 160 bytes of memory are reserved for interrupt stack at 03007F00h-03007F9Fh.
         */
-
+        bus.last_bios_fetch = 0xE25EF004;
         let mut sp = self.registers.r[13].wrapping_sub(24);
         self.registers.r[13] = sp;
 
@@ -650,6 +651,7 @@ impl Arm7tdmi {
     }
 
     pub fn handle_irq_return(&mut self, bus: &mut Bus) {
+        bus.last_bios_fetch = 0xE55EC002;
         let mut sp = self.registers.r[13];
 
         let mut first_access = true;

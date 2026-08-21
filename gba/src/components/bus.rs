@@ -21,6 +21,7 @@ use crate::components::{
     gamepak::{BackupChip, GamePak},
     ppu::PPU,
     scheduler::EventScheduler,
+    timer::Timers,
     utils::{BitOps, zero_arr},
 };
 
@@ -36,14 +37,15 @@ pub struct Bus {
     pub ewram: Box<[u8; 0x40000]>,
     pub iwram: Box<[u8; 0x8000]>,
     pub last_instruction_read: u32,
-    last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
+    pub last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
     pub apu: APU,
     pub ppu: PPU,
+    pub timers: Timers,
     pub gamepak: GamePak,
     interrupt_master_enable: u32,
-    interrupt_enable: u16,
-    interrupt_flag: u16,
+    pub interrupt_enable: u16,
+    pub interrupt_flag: u16,
     postflg: u8,
     haltcnt: Option<u8>,
 }
@@ -60,6 +62,7 @@ impl Bus {
             ppu: PPU::new(),
             gamepak,
             apu: APU::new(),
+            timers: Timers::new(),
             interrupt_master_enable: 0,
             interrupt_flag: 0,
             interrupt_enable: 0,
@@ -504,14 +507,14 @@ impl Bus {
             // 0x40000E0 => {} // Not Used
 
             // Timer Registers
-            // 0x4000100 => {} // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
-            // 0x4000102 => {} // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
-            // 0x4000104 => {} // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
-            // 0x4000106 => {} // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
-            // 0x4000108 => {} // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
-            // 0x400010A => {} // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
-            // 0x400010C => {} // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
-            // 0x400010E => {} // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000100 => self.timers.timers[0].current_counter(self.scheduler.current), // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
+            0x4000102 => self.timers.timers[0].read_control_register(), // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
+            0x4000104 => self.timers.timers[1].current_counter(self.scheduler.current), // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
+            0x4000106 => self.timers.timers[1].read_control_register(), // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
+            0x4000108 => self.timers.timers[2].current_counter(self.scheduler.current), // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
+            0x400010A => self.timers.timers[2].read_control_register(), // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
+            0x400010C => self.timers.timers[3].current_counter(self.scheduler.current), // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
+            0x400010E => self.timers.timers[3].read_control_register(), // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
             // 0x4000110 => {} // Not Used
 
             // Serial Communication (1)
@@ -647,15 +650,15 @@ impl Bus {
             0x40000E0 => {} // Not Used
 
             // Timer Registers
-            0x4000100 => {} // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
-            0x4000102 => {} // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
-            0x4000104 => {} // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
-            0x4000106 => {} // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
-            0x4000108 => {} // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
-            0x400010A => {} // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
-            0x400010C => {} // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
-            0x400010E => {} // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
-            0x4000110 => {} // Not Usedrol (TM3CNT_H), 16 bit register (read + write)
+            0x4000100 => self.timers.timers[0].write_counter_register(value), // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
+            0x4000102 => self.timers.timers[0].write_control_register(value, &mut self.scheduler), // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
+            0x4000104 => self.timers.timers[1].write_counter_register(value), // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
+            0x4000106 => self.timers.timers[1].write_control_register(value, &mut self.scheduler), // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
+            0x4000108 => self.timers.timers[2].write_counter_register(value), // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
+            0x400010A => self.timers.timers[2].write_control_register(value, &mut self.scheduler), // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
+            0x400010C => self.timers.timers[3].write_counter_register(value), // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
+            0x400010E => self.timers.timers[3].write_control_register(value, &mut self.scheduler), // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000110 => {} // Not Used
             0x4000112 => {} // Not Used
 
             // Serial Communication (1)

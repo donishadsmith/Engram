@@ -5,12 +5,18 @@
 
 use std::{cmp::Reverse, collections::BinaryHeap};
 
-#[derive(Eq, Ord, PartialEq, PartialOrd, Debug)]
+pub const HBLANK_OFFSET: u64 = 1006;
+pub const CYCLES_PER_SCANLINE: u64 = 1232;
+pub const APU_SAMPLE: u64 = 512;
+pub const APU_SEQUENCER: u64 = 32768;
+
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Debug)]
 pub enum Event {
     Hblank,
-    Vblank,
+    HblankEnd,
     TimerOverflow(u8),
     ApuSample,
+    ApuSequencer,
 }
 
 pub struct EventScheduler {
@@ -26,8 +32,8 @@ impl EventScheduler {
         }
     }
 
-    pub fn add(&mut self, event: Event, cycles: u64) {
-        self.queue.push(Reverse((self.current + cycles, event)));
+    pub fn push(&mut self, event: Event, time: u64) {
+        self.queue.push(Reverse((time, event)));
     }
 
     pub fn next(&self) -> u64 {
@@ -43,12 +49,38 @@ impl EventScheduler {
         }
     }
 
-    pub fn pop(&mut self) -> Option<Event> {
+    pub fn pop(&mut self) -> Option<(u64, Event)> {
         if self.next() <= self.current {
-            self.queue.pop().map(|Reverse((_, kind))| kind)
+            self.queue
+                .pop()
+                .map(|Reverse((deadline, kind))| (deadline, kind))
         } else {
             None
         }
+    }
+
+    pub fn reschedule(&mut self, event: Event, deadline: u64) {
+        match event {
+            Event::Hblank | Event::HblankEnd => self.push(event, deadline + CYCLES_PER_SCANLINE),
+            Event::ApuSample => self.push(event, deadline + APU_SAMPLE),
+            Event::ApuSequencer => self.push(event, deadline + APU_SEQUENCER),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn initialize_events(&mut self) {
+        self.push(Event::Hblank, HBLANK_OFFSET);
+        self.push(Event::HblankEnd, CYCLES_PER_SCANLINE);
+        self.push(Event::ApuSample, APU_SAMPLE);
+        self.push(Event::ApuSequencer, APU_SEQUENCER);
+    }
+
+    pub fn cancel(&mut self, event: Event) {
+        self.queue.retain(|Reverse((_, e))| *e != event);
+    }
+
+    pub fn is_scheduled(&mut self, event: Event) -> bool {
+        self.queue.iter().any(|Reverse((_, e))| *e == event)
     }
 }
 
@@ -60,14 +92,14 @@ mod tests {
     fn test_scheduler_with_schedule() {
         let mut scheduler = EventScheduler::new();
 
-        scheduler.add(Event::Hblank, 5);
+        scheduler.push(Event::Hblank, 5);
 
         assert_eq!(scheduler.next(), 5);
         assert_eq!(scheduler.pop(), None);
 
         scheduler.current = 6;
 
-        assert_eq!(scheduler.pop(), Some(Event::Hblank));
+        assert_eq!(scheduler.pop(), Some((5, Event::Hblank)));
     }
 
     #[test]
@@ -76,5 +108,40 @@ mod tests {
 
         assert_eq!(scheduler.next(), u64::MAX);
         assert_eq!(scheduler.pop(), None);
+    }
+
+    #[test]
+    fn test_scheduler_order() {
+        let mut scheduler = EventScheduler::new();
+
+        scheduler.push(Event::Hblank, 10);
+        scheduler.push(Event::ApuSample, 4);
+
+        scheduler.current = 5;
+
+        assert_eq!(scheduler.next(), 4);
+        assert_eq!(scheduler.pop(), Some((4, Event::ApuSample)));
+
+        scheduler.current = 10;
+
+        assert_eq!(scheduler.pop(), Some((10, Event::Hblank)));
+    }
+
+    #[test]
+    fn test_cancel() {
+        let mut scheduler = EventScheduler::new();
+        scheduler.push(Event::Hblank, 5);
+        scheduler.cancel(Event::Hblank);
+
+        assert_eq!(scheduler.next(), u64::MAX);
+        assert_eq!(scheduler.pop(), None);
+    }
+
+    #[test]
+    fn test_event_in_queue() {
+        let mut scheduler = EventScheduler::new();
+        scheduler.push(Event::Hblank, 5);
+
+        assert!(scheduler.is_scheduled(Event::Hblank));
     }
 }

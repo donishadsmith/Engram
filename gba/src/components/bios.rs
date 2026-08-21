@@ -124,6 +124,9 @@ fn soft_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
     };
 
     cpu.registers.soft_reset(entry_point);
+
+    bus.last_bios_fetch = 0xE129F000;
+
     cpu.branch_to(entry_point);
 }
 

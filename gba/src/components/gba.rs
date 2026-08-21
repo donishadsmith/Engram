@@ -1,3 +1,4 @@
+// https://archive.org/details/NintendoGbaManualV1.1/page/n59/mode/1up
 use crate::components::{
     bus::Bus,
     cpu::{Arm7tdmi, HaltState},
@@ -31,19 +32,32 @@ impl GBA {
             self.cpu.halt_state = HaltState::Halted;
         }
 
-        while let Some(event) = self.bus.scheduler.pop() {
-            self.handle_event(event);
-        }
+        self.handle_events();
 
         self.check_interrupts();
     }
 
-    fn handle_event(&mut self, event: Event) {
-        match event {
-            Event::Hblank => {}
-            Event::Vblank => {}
-            Event::TimerOverflow(n) => {}
-            Event::ApuSample => {}
+    fn handle_events(&mut self) {
+        while let Some((deadline, event)) = self.bus.scheduler.pop() {
+            match event {
+                Event::Hblank | Event::HblankEnd | Event::ApuSample | Event::ApuSequencer => {
+                    self.bus.scheduler.reschedule(event, deadline);
+                }
+                Event::TimerOverflow(timer_id) => {
+                    let overflow_mask = self.bus.timers.handle_overflow(
+                        timer_id,
+                        deadline,
+                        &mut self.bus.scheduler,
+                        &mut self.bus.interrupt_flag,
+                    );
+
+                    for timer in 0..2 {
+                        if overflow_mask & (1 << timer) != 0 {
+                            self.bus.apu.on_timer_overflow(timer);
+                        }
+                    }
+                }
+            }
         }
     }
 
