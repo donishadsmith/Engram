@@ -1,5 +1,3 @@
-use std::{fs::write, io::Error, path::PathBuf};
-
 // https://problemkaputt.de/gbatek-gba-cart-real-time-clock-rtc.htm
 // https://problemkaputt.de/gbatek-gba-cart-backup-flash-rom.htm
 #[derive(PartialEq, Eq)]
@@ -16,14 +14,7 @@ impl Flash {
         }
     }
 
-    pub fn write_sav(&mut self, sav_path: &PathBuf) -> Result<(), Error> {
-        if self.updated {
-            write(&sav_path, &self.memory)?;
-            self.updated = false;
-        }
-
-        Ok(())
-    }
+    pub fn read(&self, address: u32) {}
 
     pub fn write(&mut self, index: usize, value: u8) {
         self.updated = true;

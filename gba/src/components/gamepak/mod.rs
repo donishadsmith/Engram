@@ -1,5 +1,4 @@
 // https://www.advanscene.com/html/dbstart.php#
-//** REMEMBER TO IMPLEMENT EEPROM*****
 
 mod eeprom;
 mod flash;
@@ -10,7 +9,11 @@ use flash::Flash;
 use sram::Sram;
 
 use crate::components::utils::BitOps;
-use std::{fs::read, io::Error, path::PathBuf};
+use std::{
+    fs::{read, write},
+    io::Error,
+    path::PathBuf,
+};
 
 // https://problemkaputt.de/gbatek-gba-cart-backup-ids.htm
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -114,67 +117,37 @@ impl GamePak {
                     eeprom.increase_capacity();
                 }
 
-                Self::copy_sav_data(buffer, &mut eeprom.memory)
+                copy_sav_data(buffer, &mut eeprom.memory)
             }
             BackupChip::Flash(flash) => {
-                Self::copy_sav_data(buffer, &mut flash.memory);
+                copy_sav_data(buffer, &mut flash.memory);
             }
             BackupChip::Sram(sram) => {
-                Self::copy_sav_data(buffer, &mut sram.memory);
+                copy_sav_data(buffer, &mut sram.memory);
             }
             BackupChip::None => {}
         }
 
         Ok(())
-    }
-
-    pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>) {
-        let n = save_buffer.len().min(memory.len());
-
-        memory[..n].copy_from_slice(&save_buffer[..n]);
     }
 
     pub fn write_sav(&mut self) -> Result<(), Error> {
         match &mut self.backup_chip {
-            BackupChip::Eeprom(eeprom) => eeprom.write_sav(&self.sav_path)?,
-            BackupChip::Sram(sram) => sram.write_sav(&self.sav_path)?,
-            BackupChip::Flash(flash) => flash.write_sav(&self.sav_path)?,
+            BackupChip::Eeprom(eeprom) => {
+                write_sav(&eeprom.memory, &mut eeprom.updated, &self.sav_path)?
+            }
+            BackupChip::Sram(sram) => write_sav(&sram.memory, &mut sram.updated, &self.sav_path)?,
+            BackupChip::Flash(flash) => {
+                write_sav(&flash.memory, &mut flash.updated, &self.sav_path)?
+            }
             BackupChip::None => {}
         }
 
         Ok(())
     }
 
-    // https://densinh.github.io/DenSinH/emulation/2021/02/01/gba-eeprom.html
-    // https://problemkaputt.de/gbatek.htm#gbacartbackupeeprom
-    // **** REMEMBER TO IMPLEMENT EEPROM***** the hardware is a
-    // single wire that writes one bit at a time and the number of bits determined
-    // the size but only somewhat reliably, this seems to also require DMA, since DMA3
-    // can access rom, maybe this should be done closer to the emulator end than trying
-    // to wire up right now
-    fn is_eeprom_address(&self, address: u32) -> bool {
-        if !matches!(self.backup_chip, BackupChip::Eeprom(_)) {
-            return false;
-        }
-
-        if self.rom.len() > 0x1000000 {
-            address >= 0x0DFFFF00 && address <= 0x0DFFFFFF
-        } else {
-            // anywhere in 0x0D000000-0x0DFFFFFF
-            (address >> 24) == 0x0D
-        }
-    }
-
-    pub fn read_rom_region(&self, address: u32) -> u8 {
-        if self.is_eeprom_address(address) {
-            0
-        } else {
-            self.rom_byte(address)
-        }
-    }
-
     #[inline]
-    fn rom_byte(&self, address: u32) -> u8 {
+    pub fn read_rom_region(&self, address: u32) -> u8 {
         let index = (address.get_bit_range(0..25)) as usize;
         self.rom.get(index).copied().unwrap_or(0)
     }
@@ -186,4 +159,19 @@ impl GamePak {
             backup_chip: BackupType::to_enum(BackupType::Flash1M),
         }
     }
+}
+
+pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>) {
+    let n = save_buffer.len().min(memory.len());
+
+    memory[..n].copy_from_slice(&save_buffer[..n]);
+}
+
+pub fn write_sav(memory: &Vec<u8>, updated: &mut bool, sav_path: &PathBuf) -> Result<(), Error> {
+    if *updated {
+        write(&sav_path, &memory)?;
+        *updated = false;
+    }
+
+    Ok(())
 }

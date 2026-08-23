@@ -158,7 +158,13 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
         bus.ppu.oam.fill(0);
     }
 
-    // do rest later bits 5-7
+    if reset_flags.is_set(5) {
+        bus.serial.reset_sio_registers();
+    }
+
+    if reset_flags.is_set(6) {
+        bus.apu.reset_registers();
+    }
 
     if reset_flags.is_set(7) {
         bus.write_u16(0x04000200, 0, AccessType::Nonsequential);
@@ -166,6 +172,8 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
         bus.interrupt_flag = 0;
 
         bus.write_u16(0x04000208, 0, AccessType::Sequential);
+
+        // check for other registers
     }
 }
 

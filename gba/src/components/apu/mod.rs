@@ -6,4 +6,6 @@ impl APU {
     pub fn new() -> Self {
         Self {}
     }
+
+    pub fn reset_registers(&mut self) {}
 }

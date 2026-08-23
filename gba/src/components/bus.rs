@@ -22,14 +22,60 @@ use crate::components::{
     gamepak::{BackupChip, GamePak},
     ppu::PPU,
     scheduler::EventScheduler,
+    serial::Serial,
     timer::Timers,
     utils::{BitOps, zero_arr},
 };
+
+const WAIT_STATE_NONSEQUENTIAL: [u8; 4] = [4, 3, 2, 8];
+const WAIT_STATE0_SEQUENTIAL: [u8; 2] = [2, 1];
+const WAIT_STATE1_SEQUENTIAL: [u8; 2] = [4, 1];
+const WAIT_STATE2_SEQUENTIAL: [u8; 2] = [8, 1];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AccessType {
     Sequential, // Memory address related to previous address, incremented by + 2 (half word) or +4 (word)
     Nonsequential, // Memory address is fetched and has nothing to do with the previous instruction
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WaitState {
+    WaitState0,
+    WaitState1,
+    WaitState2,
+    SramWaitControl,
+}
+
+impl WaitState {
+    fn from_address(address: u32) -> WaitState {
+        match address {
+            0x08000000..=0x09FFFFFF => WaitState::WaitState0,
+            0x0A000000..=0x0BFFFFFF => WaitState::WaitState1,
+            0x0C000000..=0x0DFFFFFF => WaitState::WaitState2,
+            0x0E000000..=0x0FFFFFFF => WaitState::SramWaitControl,
+            _ => unreachable!(),
+        }
+    }
+
+    fn cycles(self, waitcnt: u16, access_type: AccessType) -> u8 {
+        match self {
+            WaitState::SramWaitControl => {
+                WAIT_STATE_NONSEQUENTIAL[waitcnt.get_bit_range(0..2) as usize]
+            }
+            WaitState::WaitState0 if access_type == AccessType::Nonsequential => {
+                WAIT_STATE_NONSEQUENTIAL[waitcnt.get_bit_range(2..4) as usize]
+            }
+            WaitState::WaitState0 => WAIT_STATE0_SEQUENTIAL[waitcnt.get_bit(4) as usize],
+            WaitState::WaitState1 if access_type == AccessType::Nonsequential => {
+                WAIT_STATE_NONSEQUENTIAL[waitcnt.get_bit_range(5..7) as usize]
+            }
+            WaitState::WaitState1 => WAIT_STATE1_SEQUENTIAL[waitcnt.get_bit(7) as usize],
+            WaitState::WaitState2 if access_type == AccessType::Nonsequential => {
+                WAIT_STATE_NONSEQUENTIAL[waitcnt.get_bit_range(8..10) as usize]
+            }
+            WaitState::WaitState2 => WAIT_STATE2_SEQUENTIAL[waitcnt.get_bit(10) as usize],
+        }
+    }
 }
 
 pub struct Bus {
@@ -45,11 +91,14 @@ pub struct Bus {
     pub dma: DmaChannels,
     pub timers: Timers,
     pub gamepak: GamePak,
+    pub serial: Serial,
     interrupt_master_enable: u32,
     pub interrupt_enable: u16,
     pub interrupt_flag: u16,
     postflg: u8,
+    pub waitcnt: u16,
     haltcnt: Option<u8>,
+    internal_memory_control: u32,
 }
 
 impl Bus {
@@ -66,11 +115,14 @@ impl Bus {
             apu: APU::new(),
             dma: DmaChannels::new(),
             timers: Timers::new(),
+            serial: Serial::new(),
             interrupt_master_enable: 0,
             interrupt_flag: 0,
             interrupt_enable: 0,
             postflg: 0,
+            waitcnt: 0,
             haltcnt: None,
+            internal_memory_control: 0x0D000020,
         }
     }
 
@@ -163,6 +215,16 @@ impl Bus {
     pub fn read_u8(&mut self, address: u32, access_type: AccessType) -> u8 {
         self.cost(address, 8, access_type);
 
+        if address & !1 == 0x4000300 {
+            if address.is_clear(0) {
+                return self.postflg;
+            } else {
+                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+                // technically not read but just in case
+                return 0;
+            }
+        }
+
         match address >> 24 {
             0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u8,
             0x02 => self.ewram[Bus::ewram_index(address)],
@@ -221,6 +283,7 @@ impl Bus {
             if address.is_clear(0) {
                 self.postflg = value & 1; // postflag is touched in boot sequence, consider if want to support bios
             } else {
+                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
                 self.haltcnt = Some(value)
             }
 
@@ -264,6 +327,16 @@ impl Bus {
 
     pub fn read_u16(&mut self, mut address: u32, access_type: AccessType) -> u16 {
         self.cost(address, 16, access_type);
+        if address & !1 == 0x4000300 {
+            if address.is_clear(0) {
+                return self.postflg as u16;
+            } else {
+                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+                // technically not read but just in case
+                return 0;
+            }
+        }
+
         address.clear_bit(0); //ensure even
         let little_endian =
             |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
@@ -291,6 +364,19 @@ impl Bus {
     pub fn write_u16(&mut self, mut address: u32, value: u16, access_type: AccessType) {
         self.cost(address, 16, access_type);
         let bytes = value.to_le_bytes();
+
+        if address & !1 == 0x4000300 {
+            if address.is_clear(0) {
+                self.postflg = value.get_bit_range(0..8) as u8;
+            } else {
+                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+                // technically not read but just in case
+                self.haltcnt = Some(value.get_bit_range(8..16) as u8);
+            }
+
+            return;
+        }
+
         address.clear_bit(0); //ensure even
 
         match address >> 24 {
@@ -330,6 +416,17 @@ impl Bus {
 
     pub fn read_u32(&mut self, mut address: u32, access_type: AccessType) -> u32 {
         self.cost(address, 32, access_type);
+
+        if address & !1 == 0x4000300 {
+            if address.is_clear(0) {
+                return self.postflg as u32;
+            } else {
+                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+                // technically not read but just in case
+                return 0;
+            }
+        }
+
         address.clear_bit_range(0..2); // every 4th address
 
         let little_endian = |arr: &[u8], index: usize| {
@@ -366,6 +463,18 @@ impl Bus {
     pub fn write_u32(&mut self, mut address: u32, value: u32, access_type: AccessType) {
         self.cost(address, 32, access_type);
         let bytes = value.to_le_bytes();
+        if address & !1 == 0x4000300 {
+            if address.is_clear(0) {
+                self.postflg = value.get_bit_range(0..8) as u8;
+            } else {
+                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
+                // technically not read but just in case
+                self.haltcnt = Some(value.get_bit_range(8..16) as u8);
+            }
+
+            return;
+        }
+
         address.clear_bit_range(0..2); // every 4th address
 
         match address >> 24 {
@@ -438,21 +547,19 @@ impl Bus {
                     1
                 }
             }
-            0x08..=0x0D => self.rom_cost(width, access_type),
-            0x0E | 0x0F => 5,
+            0x08..=0x0F => {
+                let wait_state = WaitState::from_address(address);
+                let mut cycles = wait_state.cycles(self.waitcnt, access_type);
+                if width == 32 {
+                    cycles += wait_state.cycles(self.waitcnt, AccessType::Sequential);
+                }
+
+                cycles
+            }
             _ => 1,
         };
 
         self.scheduler.current += cycles as u64;
-    }
-
-    pub fn rom_cost(&mut self, width: u32, access_type: AccessType) -> usize {
-        let first = match access_type {
-            AccessType::Nonsequential => 5,
-            AccessType::Sequential => 3,
-        };
-
-        if width == 32 { first + 3 } else { first }
     }
 
     fn read_register(&mut self, address: u32) -> u16 {
@@ -489,53 +596,55 @@ impl Bus {
             // 0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
 
             // DMA Transfer Channels
-            0x40000BA => self.dma.channels[0].read_control_register(), // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
-            0x40000C6 => self.dma.channels[1].read_control_register(), // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
-            0x40000D2 => self.dma.channels[2].read_control_register(), // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
-            0x40000DE => self.dma.channels[3].read_control_register(), // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            0x40000BA => self.dma.channels[0].read_control_register(),
+            0x40000C6 => self.dma.channels[1].read_control_register(),
+            0x40000D2 => self.dma.channels[2].read_control_register(),
+            0x40000DE => self.dma.channels[3].read_control_register(),
 
             // Timer Registers
-            0x4000100 => self.timers.timers[0].current_counter(self.scheduler.current), // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
-            0x4000102 => self.timers.timers[0].read_control_register(), // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
-            0x4000104 => self.timers.timers[1].current_counter(self.scheduler.current), // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
-            0x4000106 => self.timers.timers[1].read_control_register(), // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
-            0x4000108 => self.timers.timers[2].current_counter(self.scheduler.current), // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
-            0x400010A => self.timers.timers[2].read_control_register(), // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
-            0x400010C => self.timers.timers[3].current_counter(self.scheduler.current), // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
-            0x400010E => self.timers.timers[3].read_control_register(), // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000100 => self.timers.timers[0].current_counter(self.scheduler.current),
+            0x4000102 => self.timers.timers[0].read_control_register(),
+            0x4000104 => self.timers.timers[1].current_counter(self.scheduler.current),
+            0x4000106 => self.timers.timers[1].read_control_register(),
+            0x4000108 => self.timers.timers[2].current_counter(self.scheduler.current),
+            0x400010A => self.timers.timers[2].read_control_register(),
+            0x400010C => self.timers.timers[3].current_counter(self.scheduler.current),
+            0x400010E => self.timers.timers[3].read_control_register(),
 
             // Serial Communication (1)
             // https://problemkaputt.de/gbatek-sio-multi-player-mode.htm
-            0x4000120 => 0xFFFF, // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
-            0x4000122 => 0xFFFF, // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
-            0x4000124 => 0xFFFF, // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
-            0x4000126 => 0xFFFF, // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
-            // 0x4000128 => {} // SIO Control Register (SIOCNT), 16 bit register (read + write)
-            // 0x400012A => {} // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
+            0x4000120 => self.serial.sio_data[0],
+            0x4000122 => self.serial.sio_data[1],
+            0x4000124 => self.serial.sio_data[2],
+            0x4000126 => self.serial.sio_data[3],
+            0x4000128 => self.serial.siocnt,
+            0x400012A => self.serial.siomlt_send,
 
             // Keypad Input
             // 0x4000130 => {} // Key Status (KEYINPUT), 16 bit register read only
             // 0x4000132 => {} // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
 
             // Serial Communication (2)
-            // 0x4000134 => {} // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
-            // 0x4000140 => {} // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
-            // 0x4000150 => {} // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
-            // 0x4000154 => {} // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
-            // 0x4000158 => {} // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x4000134 => self.serial.rcnt,
+            0x4000140 => self.serial.joycnt,
+            0x4000150 => self.serial.joy_recv_l,
+            0x4000152 => self.serial.joy_trans_h,
+            0x4000154 => self.serial.joy_trans_l,
+            0x4000156 => self.serial.joy_trans_l,
+            0x4000158 => self.serial.joystat,
 
             //Interrupt, Waitstate, and Power-Down Control
-            0x4000200 => self.interrupt_enable, // Interrupt Enable Register (IE), 16 bit register (read + write)
-            0x4000202 => self.interrupt_flag, // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write)
-            // 0x4000204 => {} // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
-            0x4000208 => self.interrupt_master_enable as u16, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
-            0x4000300 => self.postflg as u16, // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
-            // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-            // 0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
+            0x4000200 => self.interrupt_enable,
+            0x4000202 => self.interrupt_flag,
+            0x4000204 => self.waitcnt,
+            0x4000208 => self.interrupt_master_enable as u16,
+            0x4000300 => self.postflg as u16,
+            0x4000410 => 0x0FF as u16,
 
             // https://problemkaputt.de/gbatek-gba-system-control.htm
-            // 0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
-            // address if (address & 0xFF00FFFF) == 0x04000800 => {} // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
+            address if (address & 0xFF00FFFF) == 0x04000800 => {
+                (self.internal_memory_control >> (8 * (address & 2))) as u16
+            }
 
             // https://github.com/mgba-emu/mgba/blob/master/src/gba/io.c
             // https://codeberg.org/nba-emu/NanoBoyAdvance/src/branch/master/src/nba/src/bus/io.cc
@@ -570,14 +679,14 @@ impl Bus {
             0x4000022 => {} // BG2 Rotation/Scaling Parameter B (dmx) (BG2PB), 16 bit register (write only)
             0x4000024 => {} // BG2 Rotation/Scaling Parameter C (dy) (BG2PC), 16 bit register (write only)
             0x4000026 => {} // BG2 Rotation/Scaling Parameter D (dmy) (BG2PD), 16 bit register (write only)
-            0x4000028 => {} // BG2 Reference Point X-Coordinate (BG2X), 32 bit register (write only)
-            0x400002C => {} // BG2 Reference Point Y-Coordinate (BG2Y), 32 bit register (write only)
+            0x4000028 | 0x400002A => {} // BG2 Reference Point X-Coordinate (BG2X), 32 bit register (write only)
+            0x400002C | 0x400002E => {} // BG2 Reference Point Y-Coordinate (BG2Y), 32 bit register (write only)
             0x4000030 => {} // BG3 Rotation/Scaling Parameter A (dx) (BG3PA), 16 bit register (write only)
             0x4000032 => {} // BG3 Rotation/Scaling Parameter B (dmx) (BG3PB), 16 bit register (write only)
             0x4000034 => {} // BG3 Rotation/Scaling Parameter C (dy) (BG3PC), 16 bit register (write only)
             0x4000036 => {} // BG3 Rotation/Scaling Parameter D (dmy) (BG3PD), 16 bit register (write only)
-            0x4000038 => {} // BG3 Reference Point X-Coordinate (BG3X), 32 bit register (write only)
-            0x400003C => {} // BG3 Reference Point Y-Coordinate (BG3Y), 32 bit register (write only)
+            0x4000038 | 0x400003A => {} // BG3 Reference Point X-Coordinate (BG3X), 32 bit register (write only)
+            0x400003C | 0x400003E => {} // BG3 Reference Point Y-Coordinate (BG3Y), 32 bit register (write only)
             0x4000040 => {} // Window 0 Horizontal Dimensions (WIN0H), 16 bit register (write only)
             0x4000042 => {} // Window 1 Horizontal Dimensions (WIN1H), 16 bit register (write only)
             0x4000044 => {} // Window 0 Vertical Dimensions (WIN0V), 16 bit register (write only)
@@ -605,67 +714,68 @@ impl Bus {
             0x4000084 => {} // Control Sound on/off (NR52) (SOUNDCNT_X), 16 bit register (read + write)
             0x4000088 => {} // BIOS/Sound PWM Control (SOUNDBIAS), 16 bit register (read + write)
             0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
-            0x40000A0 => {} // Channel A FIFO, Data 0-3, (FIFO_A) (write only), 32 bit register
-            0x40000A4 => {} // Channel B FIFO, Data 0-3, (FIFO_B) (write only), 32 bit register
+            0x40000A0 | 0x40000A2 => {} // Channel A FIFO, Data 0-3, (FIFO_A) (write only), 32 bit register
+            0x40000A4 | 0x40000A6 => {} // Channel B FIFO, Data 0-3, (FIFO_B) (write only), 32 bit register
 
             // DMA Transfer Channels
-            0x40000B0 | 0x40000B2 => self.dma.channels[0].write_source_address(address, value), // DMA 0 Source Address (DMA0SAD), 32 bit register (write only)
-            0x40000B4 | 0x40000B6 => self.dma.channels[0].write_destination_address(address, value), // DMA 0 Destination Address (DMA0DAD), 32 bit register (write only)
-            0x40000B8 => self.dma.channels[0].write_word_count(value), // DMA 0 Word Count (DMA0CNT_L), 16 bit register (write only)
+            0x40000B0 | 0x40000B2 => self.dma.channels[0].write_source_address(address, value),
+            0x40000B4 | 0x40000B6 => self.dma.channels[0].write_destination_address(address, value),
+            0x40000B8 => self.dma.channels[0].write_word_count(value),
             0x40000BA => {
                 self.dma.channels[0].write_control_register(value);
                 self.run_dma(0, None);
-            } // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
-            0x40000BC | 0x40000BE => self.dma.channels[1].write_source_address(address, value), // DMA 1 Source Address (DMA1SAD), 32 bit register (write only)
-            0x40000C0 | 0x40000C2 => self.dma.channels[1].write_destination_address(address, value), // DMA 1 Destination Address (DMA1DAD), 32 bit register (write only)
-            0x40000C4 => self.dma.channels[1].write_word_count(value), // DMA 1 Word Count (DMA1CNT_L), 16 bit register (write only)
+            }
+            0x40000BC | 0x40000BE => self.dma.channels[1].write_source_address(address, value),
+            0x40000C0 | 0x40000C2 => self.dma.channels[1].write_destination_address(address, value),
+            0x40000C4 => self.dma.channels[1].write_word_count(value),
             0x40000C6 => {
                 self.dma.channels[1].write_control_register(value);
                 self.run_dma(1, None);
-            } // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
-            0x40000C8 | 0x40000CA => self.dma.channels[2].write_source_address(address, value), // DMA 2 Source Address (DMA2SAD), 32 bit register (write only)
-            0x40000CC | 0x40000CE => self.dma.channels[2].write_destination_address(address, value), // DMA 2 Destination Address (DMA2DAD), 32 bit register (write only)
-            0x40000D0 => self.dma.channels[2].write_word_count(value), // DMA 2 Word Count (DMA2CNT_L), 16 bit register (write only)
+            }
+            0x40000C8 | 0x40000CA => self.dma.channels[2].write_source_address(address, value),
+            0x40000CC | 0x40000CE => self.dma.channels[2].write_destination_address(address, value),
+            0x40000D0 => self.dma.channels[2].write_word_count(value),
             0x40000D2 => {
                 self.dma.channels[2].write_control_register(value);
                 self.run_dma(2, None);
-            } // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
-            0x40000D4 | 0x40000D6 => self.dma.channels[3].write_source_address(address, value), // DMA 3 Source Address (DMA3SAD), 32 bit register (write only)
-            0x40000D8 | 0x40000DA => self.dma.channels[3].write_destination_address(address, value), // DMA 3 Destination Address (DMA3DAD), 32 bit register (write only)
-            0x40000DC => self.dma.channels[3].write_word_count(value), // DMA 3 Word Count (DMA3CNT_L), 16 bit register (write only)
+            }
+            0x40000D4 | 0x40000D6 => self.dma.channels[3].write_source_address(address, value),
+            0x40000D8 | 0x40000DA => self.dma.channels[3].write_destination_address(address, value),
+            0x40000DC => self.dma.channels[3].write_word_count(value),
             0x40000DE => {
                 self.dma.channels[3].write_control_register(value);
                 self.run_dma(3, None);
-            } // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            }
 
             // Timer Registers
-            0x4000100 => self.timers.timers[0].write_counter_register(value), // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
-            0x4000102 => self.timers.timers[0].write_control_register(value, &mut self.scheduler), // Timer 0 Control (TM0CNT_H), 16 bit register (read + write)
-            0x4000104 => self.timers.timers[1].write_counter_register(value), // Timer 1 Counter/Reload (TM1CNT_L), 16 bit register (read + write)
-            0x4000106 => self.timers.timers[1].write_control_register(value, &mut self.scheduler), // Timer 1 Control (TM1CNT_H), 16 bit register (read + write)
-            0x4000108 => self.timers.timers[2].write_counter_register(value), // Timer 2 Counter/Reload (TM2CNT_L), 16 bit register (read + write)
-            0x400010A => self.timers.timers[2].write_control_register(value, &mut self.scheduler), // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
-            0x400010C => self.timers.timers[3].write_counter_register(value), // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
-            0x400010E => self.timers.timers[3].write_control_register(value, &mut self.scheduler), // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
+            0x4000100 => self.timers.timers[0].write_counter_register(value),
+            0x4000102 => self.timers.timers[0].write_control_register(value, &mut self.scheduler),
+            0x4000104 => self.timers.timers[1].write_counter_register(value),
+            0x4000106 => self.timers.timers[1].write_control_register(value, &mut self.scheduler),
+            0x4000108 => self.timers.timers[2].write_counter_register(value),
+            0x400010A => self.timers.timers[2].write_control_register(value, &mut self.scheduler),
+            0x400010C => self.timers.timers[3].write_counter_register(value),
+            0x400010E => self.timers.timers[3].write_control_register(value, &mut self.scheduler),
 
             // Serial Communication (1)
-            0x4000120 => {} // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
-            0x4000122 => {} // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
-            0x4000124 => {} // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
-            0x4000126 => {} // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
-            0x4000128 => {} // SIO Control Register (SIOCNT), 16 bit register (read + write)
-            0x400012A => {} // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
+            0x4000120 => self.serial.sio_data[0] = value,
+            0x4000122 => self.serial.sio_data[1] = value,
+            0x4000124 => self.serial.sio_data[2] = value,
+            0x4000126 => self.serial.sio_data[3] = value,
+            0x4000128 => self.serial.siocnt = value,
+            0x400012A => self.serial.siomlt_send = value,
 
             // Keypad Input
             0x4000132 => {} // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
 
             // Serial Communication (2)
-            0x4000134 => {} // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
-            0x4000136 => {} // Ancient - Infrared Register (Prototypes only) (IR)
-            0x4000140 => {} // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
-            0x4000150 => {} // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
-            0x4000154 => {} // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
-            0x4000158 => {} // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
+            0x4000134 => self.serial.rcnt = value,
+            0x4000140 => self.serial.joycnt = value,
+            0x4000150 => self.serial.joy_recv_l = value,
+            0x4000152 => self.serial.joy_trans_h = value,
+            0x4000154 => self.serial.joy_trans_l = value,
+            0x4000156 => self.serial.joy_trans_l = value,
+            0x4000158 => self.serial.joystat = value,
 
             //Interrupt, Waitstate, and Power-Down Control
             0x4000200 => {
@@ -674,17 +784,19 @@ impl Bus {
 
                     value
                 }
-            } // Interrupt Enable Register (IE), 16 bit register (read + write)
-            0x4000202 => self.interrupt_flag &= !value, // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write), 1's erase bits, write to clear
-            0x4000204 => {} // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
-            0x4000208 => self.interrupt_master_enable = value.get_bit(0) as u32, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
-            0x4000300 => {
-                self.postflg = value.get_bit(0) as u8;
-                self.haltcnt = Some((value >> 8) as u8);
-            } // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
-            0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
-            0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
-            address if (address & 0xFF00FFFF) == 0x04000800 => {} // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
+            }
+            0x4000202 => self.interrupt_flag &= !value,
+            0x4000204 => self.waitcnt = value,
+            0x4000208 => self.interrupt_master_enable = value.get_bit(0) as u32,
+            address if (address & 0xFF00FFFF) == 0x04000800 => {
+                if address.get_bit(1) == 0 {
+                    self.internal_memory_control.clear_bit_range(0..16);
+                    self.internal_memory_control |= value as u32
+                } else {
+                    self.internal_memory_control.clear_bit_range(16..32);
+                    self.internal_memory_control |= (value as u32) << 16
+                }
+            }
             _ => {}
         }
     }

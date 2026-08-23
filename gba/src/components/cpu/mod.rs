@@ -385,12 +385,10 @@ impl Registers {
         self.cpsr = 0x0000001F;
 
         // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/gba.rs#L402
-        self.banked_special_registers[0][0] = 0x03007F00; // sp_usr/sys
-        self.banked_special_registers[1][0] = 0x03007F00; // sp_fiq
-        self.banked_special_registers[2][0] = 0x03007FA0; // sp_irq
+        // https://problemkaputt.de/gbatek-bios-reset-functions.htm
         self.banked_special_registers[3][0] = 0x03007FE0; // sp_svc
-        self.banked_special_registers[4][0] = 0x03007F00; // sp_abt
-        self.banked_special_registers[5][0] = 0x03007F00; // sp_und
+        self.banked_special_registers[2][0] = 0x03007FA0; // sp_irq
+        self.banked_special_registers[0][0] = 0x03007F00; // sp_usr/syy
     }
 
     fn condition_passed(&self, condition: Condition) -> bool {
@@ -700,6 +698,7 @@ impl Arm7tdmi {
         }
     }
 
+    // https://problemkaputt.de/gbatek-bios-reset-functions.htm
     pub fn soft_reset(&mut self, entry_point: u32) {
         self.registers.r[0..13].fill(0);
         self.registers.r[14] = entry_point;
