@@ -51,9 +51,9 @@ impl GBA {
                         &mut self.bus.interrupt_flag,
                     );
 
-                    for timer in 0..2 {
-                        if overflow_mask & (1 << timer) != 0 {
-                            self.bus.apu.on_timer_overflow(timer);
+                    for timer_id in 0..2 {
+                        if overflow_mask & (1 << timer_id) != 0 {
+                            self.bus.sound_fifo(timer_id);
                         }
                     }
                 }

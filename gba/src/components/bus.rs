@@ -18,7 +18,7 @@
 
 use crate::components::{
     apu::APU,
-    dma::DmaChannels,
+    dma::{DmaChannels, TransferType, Trigger},
     gamepak::{BackupChip, GamePak},
     ppu::PPU,
     scheduler::EventScheduler,
@@ -168,7 +168,7 @@ impl Bus {
             0x02 => self.ewram[Bus::ewram_index(address)],
             0x03 => self.iwram[Bus::iwram_index(address)],
             0x04 => {
-                let half_word = self.read_register_16(address & !1);
+                let half_word = self.read_register(address & !1);
                 if address.is_clear(0) {
                     half_word as u8
                 } else {
@@ -232,7 +232,7 @@ impl Bus {
             0x02 => self.ewram[Bus::ewram_index(address)] = value,
             0x03 => self.iwram[Bus::iwram_index(address)] = value,
             0x04 => {
-                let mut half_word = self.read_register_16(address & !1);
+                let mut half_word = self.read_register(address & !1);
                 let new_half_word = if address.is_clear(0) {
                     half_word.clear_bit_range(0..8);
                     half_word | value as u16
@@ -241,7 +241,7 @@ impl Bus {
                     half_word | (value as u16) << 8
                 };
 
-                self.write_register_16(address & !1, new_half_word);
+                self.write_register(address & !1, new_half_word);
             }
             0x05 => {
                 let index = Bus::palette_index(address) & !1;
@@ -272,7 +272,7 @@ impl Bus {
             0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
             0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
             0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
-            0x04 => self.read_register_16(address),
+            0x04 => self.read_register(address),
             0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
             0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
             0x07 => little_endian(&*self.ppu.oam, Bus::oam_index(address)),
@@ -305,7 +305,7 @@ impl Bus {
                 self.iwram[index] = bytes[0];
                 self.iwram[index + 1] = bytes[1];
             }
-            0x04 => self.write_register_16(address, value),
+            0x04 => self.write_register(address, value),
             0x05 => {
                 let index = Bus::palette_index(address);
                 self.ppu.palette_ram[index] = bytes[0];
@@ -341,8 +341,8 @@ impl Bus {
             0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
             0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
             0x04 => {
-                let low_half_word = self.read_register_16(address);
-                let high_half_word = self.read_register_16(address + 2);
+                let low_half_word = self.read_register(address);
+                let high_half_word = self.read_register(address + 2);
 
                 (high_half_word as u32) << 16 | low_half_word as u32
             }
@@ -385,8 +385,8 @@ impl Bus {
                 self.iwram[index + 3] = bytes[3];
             }
             0x04 => {
-                self.write_register_16(address, u16::from_le_bytes([bytes[0], bytes[1]]));
-                self.write_register_16(address + 2, u16::from_le_bytes([bytes[2], bytes[3]]));
+                self.write_register(address, u16::from_le_bytes([bytes[0], bytes[1]]));
+                self.write_register(address + 2, u16::from_le_bytes([bytes[2], bytes[3]]));
             }
             0x05 => {
                 let index = Bus::palette_index(address);
@@ -458,7 +458,7 @@ impl Bus {
     // Take regiisters from an early commit and just map them back for now
     // GBATEK lists 32-bit registers at TWO halfword addresses (e.g. "40000D4h,0D6h").
     // Both halves are independently addressable, so each gets its own table entry (0x40000D4 = bits 0-15, 0x40000D6 = bits 16-31)
-    fn read_register_16(&mut self, address: u32) -> u16 {
+    fn read_register(&mut self, address: u32) -> u16 {
         match address {
             // LCD I/O Registers
             // 0x4000000 => {} // LCD Control (DISPCNT), 16 bit register (read + write)
@@ -503,10 +503,10 @@ impl Bus {
             // 0x40000A8 => {} // Not Used
 
             // DMA Transfer Channels
-            // 0x40000BA => {} // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
-            // 0x40000C6 => {} // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
-            // 0x40000D2 => {} // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
-            // 0x40000DE => {} // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            0x40000BA => self.dma.channels[0].read_control_register(), // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
+            0x40000C6 => self.dma.channels[1].read_control_register(), // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
+            0x40000D2 => self.dma.channels[2].read_control_register(), // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
+            0x40000DE => self.dma.channels[3].read_control_register(), // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
             // 0x40000E0 => {} // Not Used
 
             // Timer Registers
@@ -521,10 +521,10 @@ impl Bus {
             // 0x4000110 => {} // Not Used
 
             // Serial Communication (1)
-            // 0x4000120 => {} // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
-            // 0x4000122 => {} // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
-            // 0x4000124 => {} // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
-            // 0x4000126 => {} // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
+            0x4000120 => 0xFFFF, // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
+            0x4000122 => 0xFFFF, // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
+            0x4000124 => 0xFFFF, // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
+            0x4000126 => 0xFFFF, // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
             // 0x4000128 => {} // SIO Control Register (SIOCNT), 16 bit register (read + write)
             // 0x400012A => {} // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
             // 0x400012C => {} // Not Used
@@ -535,7 +535,7 @@ impl Bus {
 
             // Serial Communication (2)
             // 0x4000134 => {} // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
-            // 0x4000136 => {} // Ancient - Infrared Register (Prototypes only) (IR)
+            // 0x4000136 => {}, // Ancient - Infrared Register (Prototypes only) (IR)
             // 0x4000138 => {} // Not Used
             // 0x4000140 => {} // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
             // 0x4000142 => {} // Not Used
@@ -559,11 +559,11 @@ impl Bus {
             // 0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
             // 0x4000804 => {} // Not used
             // address if (address & 0xFF00FFFF) == 0x04000800 => {} // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
-            _ => 0 as u16, // ***CHANGE***
+            _ => 0 as u16,
         }
     }
 
-    fn write_register_16(&mut self, address: u32, mut value: u16) {
+    fn write_register(&mut self, address: u32, mut value: u16) {
         match address {
             // LCD I/O Registers
             0x4000000 => {} // LCD Control (DISPCNT), 16 bit register (read + write)
@@ -635,22 +635,35 @@ impl Bus {
             0x40000A8 => {} // Not Used
 
             // DMA Transfer Channels
-            0x40000B0 => {} // DMA 0 Source Address (DMA0SAD), 32 bit register (write only)
-            0x40000B4 => {} // DMA 0 Destination Address (DMA0DAD), 32 bit register (write only)
-            0x40000B8 => {} // DMA 0 Word Count (DMA0CNT_L), 16 bit register (write only)
-            0x40000BA => {} // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
-            0x40000BC => {} // DMA 1 Source Address (DMA1SAD), 32 bit register (write only)
-            0x40000C0 => {} // DMA 1 Destination Address (DMA1DAD), 32 bit register (write only)
-            0x40000C6 => {} // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
-            0x40000C8 => {} // DMA 2 Source Address (DMA2SAD), 32 bit register (write only)
-            0x40000CC => {} // DMA 2 Destination Address (DMA2DAD), 32 bit register (write only)
-            0x40000D0 => {} // DMA 2 Word Count (DMA2CNT_L), 16 bit register (write only)
-            0x40000D2 => {} // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
-            0x40000D4 => {} // DMA 3 Source Address (DMA3SAD), 32 bit register (write only)
-            0x40000D8 => {} // DMA 3 Destination Address (DMA3DAD), 32 bit register (write only)
-            0x40000DC => {} // DMA 3 Word Count (DMA3CNT_L), 16 bit register (write only)
-            0x40000DE => {} // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
-            0x40000E0 => {} // Not Used
+            0x40000B0 | 0x40000B2 => self.dma.channels[0].write_source_address(address, value), // DMA 0 Source Address (DMA0SAD), 32 bit register (write only)
+            0x40000B4 | 0x40000B6 => self.dma.channels[0].write_destination_address(address, value), // DMA 0 Destination Address (DMA0DAD), 32 bit register (write only)
+            0x40000B8 => self.dma.channels[0].write_word_count(value), // DMA 0 Word Count (DMA0CNT_L), 16 bit register (write only)
+            0x40000BA => {
+                self.dma.channels[0].write_control_register(value);
+                self.run_dma(0, None);
+            } // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
+            0x40000BC | 0x40000BE => self.dma.channels[1].write_source_address(address, value), // DMA 1 Source Address (DMA1SAD), 32 bit register (write only)
+            0x40000C0 | 0x40000C2 => self.dma.channels[1].write_destination_address(address, value), // DMA 1 Destination Address (DMA1DAD), 32 bit register (write only)
+            0x40000C4 => self.dma.channels[1].write_word_count(value), // DMA 1 Word Count (DMA1CNT_L), 16 bit register (write only)
+            0x40000C6 => {
+                self.dma.channels[1].write_control_register(value);
+                self.run_dma(1, None);
+            } // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
+            0x40000C8 | 0x40000CA => self.dma.channels[2].write_source_address(address, value), // DMA 2 Source Address (DMA2SAD), 32 bit register (write only)
+            0x40000CC | 0x40000CE => self.dma.channels[2].write_destination_address(address, value), // DMA 2 Destination Address (DMA2DAD), 32 bit register (write only)
+            0x40000D0 => self.dma.channels[2].write_word_count(value), // DMA 2 Word Count (DMA2CNT_L), 16 bit register (write only)
+            0x40000D2 => {
+                self.dma.channels[2].write_control_register(value);
+                self.run_dma(2, None);
+            } // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
+            0x40000D4 | 0x40000D6 => self.dma.channels[3].write_source_address(address, value), // DMA 3 Source Address (DMA3SAD), 32 bit register (write only)
+            0x40000D8 | 0x40000DA => self.dma.channels[3].write_destination_address(address, value), // DMA 3 Destination Address (DMA3DAD), 32 bit register (write only)
+            0x40000DC => self.dma.channels[3].write_word_count(value), // DMA 3 Word Count (DMA3CNT_L), 16 bit register (write only)
+            0x40000DE => {
+                self.dma.channels[3].write_control_register(value);
+                self.run_dma(3, None);
+            } // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
+            0x40000E0 => {}                                            // Not Used
 
             // Timer Registers
             0x4000100 => self.timers.timers[0].write_counter_register(value), // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
@@ -733,7 +746,47 @@ impl Bus {
         self.haltcnt.take()
     }
 
-    pub fn run_dma(&mut self, channel: usize) {}
+    pub fn run_dma(&mut self, channel: usize, trigger: Option<Trigger>) {
+        if !self.dma.channels[channel].start_transfer(trigger) {
+            return;
+        }
+
+        if (0x08..=0x0F).contains(&(self.dma.channels[channel].current_source_address >> 24))
+            && (0x08..=0x0F)
+                .contains(&(self.dma.channels[channel].current_destination_address >> 24))
+        {
+            self.idle(4);
+        } else {
+            self.idle(2);
+        }
+
+        let mut access_type = AccessType::Nonsequential;
+        while self.dma.channels[channel].current_word_count != 0 {
+            let source_address = self.dma.channels[channel].current_source_address;
+            let destination_address = self.dma.channels[channel].current_destination_address;
+
+            match self.dma.channels[channel].transfer_type {
+                TransferType::Halfword => {
+                    let halfword = self.read_u16(source_address, access_type);
+                    self.write_u16(destination_address, halfword, access_type);
+                }
+                TransferType::Word => {
+                    let word = self.read_u32(source_address, access_type);
+                    self.write_u32(destination_address, word, access_type);
+                }
+            }
+
+            access_type = AccessType::Sequential;
+            self.dma.channels[channel].update_address_pointers();
+
+            self.dma.channels[channel].current_word_count -= 1;
+        }
+
+        self.dma.channels[channel].reload_destination_address();
+        self.dma.channels[channel].transfer_complete(&mut self.interrupt_flag);
+    }
+
+    pub fn sound_fifo(&mut self, timer_id: u8) {}
 }
 
 #[cfg(test)]
@@ -786,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn test_if_byte_write_preserves_other_byte() {
+    fn test_preservation_other_byte() {
         let gamepak = GamePak::mock();
         let mut bus = Bus::new(gamepak);
 

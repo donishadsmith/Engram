@@ -27,6 +27,22 @@ pub fn create_bus() -> Bus {
     bus
 }
 
+pub fn get_word_mask(address: u32) -> u32 {
+    if address.get_bit_range(0..2) & 3 == 0 {
+        0x0000FFFF
+    } else {
+        0xFFFF0000
+    }
+}
+
+pub fn get_halfword_shift(address: u32) -> u8 {
+    if address.get_bit_range(0..2) & 3 == 0 {
+        0
+    } else {
+        16
+    }
+}
+
 // Inspired to create a trait for bit setting after seeing this:
 // https://github.com/michelhe/rustboyadvance-ng/blob/master/arm7tdmi/src/psr.rs
 pub trait BitOps:
