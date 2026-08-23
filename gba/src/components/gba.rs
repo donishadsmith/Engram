@@ -13,10 +13,13 @@ pub struct GBA {
 
 impl GBA {
     pub fn boot(gamepak: GamePak) -> Self {
-        Self {
-            bus: Bus::new(gamepak),
-            cpu: Arm7tdmi::new(),
-        }
+        let mut bus = Bus::new(gamepak);
+        bus.skip_boot();
+
+        let mut cpu = Arm7tdmi::new();
+        cpu.skip_boot();
+
+        Self { bus, cpu }
     }
 
     pub fn run(&mut self) {

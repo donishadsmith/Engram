@@ -1,5 +1,7 @@
 use std::{fs::write, io::Error, path::PathBuf};
 
+// https://problemkaputt.de/gbatek-gba-cart-real-time-clock-rtc.htm
+// https://problemkaputt.de/gbatek-gba-cart-backup-flash-rom.htm
 #[derive(PartialEq, Eq)]
 pub struct Flash {
     pub memory: Vec<u8>,

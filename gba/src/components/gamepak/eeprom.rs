@@ -1,5 +1,6 @@
 use std::{fs::write, io::Error, path::PathBuf};
 
+// https://problemkaputt.de/gbatek-gba-cart-backup-eeprom.htm
 const EEPROM_64KBIT: usize = 8192;
 pub const EEPROM_4KBIT: usize = 512;
 

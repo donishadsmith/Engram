@@ -455,9 +455,6 @@ impl Bus {
         if width == 32 { first + 3 } else { first }
     }
 
-    // Take regiisters from an early commit and just map them back for now
-    // GBATEK lists 32-bit registers at TWO halfword addresses (e.g. "40000D4h,0D6h").
-    // Both halves are independently addressable, so each gets its own table entry (0x40000D4 = bits 0-15, 0x40000D6 = bits 16-31)
     fn read_register(&mut self, address: u32) -> u16 {
         match address {
             // LCD I/O Registers
@@ -471,43 +468,31 @@ impl Bus {
             // 0x400000E => {} // BG3 Control (BG3CNT) 16 bit register (read + write)
             // 0x4000048 => {} // Inside of Window 0 and 1 (WININ), 16 bit register (read + write)
             // 0x400004A => {} // Inside of OBJ Window & Outside of Windows 2 (WINOUT) (read + write)
-            // 0x400004E => {} // Not Used
             // 0x4000050 => {} // Color Special Effects Selection (BLDCNT), 16 bit register (read + write)
             // 0x4000052 => {} // Alpha Blending Coefficients (BLDALPHA), 16 bit register (read + write)
-            // 0x4000056 => {} // Not Used
 
             // Sound Registers
             // 0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)
             // 0x4000062 => {} // Channel 1 Duty/Length/Envelope (NR11, NR12) (SOUND1CNT_H), 16 bit register (read + write)
             // 0x4000064 => {} // Channel 1 Frequency/Control (NR13, NR14) (SOUND1CNT_X), 16 bit register (read + write)
-            // 0x4000066 => {} // Not Used
             // 0x4000068 => {} // Channel 2 Duty/Length/Envelope (NR21, NR22) (SOUND2CNT_L), 16 bit register (read + write)
-            // 0x400006A => {} // Not Used
             // 0x400006C => {} // Channel 2 Frequency/Control (NR23, NR24) (SOUND2CNT_H), 16 bit register (read + write)
-            // 0x400006E => {} // Not Used
             // 0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
             // 0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
             // 0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
-            // 0x4000076 => {} // Not Used
             // 0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
-            // 0x400007A => {} // Not Used
             // 0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
-            // 0x400007E => {} // Not Used
             // 0x4000080 => {} // Control Stereo/Volume/Enable (NR50, NR51) (SOUNDCNT_L), 16 bit register (read + write)
             // 0x4000082 => {} // Control Mixing/DMA Control (SOUNDCNT_H), 16 bit register (read + write)
             // 0x4000084 => {} // Control Sound on/off (NR52) (SOUNDCNT_X), 16 bit register (read + write)
-            // 0x4000086 => {} // Not Used
             // 0x4000088 => {} // BIOS/Sound PWM Control (SOUNDBIAS), 16 bit register (read + write)
-            // 0x400008A => {} // Not Used
             // 0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
-            // 0x40000A8 => {} // Not Used
 
             // DMA Transfer Channels
             0x40000BA => self.dma.channels[0].read_control_register(), // DMA 0 Control (DMA0CNT_H), 16 bit register (read + write)
             0x40000C6 => self.dma.channels[1].read_control_register(), // DMA 1 Control (DMA1CNT_H), 16 bit register (read + write)
             0x40000D2 => self.dma.channels[2].read_control_register(), // DMA 2 Control (DMA2CNT_H), 16 bit register (read + write)
             0x40000DE => self.dma.channels[3].read_control_register(), // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
-            // 0x40000E0 => {} // Not Used
 
             // Timer Registers
             0x4000100 => self.timers.timers[0].current_counter(self.scheduler.current), // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
@@ -518,16 +503,15 @@ impl Bus {
             0x400010A => self.timers.timers[2].read_control_register(), // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
             0x400010C => self.timers.timers[3].current_counter(self.scheduler.current), // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
             0x400010E => self.timers.timers[3].read_control_register(), // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
-            // 0x4000110 => {} // Not Used
 
             // Serial Communication (1)
+            // https://problemkaputt.de/gbatek-sio-multi-player-mode.htm
             0x4000120 => 0xFFFF, // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
             0x4000122 => 0xFFFF, // SIO Data 1 (1st Child) (Multi-Player Mode) (SIOMULTI1), 16 bit register (read + write)
             0x4000124 => 0xFFFF, // SIO Data 2 (2nd Child) (Multi-Player Mode) (SIOMULTI2), 16 bit register (read + write)
             0x4000126 => 0xFFFF, // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
             // 0x4000128 => {} // SIO Control Register (SIOCNT), 16 bit register (read + write)
             // 0x400012A => {} // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
-            // 0x400012C => {} // Not Used
 
             // Keypad Input
             // 0x4000130 => {} // Key Status (KEYINPUT), 16 bit register read only
@@ -535,31 +519,32 @@ impl Bus {
 
             // Serial Communication (2)
             // 0x4000134 => {} // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
-            // 0x4000136 => {}, // Ancient - Infrared Register (Prototypes only) (IR)
-            // 0x4000138 => {} // Not Used
             // 0x4000140 => {} // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
-            // 0x4000142 => {} // Not Used
             // 0x4000150 => {} // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
             // 0x4000154 => {} // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
             // 0x4000158 => {} // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
-            // 0x400015A => {} // Not Used
 
             //Interrupt, Waitstate, and Power-Down Control
             0x4000200 => self.interrupt_enable, // Interrupt Enable Register (IE), 16 bit register (read + write)
             0x4000202 => self.interrupt_flag, // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write)
             // 0x4000204 => {} // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
-            // 0x4000206 => {} // Not used
             0x4000208 => self.interrupt_master_enable as u16, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
-            // 0x400020A => {} // Not used
             0x4000300 => self.postflg as u16, // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
             // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-            // 0x4000302 => {} // Not used
             // 0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
-            // 0x4000411 => {} // Not used
+
+            // https://problemkaputt.de/gbatek-gba-system-control.htm
             // 0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
-            // 0x4000804 => {} // Not used
             // address if (address & 0xFF00FFFF) == 0x04000800 => {} // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
-            _ => 0 as u16,
+
+            // https://github.com/mgba-emu/mgba/blob/master/src/gba/io.c
+            // https://codeberg.org/nba-emu/NanoBoyAdvance/src/branch/master/src/nba/src/bus/io.cc
+            0x4000066 | 0x400006A | 0x400006E | 0x4000076 | 0x400007A | 0x400007E | 0x4000086
+            | 0x400008A | 0x4000136 | 0x4000142 | 0x400015A | 0x4000206 | 0x4000302 => 0,
+            0x40000B8 | 0x40000C4 | 0x40000D0 | 0x40000DC => 0,
+            0x400020A => 0,
+
+            _ => (self.last_instruction_read >> (8 * (address & 2))) as u16,
         }
     }
 
@@ -600,39 +585,28 @@ impl Bus {
             0x4000048 => {} // Inside of Window 0 and 1 (WININ), 16 bit register (read + write)
             0x400004A => {} // Inside of OBJ Window & Outside of Windows 2 (WINOUT), 16 bit register (read + write)
             0x400004C => {} // Mosaic Size (MOSAIC), 16 bit register (write only)
-            0x400004E => {} // Not Used
             0x4000050 => {} // Color Special Effects Selection (BLDCNT), 16 bit register (read + write)
             0x4000052 => {} // Alpha Blending Coefficients (BLDALPHA), 16 bit register (read + write)
             0x4000054 => {} // Brightness (Fade-In/Out) Coefficient (BLDY), 16 bit register (write only)
-            0x4000056 => {} // Not Used
 
             // Sound Registers
             0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)
             0x4000062 => {} // Channel 1 Duty/Length/Envelope (NR11, NR12) (SOUND1CNT_H), 16 bit register (read + write)
             0x4000064 => {} // Channel 1 Frequency/Control (NR13, NR14) (SOUND1CNT_X), 16 bit register (read + write)
-            0x4000066 => {} // Not Used
             0x4000068 => {} // Channel 2 Duty/Length/Envelope (NR21, NR22) (SOUND2CNT_L), 16 bit register (read + write)
-            0x400006A => {} // Not Used
             0x400006C => {} // Channel 2 Frequency/Control (NR23, NR24) (SOUND2CNT_H), 16 bit register (read + write)
-            0x400006E => {} // Not Used
             0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
             0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
             0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
-            0x4000076 => {} // Not Used
             0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
-            0x400007A => {} // Not Used
             0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
-            0x400007E => {} // Not Used
             0x4000080 => {} // Control Stereo/Volume/Enable (NR50, NR51) (SOUNDCNT_L), 16 bit register (read + write)
             0x4000082 => {} // Control Mixing/DMA Control (SOUNDCNT_H), 16 bit register (read + write)
             0x4000084 => {} // Control Sound on/off (NR52) (SOUNDCNT_X), 16 bit register (read + write)
-            0x4000086 => {} // Not Used
             0x4000088 => {} // BIOS/Sound PWM Control (SOUNDBIAS), 16 bit register (read + write)
-            0x400008A => {} // Not Used
             0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
             0x40000A0 => {} // Channel A FIFO, Data 0-3, (FIFO_A) (write only), 32 bit register
             0x40000A4 => {} // Channel B FIFO, Data 0-3, (FIFO_B) (write only), 32 bit register
-            0x40000A8 => {} // Not Used
 
             // DMA Transfer Channels
             0x40000B0 | 0x40000B2 => self.dma.channels[0].write_source_address(address, value), // DMA 0 Source Address (DMA0SAD), 32 bit register (write only)
@@ -663,7 +637,6 @@ impl Bus {
                 self.dma.channels[3].write_control_register(value);
                 self.run_dma(3, None);
             } // DMA 3 Control (DMA3CNT_H), 16 bit register (read + write)
-            0x40000E0 => {}                                            // Not Used
 
             // Timer Registers
             0x4000100 => self.timers.timers[0].write_counter_register(value), // Timer 0 Counter/Reload (TM0CNT_L), 16 bit register (read + write)
@@ -674,8 +647,6 @@ impl Bus {
             0x400010A => self.timers.timers[2].write_control_register(value, &mut self.scheduler), // Timer 2 Control (TM2CNT_H), 16 bit register (read + write)
             0x400010C => self.timers.timers[3].write_counter_register(value), // Timer 3 Counter/Reload (TM3CNT_L), 16 bit register (read + write)
             0x400010E => self.timers.timers[3].write_control_register(value, &mut self.scheduler), // Timer 3 Control (TM3CNT_H), 16 bit register (read + write)
-            0x4000110 => {} // Not Used
-            0x4000112 => {} // Not Used
 
             // Serial Communication (1)
             0x4000120 => {} // SIO Data (Normal-32bit Mode; shared with SIO Data 0 (Parent) (SIODATA32). SIO Data is a 32 bit register and SIO Data 0 (Parent) (Multi-Player Mode) is a 16 bit register (read + write) (SIOMULTI0)
@@ -684,7 +655,6 @@ impl Bus {
             0x4000126 => {} // SIO Data 3 (3rd Child) (Multi-Player Mode) (SIOMULTI3), 16 bit register (read + write)
             0x4000128 => {} // SIO Control Register (SIOCNT), 16 bit register (read + write)
             0x400012A => {} // SIO Data (Local of MultiPlayer; shared with SIODATA8) (SIOMLT_SEND), 16 bit register (read + write); SIO Data (Normal-8bit and UART Mode) (SIODATA8), 16 bit register (read + write)
-            0x400012C => {} // Not Used
 
             // Keypad Input
             0x4000132 => {} // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
@@ -692,13 +662,10 @@ impl Bus {
             // Serial Communication (2)
             0x4000134 => {} // SIO Mode Select/General Purpose Data (RCNT), 16 bit register (read + write)
             0x4000136 => {} // Ancient - Infrared Register (Prototypes only) (IR)
-            0x4000138 => {} // Not Used
             0x4000140 => {} // SIO JOY Bus Control (JOYCNT), 16 bit register (read + write)
-            0x4000142 => {} // Not Used
             0x4000150 => {} // SIO JOY Bus Receive Data (JOY_RECV), 32 bit register (read + write)
             0x4000154 => {} // SIO JOY Bus Transmit Data (JOY_TRANS), 32 bit register (read + write)
             0x4000158 => {} // SIO JOY Bus Receive Status (JOYSTAT), 16 bit register (read + maybe write?)
-            0x400015A => {} // Not Used
 
             //Interrupt, Waitstate, and Power-Down Control
             0x4000200 => {
@@ -710,18 +677,13 @@ impl Bus {
             } // Interrupt Enable Register (IE), 16 bit register (read + write)
             0x4000202 => self.interrupt_flag &= !value, // Interrupt Request Flags / IRQ Acknowledge (IF), 16 bit register (read + write), 1's erase bits, write to clear
             0x4000204 => {} // Game Pak Waitstate Control (AITCNT), 16 bit register (read + write)
-            0x4000206 => {} // Not used
             0x4000208 => self.interrupt_master_enable = value.get_bit(0) as u32, // Interrupt Master Enable Register (IME), 16 bit register (read + write)
-            0x400020A => {}                                                      // Not used
             0x4000300 => {
                 self.postflg = value.get_bit(0) as u8;
                 self.haltcnt = Some((value >> 8) as u8);
             } // Undocumented - Post Boot Flag (POSTFLG), 8 bit register (read + write)
-            0x4000302 => {}                                                      // Not used
             0x4000410 => {} // Undocumented - Purpose Unknown / Bug ??? 0FFh
-            0x4000411 => {} // Not used
             0x4000800 => {} // Undocumented - Internal Memory Control, 32 bit register (read + write)
-            0x4000804 => {} // Not used
             address if (address & 0xFF00FFFF) == 0x04000800 => {} // Mirrors of 4000800h (repeated each 64K), 32 bit (read + write)
             _ => {}
         }

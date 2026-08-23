@@ -1,5 +1,6 @@
 use std::{fs::write, io::Error, path::PathBuf};
 
+// https://problemkaputt.de/gbatek-gba-cart-backup-sram-fram.htm
 #[derive(PartialEq, Eq)]
 pub struct Sram {
     pub memory: Vec<u8>,

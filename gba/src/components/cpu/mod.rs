@@ -384,9 +384,13 @@ impl Registers {
         self.r[15] = 0x08000000;
         self.cpsr = 0x0000001F;
 
-        self.banked_special_registers[3][0] = 0x03007FE0; // sp_svc
-        self.banked_special_registers[2][0] = 0x03007FA0; // sp_irq
+        // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/gba.rs#L402
         self.banked_special_registers[0][0] = 0x03007F00; // sp_usr/sys
+        self.banked_special_registers[1][0] = 0x03007F00; // sp_fiq
+        self.banked_special_registers[2][0] = 0x03007FA0; // sp_irq
+        self.banked_special_registers[3][0] = 0x03007FE0; // sp_svc
+        self.banked_special_registers[4][0] = 0x03007F00; // sp_abt
+        self.banked_special_registers[5][0] = 0x03007F00; // sp_und
     }
 
     fn condition_passed(&self, condition: Condition) -> bool {
@@ -507,7 +511,6 @@ impl Arm7tdmi {
     // https://github.com/Warpten/CowBite/blob/master/GBA.cpp#L70
     pub fn skip_boot(&mut self) {
         self.registers.reset_to_boot();
-        self.pipeline.flush();
     }
 
     pub fn step(&mut self, bus: &mut Bus) {
