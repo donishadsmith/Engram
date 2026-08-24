@@ -1,4 +1,5 @@
 // https://problemkaputt.de/gbatek-gba-cart-backup-eeprom.htm
+// https://densinh.github.io/DenSinH/emulation/2021/02/01/gba-eeprom.html
 const EEPROM_64KBIT: usize = 8192;
 pub const EEPROM_4KBIT: usize = 512;
 
