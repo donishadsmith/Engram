@@ -6,6 +6,11 @@ authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
 
 [dependencies]
+chrono = "0.4.45"
+cpal = "0.18.2"
+macroquad = "0.4.16"
+rfd = "0.17.2"
+rtrb = "0.4.0"
 
 [profile.dev]
 opt-level = 1

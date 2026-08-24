@@ -2,7 +2,7 @@
 use crate::components::{
     bus::Bus,
     cpu::{Arm7tdmi, HaltState},
-    gamepak::GamePak,
+    gamepak::{BackupChip, GamePak},
     scheduler::Event,
 };
 
@@ -15,6 +15,7 @@ impl GBA {
     pub fn boot(gamepak: GamePak) -> Self {
         let mut bus = Bus::new(gamepak);
         bus.skip_boot();
+        bus.scheduler.initialize_events();
 
         let mut cpu = Arm7tdmi::new();
         cpu.skip_boot();
@@ -22,7 +23,7 @@ impl GBA {
         Self { bus, cpu }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, keypad: [bool; 10]) {
         let bus = &mut self.bus;
 
         if self.cpu.is_halted() {
@@ -38,6 +39,8 @@ impl GBA {
         self.handle_events();
 
         self.check_interrupts();
+
+        self.bus.keypad.poll(keypad, &mut self.bus.interrupt_flag);
     }
 
     fn handle_events(&mut self) {
@@ -71,5 +74,25 @@ impl GBA {
                 self.cpu.raise_irq(&mut self.bus)
             }
         }
+    }
+
+    pub fn backup_save(&self) -> Result<(), std::io::Error> {
+        self.bus.gamepak.write_sav()?;
+
+        Ok(())
+    }
+
+    pub fn backup_ram_updated(&mut self) -> bool {
+        let updated = match &mut self.bus.gamepak.backup_chip {
+            BackupChip::Eeprom(eeprom) => &mut eeprom.updated,
+            BackupChip::Sram(sram) => &mut sram.updated,
+            BackupChip::Flash(flash) => &mut flash.updated,
+            BackupChip::None => &mut false,
+        };
+
+        let was_updated = *updated;
+        *updated = false;
+
+        was_updated
     }
 }

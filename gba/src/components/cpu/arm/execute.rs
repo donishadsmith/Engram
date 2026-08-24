@@ -1014,6 +1014,7 @@ mod tests {
             Condition, ProcessorMode,
             arm::decode::{ArmInstruction, DataOp, decode_arm},
         },
+        gamepak::BackupType,
         utils::create_bus,
     };
 
@@ -1021,7 +1022,7 @@ mod tests {
     fn test_mov() {
         // echo "movs r1, #42" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
         let mut registers = Registers::new();
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         let instruction: u32 = 0xe3b0102a;
         let decoded_arm = decode_arm(instruction);
 
@@ -1053,7 +1054,7 @@ mod tests {
             ORR R0,R0,#new_mode ; Select new mode
             MSR CPSR,R0 ; Write
         */
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
         registers.cpsr |= ProcessorMode::Und as u32;
         registers.r[13] = 0xFFFFFFFF;
@@ -1092,7 +1093,7 @@ mod tests {
 
     #[test]
     fn test_branch_and_exchange() {
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         // echo "mov r1, #101" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o

@@ -8,7 +8,7 @@ use eeprom::{EEPROM_4KBIT, Eeprom};
 use flash::Flash;
 use sram::Sram;
 
-use crate::components::utils::BitOps;
+use crate::components::{gamepak::flash::FlashSize, utils::BitOps};
 use std::{
     fs::{read, write},
     io::Error,
@@ -34,9 +34,11 @@ impl BackupType {
                 BackupChip::Sram(Sram::new(vec![0u8; kilobytes(32)]))
             }
             BackupType::Flash | BackupType::Flash512 => {
-                BackupChip::Flash(Flash::new(vec![0u8; kilobytes(64)]))
+                BackupChip::Flash(Flash::new(vec![0xFFu8; kilobytes(64)], FlashSize::Flash64k))
             }
-            BackupType::Flash1M => BackupChip::Flash(Flash::new(vec![0u8; kilobytes(128)])),
+            BackupType::Flash1M => {
+                BackupChip::Flash(Flash::new(vec![0u8; kilobytes(128)], FlashSize::Flash128k))
+            }
             BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0u8; EEPROM_4KBIT])), // default to the small version
             BackupType::None => BackupChip::None,
         }
@@ -131,15 +133,11 @@ impl GamePak {
         Ok(())
     }
 
-    pub fn write_sav(&mut self) -> Result<(), Error> {
-        match &mut self.backup_chip {
-            BackupChip::Eeprom(eeprom) => {
-                write_sav(&eeprom.memory, &mut eeprom.updated, &self.sav_path)?
-            }
-            BackupChip::Sram(sram) => write_sav(&sram.memory, &mut sram.updated, &self.sav_path)?,
-            BackupChip::Flash(flash) => {
-                write_sav(&flash.memory, &mut flash.updated, &self.sav_path)?
-            }
+    pub fn write_sav(&self) -> Result<(), Error> {
+        match &self.backup_chip {
+            BackupChip::Eeprom(eeprom) => write(&self.sav_path, &eeprom.memory)?,
+            BackupChip::Sram(sram) => write(&self.sav_path, &sram.memory)?,
+            BackupChip::Flash(flash) => write(&self.sav_path, &flash.memory)?,
             BackupChip::None => {}
         }
 
@@ -152,11 +150,11 @@ impl GamePak {
         self.rom.get(index).copied().unwrap_or(0)
     }
 
-    pub fn mock() -> Self {
+    pub fn mock(backup_type: BackupType) -> Self {
         Self {
             rom: vec![8u8; kilobytes(32000)],
             sav_path: PathBuf::from("mock.sav"),
-            backup_chip: BackupType::to_enum(BackupType::Flash1M),
+            backup_chip: BackupType::to_enum(backup_type),
         }
     }
 }
@@ -165,13 +163,4 @@ pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>) {
     let n = save_buffer.len().min(memory.len());
 
     memory[..n].copy_from_slice(&save_buffer[..n]);
-}
-
-pub fn write_sav(memory: &Vec<u8>, updated: &mut bool, sav_path: &PathBuf) -> Result<(), Error> {
-    if *updated {
-        write(&sav_path, &memory)?;
-        *updated = false;
-    }
-
-    Ok(())
 }

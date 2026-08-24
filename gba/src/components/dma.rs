@@ -72,7 +72,7 @@ impl TransferType {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum IncrementMode {
+enum IncrementDmaMode {
     Increment,
     Decrement,
     Fixed,
@@ -80,14 +80,14 @@ enum IncrementMode {
     Prohibited,
 }
 
-impl IncrementMode {
-    fn from_bit(bit: u8, destination_control: bool) -> IncrementMode {
+impl IncrementDmaMode {
+    fn from_bit(bit: u8, destination_control: bool) -> IncrementDmaMode {
         match bit {
-            0 => IncrementMode::Increment,
-            1 => IncrementMode::Decrement,
-            2 => IncrementMode::Fixed,
-            3 if destination_control => IncrementMode::Reload,
-            _ => IncrementMode::Prohibited,
+            0 => IncrementDmaMode::Increment,
+            1 => IncrementDmaMode::Decrement,
+            2 => IncrementDmaMode::Fixed,
+            3 if destination_control => IncrementDmaMode::Reload,
+            _ => IncrementDmaMode::Prohibited,
         }
     }
 }
@@ -106,8 +106,8 @@ pub struct Dma {
     pub current_word_count: u32,
     word_count_register: u16,
     control_register: u16,
-    source_increment_mode: IncrementMode,
-    destination_increment_mode: IncrementMode,
+    source_increment_mode: IncrementDmaMode,
+    destination_increment_mode: IncrementDmaMode,
     start_timing: StartTiming,
 }
 
@@ -127,8 +127,8 @@ impl Dma {
             word_count_register: 0,
             current_word_count: 0,
             control_register: 0,
-            source_increment_mode: IncrementMode::Increment,
-            destination_increment_mode: IncrementMode::Increment,
+            source_increment_mode: IncrementDmaMode::Increment,
+            destination_increment_mode: IncrementDmaMode::Increment,
             start_timing: StartTiming::Immediately,
         }
     }
@@ -158,9 +158,9 @@ impl Dma {
         self.completion_interrupt_enabled = value.is_set(14);
         self.start_timing = StartTiming::from_bit(value.get_bit_range(12..14) as u8, self.id);
         self.destination_increment_mode =
-            IncrementMode::from_bit(value.get_bit_range(5..7) as u8, true);
+            IncrementDmaMode::from_bit(value.get_bit_range(5..7) as u8, true);
         self.source_increment_mode =
-            IncrementMode::from_bit(value.get_bit_range(7..9) as u8, false);
+            IncrementDmaMode::from_bit(value.get_bit_range(7..9) as u8, false);
         self.gamepak_transfer = GamepakTransfer::from_bit(value.is_set(11), self.id);
         self.transfer_type = TransferType::from_bit(value.is_set(10));
         self.repeat = value.is_set(9);
@@ -181,8 +181,8 @@ impl Dma {
         }
 
         if self.start_timing == StartTiming::None
-            || self.source_increment_mode == IncrementMode::Prohibited
-            || self.destination_increment_mode == IncrementMode::Prohibited
+            || self.source_increment_mode == IncrementDmaMode::Prohibited
+            || self.destination_increment_mode == IncrementDmaMode::Prohibited
         {
             return false;
         }
@@ -245,24 +245,24 @@ impl Dma {
         };
 
         self.current_source_address = match self.source_increment_mode {
-            IncrementMode::Increment => self.current_source_address.wrapping_add(offset),
-            IncrementMode::Decrement => self.current_source_address.wrapping_sub(offset),
-            IncrementMode::Fixed => self.current_source_address,
+            IncrementDmaMode::Increment => self.current_source_address.wrapping_add(offset),
+            IncrementDmaMode::Decrement => self.current_source_address.wrapping_sub(offset),
+            IncrementDmaMode::Fixed => self.current_source_address,
             _ => unreachable!(),
         };
 
         self.current_destination_address = match self.destination_increment_mode {
-            IncrementMode::Increment | IncrementMode::Reload => {
+            IncrementDmaMode::Increment | IncrementDmaMode::Reload => {
                 self.current_destination_address.wrapping_add(offset)
             }
-            IncrementMode::Decrement => self.current_destination_address.wrapping_sub(offset),
-            IncrementMode::Fixed => self.current_destination_address,
+            IncrementDmaMode::Decrement => self.current_destination_address.wrapping_sub(offset),
+            IncrementDmaMode::Fixed => self.current_destination_address,
             _ => unreachable!(),
         };
     }
 
     pub fn reload_destination_address(&mut self) {
-        if self.destination_increment_mode == IncrementMode::Reload {
+        if self.destination_increment_mode == IncrementDmaMode::Reload {
             self.current_destination_address =
                 self.destination_address_register.get_bit_range(0..28);
         }

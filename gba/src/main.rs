@@ -6,11 +6,32 @@
 // https://ww1.microchip.com/downloads/en/DeviceDoc/DDI0029G_7TDMI_R3_trm.pdf
 // https://medium.com/@julio.vidaurre/making-a-gba-emulator-fbf91b85979a
 
-// ****GBA TEST ROMS: github.com/jsmolka/gba-tests****
-
-use std::{error::Error, path::PathBuf};
+use std::{collections::HashSet, error::Error, path::PathBuf};
 
 use engram_gba::components::gamepak::GamePak;
+
+use macroquad::prelude::*;
+
+const KEYMAP: [KeyCode; 10] = [
+    KeyCode::W,
+    KeyCode::A,
+    KeyCode::S,
+    KeyCode::D,
+    KeyCode::K,
+    KeyCode::L,
+    KeyCode::Enter,
+    KeyCode::RightShift,
+    KeyCode::I,
+    KeyCode::O,
+];
+
+fn get_relevent_key_presses() -> [bool; 10] {
+    let down_keys: HashSet<KeyCode> = get_keys_down();
+
+    let vec_arr: Vec<bool> = KEYMAP.iter().map(|k| down_keys.contains(k)).collect();
+
+    vec_arr.as_slice().try_into().unwrap()
+}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let file = Some(PathBuf::from(r""));

@@ -719,7 +719,7 @@ impl Arm7tdmi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{bus::Bus, gamepak::GamePak};
+    use crate::components::{gamepak::BackupType, utils::create_bus};
 
     const N: u32 = 0x80000000;
     const Z: u32 = 0x40000000;
@@ -757,8 +757,7 @@ mod tests {
     #[test]
     fn test_raise_irq() {
         let mut cpu = Arm7tdmi::new();
-        let gamepak = GamePak::mock();
-        let mut bus = Bus::new(gamepak);
+        let mut bus = create_bus(BackupType::Flash);
 
         cpu.registers.cpsr = ProcessorMode::Sys as u32;
         assert_eq!(cpu.registers.mode(), ProcessorMode::Sys);

@@ -16,17 +16,9 @@ impl Eeprom {
         }
     }
 
-    pub fn read(&self, address: u32) {}
-
     pub fn increase_capacity(&mut self) {
         if self.memory.len() == EEPROM_4KBIT {
-            self.memory.reserve_exact(EEPROM_64KBIT - EEPROM_4KBIT);
+            self.memory.resize(EEPROM_64KBIT, 0);
         }
-    }
-
-    pub fn write(&mut self, index: usize, value: u8) {
-        self.updated = true;
-
-        self.memory[index] = value;
     }
 }

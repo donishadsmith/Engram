@@ -15,7 +15,7 @@ pub struct Serial {
 impl Serial {
     pub fn new() -> Self {
         Self {
-            sio_data: [0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF],
+            sio_data: [0xFFFF; 4],
             siomlt_send: 0,
             rcnt: 0,
             siocnt: 0,
@@ -29,6 +29,6 @@ impl Serial {
     }
 
     pub fn reset_sio_registers(&mut self) {
-        self.sio_data = [0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF];
+        self.sio_data = [0xFFFF; 4];
     }
 }

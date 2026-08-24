@@ -5,7 +5,7 @@ pub mod cpu;
 pub mod dma;
 pub mod gamepak;
 pub mod gba;
-pub mod joypad;
+pub mod keypad;
 pub mod ppu;
 pub mod scheduler;
 pub mod serial;

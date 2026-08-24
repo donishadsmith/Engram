@@ -20,6 +20,7 @@ use crate::components::{
     apu::APU,
     dma::{DmaChannels, TransferType, Trigger},
     gamepak::{BackupChip, GamePak},
+    keypad::Keypad,
     ppu::PPU,
     scheduler::EventScheduler,
     serial::Serial,
@@ -92,6 +93,7 @@ pub struct Bus {
     pub timers: Timers,
     pub gamepak: GamePak,
     pub serial: Serial,
+    pub keypad: Keypad,
     interrupt_master_enable: u32,
     pub interrupt_enable: u16,
     pub interrupt_flag: u16,
@@ -116,6 +118,7 @@ impl Bus {
             dma: DmaChannels::new(),
             timers: Timers::new(),
             serial: Serial::new(),
+            keypad: Keypad::new(),
             interrupt_master_enable: 0,
             interrupt_flag: 0,
             interrupt_enable: 0,
@@ -166,49 +169,21 @@ impl Bus {
         index
     }
 
-    // Maybe reconsider design of the backup functions
-    // just fix enough for code to compile
-    fn backup_byte(&self, address: u32) -> Option<usize> {
-        if matches!(self.gamepak.backup_chip, BackupChip::None) {
-            return None;
-        }
-
-        let base_address = 0x0E000000;
-        let mask = match &self.gamepak.backup_chip {
-            BackupChip::Eeprom(eeprom) => (eeprom.memory.len() - 1) as u32,
-            BackupChip::Sram(sram) => (sram.memory.len() - 1) as u32,
-            BackupChip::Flash(flash) => (flash.memory.len() - 1) as u32,
-            _ => unreachable!(),
-        };
-
-        let index = ((address - base_address) & mask) as usize;
-
-        Some(index)
-    }
-
     #[inline]
     pub fn read_backup_byte(&self, address: u32) -> u8 {
-        match self.backup_byte(address) {
-            Some(index) => match &self.gamepak.backup_chip {
-                BackupChip::Eeprom(eeprom) => eeprom.memory[index],
-                BackupChip::Sram(sram) => sram.memory[index],
-                BackupChip::Flash(flash) => flash.memory[index],
-                _ => unreachable!(),
-            },
-            None => 0,
+        match &self.gamepak.backup_chip {
+            BackupChip::Sram(sram) => sram.read((address & 0x7FFF) as usize),
+            BackupChip::Flash(flash) => flash.read(address),
+            BackupChip::Eeprom(_) | BackupChip::None => 0xFF,
         }
     }
 
     #[inline]
     pub fn write_backup_byte(&mut self, address: u32, value: u8) {
-        match self.backup_byte(address) {
-            Some(index) => match &mut self.gamepak.backup_chip {
-                BackupChip::Eeprom(eeprom) => eeprom.write(index, value),
-                BackupChip::Sram(sram) => sram.write(index, value),
-                BackupChip::Flash(flash) => flash.write(index, value),
-                _ => unreachable!(),
-            },
-            None => {}
+        match &mut self.gamepak.backup_chip {
+            BackupChip::Sram(sram) => sram.write((address & 0x7FFF) as usize, value),
+            BackupChip::Flash(flash) => flash.write(address, value),
+            BackupChip::Eeprom(_) | BackupChip::None => {}
         }
     }
 
@@ -337,11 +312,15 @@ impl Bus {
             }
         }
 
-        address.clear_bit(0); //ensure even
+        let shifted_address = address >> 24;
+        if !matches!(shifted_address, 0x0E | 0x0F) {
+            address.clear_bit(0); //ensure even
+        }
+
         let little_endian =
             |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
 
-        match address >> 24 {
+        match shifted_address {
             0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
             0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
             0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
@@ -377,9 +356,12 @@ impl Bus {
             return;
         }
 
-        address.clear_bit(0); //ensure even
+        let shifted_address = address >> 24;
+        if !matches!(shifted_address, 0x0E | 0x0F) {
+            address.clear_bit(0); //ensure even
+        }
 
-        match address >> 24 {
+        match shifted_address {
             0x00 => {} // BIOS no write,
             0x02 => {
                 let index = Bus::ewram_index(address);
@@ -409,7 +391,7 @@ impl Bus {
             }
 
             0x08..=0x0D => {}
-            0x0E | 0x0F => self.write_backup_byte(address, bytes[0]),
+            0x0E | 0x0F => self.write_backup_byte(address, bytes[(address & 1) as usize]),
             _ => {}
         }
     }
@@ -427,13 +409,16 @@ impl Bus {
             }
         }
 
-        address.clear_bit_range(0..2); // every 4th address
+        let shifted_address = address >> 24;
+        if !matches!(shifted_address, 0x0E | 0x0F) {
+            address.clear_bit_range(0..2); // every 4th address
+        }
 
         let little_endian = |arr: &[u8], index: usize| {
             u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
         };
 
-        match address >> 24 {
+        match shifted_address {
             0x00 => self.last_bios_fetch,
             0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
             0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
@@ -475,9 +460,12 @@ impl Bus {
             return;
         }
 
-        address.clear_bit_range(0..2); // every 4th address
+        let shifted_address = address >> 24;
+        if !matches!(shifted_address, 0x0E | 0x0F) {
+            address.clear_bit_range(0..2); // every 4th address
+        }
 
-        match address >> 24 {
+        match shifted_address {
             0x00 => {} // BIOS no write,
             0x02 => {
                 let index = Bus::ewram_index(address);
@@ -520,7 +508,7 @@ impl Bus {
             }
 
             0x08..=0x0D => {}
-            0x0E | 0x0F => self.write_backup_byte(address, bytes[0]),
+            0x0E | 0x0F => self.write_backup_byte(address, bytes[(address & 3) as usize]),
             _ => {}
         }
     }
@@ -547,15 +535,16 @@ impl Bus {
                     1
                 }
             }
-            0x08..=0x0F => {
+            0x08..=0x0D => {
                 let wait_state = WaitState::from_address(address);
-                let mut cycles = wait_state.cycles(self.waitcnt, access_type);
+                let mut cycles = 1 + wait_state.cycles(self.waitcnt, access_type);
                 if width == 32 {
-                    cycles += wait_state.cycles(self.waitcnt, AccessType::Sequential);
+                    cycles += 1 + wait_state.cycles(self.waitcnt, AccessType::Sequential);
                 }
 
                 cycles
             }
+            0x0E | 0x0F => 1 + WaitState::SramWaitControl.cycles(self.waitcnt, access_type),
             _ => 1,
         };
 
@@ -621,14 +610,14 @@ impl Bus {
             0x400012A => self.serial.siomlt_send,
 
             // Keypad Input
-            // 0x4000130 => {} // Key Status (KEYINPUT), 16 bit register read only
-            // 0x4000132 => {} // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
+            0x4000130 => self.keypad.keyinput,
+            0x4000132 => self.keypad.keycnt,
 
             // Serial Communication (2)
             0x4000134 => self.serial.rcnt,
             0x4000140 => self.serial.joycnt,
             0x4000150 => self.serial.joy_recv_l,
-            0x4000152 => self.serial.joy_trans_h,
+            0x4000152 => self.serial.joy_recv_h,
             0x4000154 => self.serial.joy_trans_l,
             0x4000156 => self.serial.joy_trans_l,
             0x4000158 => self.serial.joystat,
@@ -766,13 +755,13 @@ impl Bus {
             0x400012A => self.serial.siomlt_send = value,
 
             // Keypad Input
-            0x4000132 => {} // Key Interrupt Control (KEYCNT), 16 bit register (read + write)
+            0x4000132 => self.keypad.keycnt = value,
 
             // Serial Communication (2)
             0x4000134 => self.serial.rcnt = value,
             0x4000140 => self.serial.joycnt = value,
             0x4000150 => self.serial.joy_recv_l = value,
-            0x4000152 => self.serial.joy_trans_h = value,
+            0x4000152 => self.serial.joy_recv_h = value,
             0x4000154 => self.serial.joy_trans_l = value,
             0x4000156 => self.serial.joy_trans_l = value,
             0x4000158 => self.serial.joystat = value,
@@ -866,12 +855,11 @@ impl Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::gamepak::GamePak;
+    use crate::components::{gamepak::BackupType, utils::create_bus};
 
     #[test]
     fn test_bus_write_u32() {
-        let gamepak = GamePak::mock();
-        let mut bus = Bus::new(gamepak);
+        let mut bus = create_bus(BackupType::Flash);
 
         let address = 0x05000001;
         let value = 0b100000001 as u32;
@@ -881,15 +869,13 @@ mod tests {
         assert_eq!(bus.scheduler.current, 2);
         assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
 
-        let gamepak = GamePak::mock();
-        let mut bus = Bus::new(gamepak);
+        let mut bus = create_bus(BackupType::Flash);
         bus.write_u32(address, value, access_type);
 
         assert_eq!(bus.scheduler.current, 2);
         assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
 
-        let gamepak = GamePak::mock();
-        let mut bus = Bus::new(gamepak);
+        let mut bus = create_bus(BackupType::Flash);
         bus.write_u32(address, value, access_type);
 
         assert_eq!(bus.scheduler.current, 2);
@@ -898,8 +884,7 @@ mod tests {
 
     #[test]
     fn test_interrupt_write_flag() {
-        let gamepak = GamePak::mock();
-        let mut bus = Bus::new(gamepak);
+        let mut bus = create_bus(BackupType::Flash);
 
         bus.interrupt_flag = 0b0101;
         bus.write_u16(0x4000200, !0, AccessType::Sequential);
@@ -914,8 +899,7 @@ mod tests {
 
     #[test]
     fn test_preservation_other_byte() {
-        let gamepak = GamePak::mock();
-        let mut bus = Bus::new(gamepak);
+        let mut bus = create_bus(BackupType::Flash);
 
         bus.interrupt_flag = 0x0101;
         bus.write_u8(0x4000202, 0x01, AccessType::Sequential);

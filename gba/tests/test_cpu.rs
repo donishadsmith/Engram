@@ -19,7 +19,7 @@ fn initialize_gba(path: PathBuf) -> GBA {
 
 fn run_custom_instructions(gba: &mut GBA, max_iterations: usize) -> u32 {
     for _ in 0..max_iterations {
-        gba.run();
+        gba.run([false; 10]);
 
         if let HaltState::TestExit(code) = gba.cpu.halt_state {
             return code;
@@ -63,7 +63,7 @@ fn run_vendored_instructions(
     //let mut file = File::create(text_name).unwrap();
 
     while status == JsmolkaState::Running {
-        gba.run();
+        gba.run([false; 10]);
 
         //writeln!(file, "Register {target_register} value: {}, PC value: {:08x}", gba.cpu.registers.r[target_register], gba.cpu.registers.r[15]).unwrap();
         counter -= 1;

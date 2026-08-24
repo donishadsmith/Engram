@@ -4,7 +4,7 @@ use crate::components::{
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum IncrementMode {
+pub enum IncrementTimerMode {
     Cascade,
     Prescaler(u16),
 }
@@ -12,7 +12,7 @@ pub enum IncrementMode {
 pub struct Timer {
     pub id: u8,
     pub counter: u16,
-    pub increment_mode: IncrementMode,
+    pub increment_mode: IncrementTimerMode,
     pub control_register: u16,
     pub counter_register: u16,
     pub overflow_interrupt_enabled: bool,
@@ -28,7 +28,7 @@ impl Timer {
             counter: 0,
             control_register: 0,
             counter_register: 0,
-            increment_mode: IncrementMode::Prescaler(1),
+            increment_mode: IncrementTimerMode::Prescaler(1),
             overflow_interrupt_enabled: false,
             on: false,
             anchor: (0, 0),
@@ -36,15 +36,15 @@ impl Timer {
         }
     }
 
-    fn increment_mode_from(&self) -> IncrementMode {
+    fn increment_mode_from(&self) -> IncrementTimerMode {
         if self.id != 0 && self.control_register.is_set(2) {
-            IncrementMode::Cascade
+            IncrementTimerMode::Cascade
         } else {
             match self.control_register.get_bit_range(0..2) {
-                0b00 => IncrementMode::Prescaler(1),
-                0b01 => IncrementMode::Prescaler(64),
-                0b10 => IncrementMode::Prescaler(256),
-                0b11 => IncrementMode::Prescaler(1024),
+                0b00 => IncrementTimerMode::Prescaler(1),
+                0b01 => IncrementTimerMode::Prescaler(64),
+                0b10 => IncrementTimerMode::Prescaler(256),
+                0b11 => IncrementTimerMode::Prescaler(1024),
                 _ => unreachable!(),
             }
         }
@@ -56,8 +56,8 @@ impl Timer {
         }
 
         match self.increment_mode {
-            IncrementMode::Cascade => self.counter,
-            IncrementMode::Prescaler(prescaler) => {
+            IncrementTimerMode::Cascade => self.counter,
+            IncrementTimerMode::Prescaler(prescaler) => {
                 let prescaler = prescaler as u64;
                 let (old_time, counter_at_old_time) = self.anchor;
                 let elapsed_ticks = (timestamp / prescaler) - (old_time / prescaler);
@@ -95,7 +95,7 @@ impl Timer {
         let event = Event::TimerOverflow(self.id);
         scheduler.cancel(event);
 
-        if self.on && !matches!(self.increment_mode, IncrementMode::Cascade) {
+        if self.on && !matches!(self.increment_mode, IncrementTimerMode::Cascade) {
             self.schedule_overflow(scheduler.current, scheduler)
         }
     }
@@ -113,7 +113,7 @@ impl Timer {
     }
 
     pub fn schedule_overflow(&mut self, timestamp: u64, scheduler: &mut EventScheduler) {
-        let IncrementMode::Prescaler(prescaler) = self.increment_mode else {
+        let IncrementTimerMode::Prescaler(prescaler) = self.increment_mode else {
             return;
         };
 
@@ -174,7 +174,7 @@ impl Timers {
         let mut overflowed_mask = 0u8;
         for current_timer_id in (timer_id + 1)..4 {
             let next_timer = &mut self.timers[current_timer_id];
-            if next_timer.increment_mode != IncrementMode::Cascade
+            if next_timer.increment_mode != IncrementTimerMode::Cascade
                 || !next_timer.on
                 || !previous_counter_overflowed
             {
@@ -212,7 +212,9 @@ impl Timers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{bus::AccessType, scheduler::Event::TimerOverflow, utils::create_bus};
+    use crate::components::{
+        bus::AccessType, gamepak::BackupType, scheduler::Event::TimerOverflow, utils::create_bus,
+    };
 
     // counter=200; prescaler=256; first tick is 256 and deadline = 256+(0x10000 - 200 - 1)*256 = 256 + 65335* 256 = 16726016
     const FIRST_DEADLINE: u64 = 16726016;
@@ -224,13 +226,13 @@ mod tests {
 
     #[test]
     fn test_timer_setup() {
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         setup_timer1(&mut bus);
 
         assert_eq!(bus.timers.timers[1].counter, 200);
         assert!(matches!(
             bus.timers.timers[1].increment_mode,
-            IncrementMode::Prescaler(256)
+            IncrementTimerMode::Prescaler(256)
         ));
         assert_eq!(bus.scheduler.next(), FIRST_DEADLINE);
 
@@ -247,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_current_counter() {
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         setup_timer1(&mut bus);
 
         // 1k ticks past fist tick; counter=200+1000
@@ -260,16 +262,19 @@ mod tests {
 
     #[test]
     fn test_cascade() {
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         setup_timer1(&mut bus);
 
         bus.write_u16(0x4000108, 200, AccessType::Sequential);
         bus.write_u16(0x400010A, 0b0000000011000110, AccessType::Sequential);
 
-        assert_eq!(bus.timers.timers[2].increment_mode, IncrementMode::Cascade);
+        assert_eq!(
+            bus.timers.timers[2].increment_mode,
+            IncrementTimerMode::Cascade
+        );
         assert!(!bus.scheduler.is_scheduled(TimerOverflow(2)));
 
-        // ONE event handles the entire climb from 200 to overflow
+        // single event hould handle the entire climb from 200 to overflow
         bus.idle(FIRST_DEADLINE + 10 - bus.scheduler.current);
         let (deadline, event) = bus.scheduler.pop().unwrap();
         assert_eq!(event, TimerOverflow(1));
@@ -284,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_deadlines() {
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         setup_timer1(&mut bus);
 
         let mut last = 0;
@@ -305,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_disable_cancels() {
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         setup_timer1(&mut bus);
         assert!(bus.scheduler.is_scheduled(TimerOverflow(1)));
 
@@ -315,7 +320,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_preserves_elapsed() {
-        let mut bus = create_bus();
+        let mut bus = create_bus(BackupType::Flash);
         setup_timer1(&mut bus);
 
         bus.idle(100 * 256 - bus.scheduler.current);

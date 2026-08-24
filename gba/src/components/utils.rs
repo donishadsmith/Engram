@@ -1,4 +1,8 @@
-use crate::components::{bus::Bus, cpu::arm::decode::ShiftType, gamepak::GamePak};
+use crate::components::{
+    bus::Bus,
+    cpu::arm::decode::ShiftType,
+    gamepak::{BackupType, GamePak},
+};
 use std::{
     mem::size_of,
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Range, Shl, Shr},
@@ -20,8 +24,8 @@ pub fn zero_arr<const N: usize>() -> Box<[u8; N]> {
     vec![0u8; N].into_boxed_slice().try_into().unwrap()
 }
 
-pub fn create_bus() -> Bus {
-    let gamepak = GamePak::mock();
+pub fn create_bus(backup_type: BackupType) -> Bus {
+    let gamepak = GamePak::mock(backup_type);
     let bus = Bus::new(gamepak);
 
     bus

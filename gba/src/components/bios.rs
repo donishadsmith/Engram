@@ -174,6 +174,7 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
         bus.write_u16(0x04000208, 0, AccessType::Sequential);
 
         // check for other registers
+        bus.keypad.reset();
     }
 }
 
@@ -1034,7 +1035,7 @@ fn huff_uncomp(registers: &Registers, bus: &mut Bus) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{bus::Bus, cpu::Registers, gamepak::GamePak};
+    use crate::components::{bus::Bus, cpu::Registers, gamepak::BackupType, utils::create_bus};
 
     // https://problemkaputt.de/gbatek.htm#biosarithmeticfunctions
     #[test]
@@ -1191,7 +1192,7 @@ mod tests {
 
     #[test]
     fn test_bit_unpack_offset_skips_zero_pixels() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x08000000; // rom
@@ -1209,7 +1210,7 @@ mod tests {
 
     #[test]
     fn test_bit_unpack_z_flag_offsets_zero_pixels() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x08000000;
@@ -1227,7 +1228,7 @@ mod tests {
 
     #[test]
     fn test_bit_unpack_1_to_4_from_ram() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x03000100; // iwram
@@ -1257,7 +1258,7 @@ mod tests {
 
     #[test]
     fn test_diff_unfilter_8bit_read_8bit_write() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x03000000; // iwram
@@ -1274,7 +1275,7 @@ mod tests {
 
     #[test]
     fn test_diff_unfilter_16bit() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x03000000;
@@ -1311,7 +1312,7 @@ mod tests {
 
     #[test]
     fn test_diff_unfilter_8bit_read_16bit_write() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x03000000;
@@ -1327,7 +1328,7 @@ mod tests {
 
     #[test]
     fn test_rl_uncomp_8bit() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x03000000;
@@ -1354,7 +1355,7 @@ mod tests {
 
     #[test]
     fn test_rl_uncomp_16bit_with_unpaired_byte() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x03000000;
@@ -1371,7 +1372,7 @@ mod tests {
 
     #[test]
     fn test_lz77_uncomp_8bit_lookback() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
         registers.r[0] = 0x03000000;
@@ -1393,7 +1394,7 @@ mod tests {
 
     #[test]
     fn test_cpuset_copy_16bit() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut cpu = Arm7tdmi::new();
 
         bus.iwram[0..6].copy_from_slice(&[0x11, 0x22, 0x33, 0x44, 0x55, 0x66]);
@@ -1408,7 +1409,7 @@ mod tests {
 
     #[test]
     fn test_cpuset_fill_reads_source_once() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut cpu = Arm7tdmi::new();
 
         // fill value, then 0x99 garbage data that should not appear
@@ -1427,7 +1428,7 @@ mod tests {
 
     #[test]
     fn test_cpuset_fast_8_word_round_up() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut cpu = Arm7tdmi::new();
 
         for i in 0..32 {
@@ -1446,7 +1447,7 @@ mod tests {
 
     #[test]
     fn test_huff() {
-        let mut bus = Bus::new(GamePak::mock());
+        let mut bus = create_bus(BackupType::Flash);
         let mut cpu = Arm7tdmi::new();
 
         cpu.registers.r[0] = 0x03000000;
