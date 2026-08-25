@@ -1,6 +1,10 @@
 use crate::components::utils::{BitOps, zero_arr};
 
 // https://www.patater.com/gbaguy/gba/ch5.htm
+// https://gbadev.net/tonc/
+// https://github.com/gbadev-org/awesome-gbadev/blob/master/README.md#tutorials
+// https://problemkaputt.de/gbatek.htm#gbalcdvideocontroller
+
 pub struct PPU {
     pub vram: Box<[u8; 0x18000]>,
     pub palette_ram: Box<[u8; 0x400]>,

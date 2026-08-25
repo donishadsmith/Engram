@@ -39,7 +39,7 @@ impl BackupType {
             BackupType::Flash1M => {
                 BackupChip::Flash(Flash::new(vec![0u8; kilobytes(128)], FlashSize::Flash128k))
             }
-            BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0u8; EEPROM_4KBIT])), // default to the small version
+            BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0xFF; EEPROM_4KBIT], false)), // default to the small version
             BackupType::None => BackupChip::None,
         }
     }
@@ -105,7 +105,7 @@ impl GamePak {
         })
     }
 
-    // Eventually incorporate RTC data
+    // Eventually incorporate RTC data; https://problemkaputt.de/gbatek-gba-cart-backup-eeprom.htm
     pub fn read_sav(sav_path: &PathBuf, backup_chip: &mut BackupChip) -> Result<(), Error> {
         if !sav_path.exists() {
             return Ok(());
@@ -119,6 +119,7 @@ impl GamePak {
                     eeprom.increase_capacity();
                 }
 
+                eeprom.size_known = true;
                 copy_sav_data(buffer, &mut eeprom.memory)
             }
             BackupChip::Flash(flash) => {

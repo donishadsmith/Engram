@@ -302,6 +302,11 @@ impl Bus {
 
     pub fn read_u16(&mut self, mut address: u32, access_type: AccessType) -> u16 {
         self.cost(address, 16, access_type);
+
+        if self.is_eeprom_address(address) {
+            return self.eeprom_read_halfword();
+        }
+
         if address & !1 == 0x4000300 {
             if address.is_clear(0) {
                 return self.postflg as u16;
@@ -342,6 +347,13 @@ impl Bus {
 
     pub fn write_u16(&mut self, mut address: u32, value: u16, access_type: AccessType) {
         self.cost(address, 16, access_type);
+
+        if self.is_eeprom_address(address) {
+            self.eeprom_write_halfword(value);
+
+            return;
+        }
+
         let bytes = value.to_le_bytes();
 
         if address & !1 == 0x4000300 {
@@ -823,6 +835,29 @@ impl Bus {
             self.idle(2);
         }
 
+        if channel == 3 {
+            if self.is_eeprom_address(self.dma.channels[channel].current_source_address)
+                || self.is_eeprom_address(self.dma.channels[channel].current_destination_address)
+            {
+                if let BackupChip::Eeprom(eeprom) = &mut self.gamepak.backup_chip {
+                    if !eeprom.size_known {
+                        match self.dma.channels[channel].current_word_count {
+                            17 | 81 => eeprom.increase_capacity(),
+                            _ => {}
+                        }
+
+                        // can there be wierd counts?
+                        if matches!(
+                            self.dma.channels[channel].current_word_count,
+                            9 | 17 | 73 | 81
+                        ) {
+                            eeprom.size_known = true;
+                        }
+                    }
+                }
+            }
+        }
+
         let mut access_type = AccessType::Nonsequential;
         while self.dma.channels[channel].current_word_count != 0 {
             let source_address = self.dma.channels[channel].current_source_address;
@@ -847,6 +882,32 @@ impl Bus {
 
         self.dma.channels[channel].reload_destination_address();
         self.dma.channels[channel].transfer_complete(&mut self.interrupt_flag);
+    }
+
+    fn eeprom_read_halfword(&mut self) -> u16 {
+        match &mut self.gamepak.backup_chip {
+            BackupChip::Eeprom(eeprom) => eeprom.read_bit(),
+            _ => unreachable!(),
+        }
+    }
+
+    fn eeprom_write_halfword(&mut self, value: u16) {
+        match &mut self.gamepak.backup_chip {
+            BackupChip::Eeprom(eeprom) => eeprom.write_bit(value),
+            _ => unreachable!(),
+        }
+    }
+
+    fn is_eeprom_address(&self, address: u32) -> bool {
+        if !matches!(self.gamepak.backup_chip, BackupChip::Eeprom(_)) {
+            return false;
+        }
+
+        if self.gamepak.rom.len() > 0x1000000 {
+            (0x0DFFFF00..=0x0DFFFFFF).contains(&address)
+        } else {
+            address >> 24 == 0x0D
+        }
     }
 
     pub fn sound_fifo(&mut self, timer_id: u8) {}
