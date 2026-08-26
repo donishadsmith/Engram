@@ -66,7 +66,7 @@ pub trait BitOps:
     const BIT_WIDTH: usize = size_of::<Self>() * 8;
 
     fn set_bit(&mut self, bit: usize) {
-        assert!(
+        debug_assert!(
             bit < Self::BIT_WIDTH,
             "bit {bit} is out of range for a {}-bit value",
             Self::BIT_WIDTH
@@ -76,7 +76,7 @@ pub trait BitOps:
     }
 
     fn is_set(self, bit: usize) -> bool {
-        assert!(
+        debug_assert!(
             bit < Self::BIT_WIDTH,
             "bit {bit} is out of range for a {}-bit value",
             Self::BIT_WIDTH
@@ -86,7 +86,7 @@ pub trait BitOps:
     }
 
     fn clear_bit(&mut self, bit: usize) {
-        assert!(
+        debug_assert!(
             bit < Self::BIT_WIDTH,
             "bit {bit} is out of range for a {}-bit value",
             Self::BIT_WIDTH
@@ -105,8 +105,8 @@ pub trait BitOps:
 
     fn set_bit_range_value(&mut self, range: Range<usize>, value: Self) {
         let Range { start, end } = range;
-        assert!(start <= end, "invalid range {start}..{end}");
-        assert!(
+        debug_assert!(start <= end, "invalid range {start}..{end}");
+        debug_assert!(
             end <= Self::BIT_WIDTH,
             "range {start}..{end} exceeds {} bits",
             Self::BIT_WIDTH
