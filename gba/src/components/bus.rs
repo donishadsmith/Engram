@@ -566,10 +566,10 @@ impl Bus {
     fn read_register(&mut self, address: u32) -> u16 {
         match address {
             // LCD I/O Registers
-            0x4000000 => self.ppu.read_dispcnt(), // LCD Control (DISPCNT), 16 bit register (read + write)
+            0x4000000 => self.ppu.read_dispcnt(),
             // 0x4000002 => {} // Undocumented 16 bit register (read + write)
-            0x4000004 => self.ppu.read_dispstat(), // Stat & LYC, 16 bit register (read + write)
-            0x4000006 => self.ppu.read_vcount(),   // LY, 16 bit, (VCOUNT), read only
+            0x4000004 => self.ppu.read_dispstat(),
+            0x4000006 => self.ppu.read_vcount(),
             // 0x4000008 => {} // BG0 Control (BG0CNT) 16 bit register (read + write)
             // 0x400000A => {} // BG1 Control (BG1CNT) 16 bit register (read + write)
             // 0x400000C => {} // BG2 Control (BG2CNT) 16 bit register (read + write)
@@ -661,9 +661,9 @@ impl Bus {
     fn write_register(&mut self, address: u32, mut value: u16) {
         match address {
             // LCD I/O Registers
-            0x4000000 => self.ppu.write_dispstat(value), // LCD Control (DISPCNT), 16 bit register (read + write)
+            0x4000000 => self.ppu.write_dispstat(value),
             0x4000002 => {} // Undocumented 16 bit register (read + write)
-            0x4000004 => self.ppu.write_dispstat(value), // Stat & LYC, 16 bit register (read + write)
+            0x4000004 => self.ppu.write_dispstat(value),
             0x4000008 => {} // BG0 Control (BG0CNT) 16 bit register (read + write)
             0x400000A => {} // BG1 Control (BG1CNT) 16 bit register (read + write)
             0x400000C => {} // BG2 Control (BG2CNT) 16 bit register (read + write)
