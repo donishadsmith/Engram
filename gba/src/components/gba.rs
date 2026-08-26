@@ -59,17 +59,22 @@ impl GBA {
                             self.trigger_dma(trigger);
                         }
                         Event::HblankEnd => {
-                            let trigger =
+                            let scanline_event =
                                 self.bus.ppu.handle_hblank_end(&mut self.bus.interrupt_flag);
-                            if let Some(trigger) = trigger {
-                                if trigger == Trigger::Vblank || trigger == Trigger::Vcount(160) {
-                                    self.bus
-                                        .keypad
-                                        .poll(self.keypad, &mut self.bus.interrupt_flag);
-                                }
+
+                            if scanline_event.vblank {
+                                self.bus
+                                    .keypad
+                                    .poll(self.keypad, &mut self.bus.interrupt_flag);
                             }
 
-                            self.trigger_dma(trigger);
+                            if scanline_event.vblank {
+                                self.trigger_dma(Some(Trigger::Vblank));
+                            }
+
+                            if (2..162).contains(&self.bus.ppu.vcount) {
+                                self.trigger_dma(Some(Trigger::Vcount));
+                            }
                         }
                         Event::ApuSample => {}
                         Event::ApuSequencer => {}

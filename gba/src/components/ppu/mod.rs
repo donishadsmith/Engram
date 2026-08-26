@@ -9,7 +9,21 @@ use shared::render::Frame;
 // https://problemkaputt.de/gbatek.htm#gbalcdvideocontroller
 
 const SCREEN_WIDTH: usize = 240;
-const SCREEN_HEIGTH: usize = 160;
+const SCREEN_HEIGHT: usize = 160;
+
+enum DispstatBit {
+    VblankFlag = 0,
+    HblankFlag = 1,
+    VcounterFlag = 2,
+    VblankInterrupt = 3,
+    HblankInterrupt = 4,
+    VcounterInterrupt = 5,
+}
+
+pub struct ScanlineEvent {
+    pub vblank: bool,
+    pub vcounter_match: bool,
+}
 
 pub struct PPU {
     pub vram: Box<[u8; 0x18000]>,
@@ -32,38 +46,153 @@ impl PPU {
             dispstat: 0,
             vcount: 0,
             frame: Frame {
-                pixels: Box::new([0; SCREEN_HEIGTH * SCREEN_WIDTH]),
+                pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
                 width: SCREEN_WIDTH,
-                height: SCREEN_HEIGTH,
+                height: SCREEN_HEIGHT,
             },
             frame_ready: false,
         }
     }
 
-    pub fn read_dispcnt(&self) {}
+    pub fn read_dispcnt(&self) -> u16 {
+        self.dispcnt
+    }
 
-    pub fn write_dispcnt(&mut self) {}
+    pub fn write_dispcnt(&mut self, value: u16) {
+        self.dispcnt = value;
 
-    pub fn read_dispstat(&self) {}
+        self.dispcnt.clear_bit(3);
+    }
 
-    pub fn write_dispstat(&mut self) {}
+    pub fn read_dispstat(&self) -> u16 {
+        self.dispstat
+    }
 
-    pub fn read_vcount(&self) {}
+    pub fn write_dispstat(&mut self, mut value: u16) {
+        self.dispstat.clear_bit_range(3..16);
+        value.clear_bit_range(0..3);
+
+        self.dispstat |= value;
+    }
+
+    pub fn read_vcount(&self) -> u16 {
+        self.vcount as u16
+    }
 
     pub fn handle_hblank(&mut self, interrupt_flag: &mut u16) -> Option<Trigger> {
-        Some(Trigger::Hblank)
+        self.dispstat.set_bit(DispstatBit::HblankFlag as usize);
+
+        self.set_interrupt(DispstatBit::HblankInterrupt, interrupt_flag);
+
+        if self.vcount < 160 {
+            self.render_scanline();
+
+            Some(Trigger::Hblank)
+        } else {
+            None
+        }
     }
-    pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> Option<Trigger> {
-        // reminders: here will contain vblank, vcount
-        // need to evaluate the start of each scanline and check if ly == lyc, if so
-        // return vcount and enable interrupt
-        // 159 to 160 transition, vblank return and trigger vblank interrupt
-        Some(Trigger::Vblank)
+
+    fn render_scanline(&mut self) {}
+
+    pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> ScanlineEvent {
+        let mut scanline_event = ScanlineEvent {
+            vblank: false,
+            vcounter_match: false,
+        };
+
+        self.vcount = (self.vcount + 1) % 228;
+
+        self.dispstat.clear_bit(DispstatBit::HblankFlag as usize);
+
+        if self.vcounter_match() {
+            self.set_interrupt(DispstatBit::VcounterInterrupt, interrupt_flag);
+            self.dispstat.set_bit(DispstatBit::VcounterFlag as usize);
+
+            scanline_event.vcounter_match = true;
+        } else {
+            self.dispstat.clear_bit(DispstatBit::VcounterFlag as usize);
+        }
+
+        if self.vcount == 160 {
+            self.frame_ready = true;
+            self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
+
+            scanline_event.vblank = true;
+        }
+
+        if (160..227).contains(&self.vcount) {
+            self.dispstat.set_bit(DispstatBit::VblankFlag as usize);
+        } else {
+            self.dispstat.clear_bit(DispstatBit::VblankFlag as usize);
+        }
+
+        scanline_event
     }
 
     pub fn current_mode(&self) -> u8 {
         self.dispcnt.get_bit_range(0..3) as u8
     }
 
-    fn render_scanline(&mut self) {}
+    fn vcounter_match(&self) -> bool {
+        self.vcount == self.dispstat.get_bit_range(8..16) as u8
+    }
+
+    fn set_interrupt(&self, flag: DispstatBit, interrupt_flag: &mut u16) {
+        match flag {
+            DispstatBit::VblankInterrupt => {
+                if self.dispstat.is_set(DispstatBit::VblankInterrupt as usize) {
+                    interrupt_flag.set_bit(0);
+                }
+            }
+            DispstatBit::HblankInterrupt => {
+                if self.dispstat.is_set(DispstatBit::HblankInterrupt as usize) {
+                    interrupt_flag.set_bit(1);
+                }
+            }
+            DispstatBit::VcounterInterrupt => {
+                if self
+                    .dispstat
+                    .is_set(DispstatBit::VcounterInterrupt as usize)
+                {
+                    interrupt_flag.set_bit(2);
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vblank_irq_fires_once_when_enabled() {
+        let mut ppu = PPU::new();
+
+        let mut interrupt_flag = 0u16;
+
+        ppu.write_dispstat(1 << 3); // vblank interrupt active
+
+        for line in 0..228 {
+            ppu.handle_hblank(&mut interrupt_flag);
+            ppu.handle_hblank_end(&mut interrupt_flag);
+
+            if line == 159 {
+                assert!(
+                    interrupt_flag.is_set(0),
+                    "vblank interrupt should occur from 159 to 160"
+                );
+                assert!(interrupt_flag.is_clear(1), "hblank interrupt should be off");
+                assert!(
+                    interrupt_flag.is_clear(2),
+                    "vcounter interrupt should be off"
+                );
+            }
+        }
+
+        assert_eq!(ppu.vcount, 0, "should go back to 0 after a frame");
+        assert!(ppu.frame_ready);
+    }
 }

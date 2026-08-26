@@ -4,7 +4,7 @@ use crate::components::utils::{BitOps, get_halfword_shift, get_word_mask};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Trigger {
     SoundFifo,
-    Vcount(u8),
+    Vcount,
     Hblank,
     Vblank,
 }
@@ -206,11 +206,7 @@ impl Dma {
                         && self.repeat
                         && self.start_timing == StartTiming::Special
                 }
-                Trigger::Vcount(value) => {
-                    self.id == 3
-                        && (2..163).contains(&value)
-                        && self.start_timing == StartTiming::Special
-                }
+                Trigger::Vcount => self.id == 3 && self.start_timing == StartTiming::Special,
             }
         } else {
             if self.start_timing == StartTiming::Immediately {
