@@ -31,13 +31,13 @@ impl BackupType {
     fn to_enum(self) -> BackupChip {
         match self {
             BackupType::Sram | BackupType::SramF => {
-                BackupChip::Sram(Sram::new(vec![0u8; kilobytes(32)]))
+                BackupChip::Sram(Sram::new(vec![0; kilobytes(32)]))
             }
             BackupType::Flash | BackupType::Flash512 => {
-                BackupChip::Flash(Flash::new(vec![0xFFu8; kilobytes(64)], FlashSize::Flash64k))
+                BackupChip::Flash(Flash::new(vec![0xFF; kilobytes(64)], FlashSize::Flash64k))
             }
             BackupType::Flash1M => {
-                BackupChip::Flash(Flash::new(vec![0u8; kilobytes(128)], FlashSize::Flash128k))
+                BackupChip::Flash(Flash::new(vec![0xFF; kilobytes(128)], FlashSize::Flash128k))
             }
             BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0xFF; EEPROM_4KBIT], false)), // default to the small version
             BackupType::None => BackupChip::None,
