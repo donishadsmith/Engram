@@ -46,8 +46,8 @@ A Game Boy Color emulator (supports DMG games too) written in Rust. Game Boy Adv
 | A           | Left   |
 | S           | Down   |
 | D           | Right  |
-| K           | A      |
-| L           | B      |
+| L           | A      |
+| K           | B      |
 | Enter       | Start  |
 | Right Shift | Select |
 | Esc         | Quit   |
