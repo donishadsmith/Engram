@@ -1,4 +1,5 @@
 use crate::components::{bus::Bus, cpu::CPU, gamepak::GamePak};
+use shared::utils::Emulator;
 
 const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
@@ -75,12 +76,6 @@ impl GameBoy {
         self.cpu.bus.gamepak.mbc.tick();
     }
 
-    pub fn battery_save(&self) -> Result<(), std::io::Error> {
-        self.cpu.bus.gamepak.write_sav()?;
-
-        Ok(())
-    }
-
     pub fn ram_changed(&mut self) -> bool {
         let updated_ram = self.cpu.bus.gamepak.mbc.ram_changed().clone();
         *self.cpu.bus.gamepak.mbc.ram_changed() = false;
@@ -132,8 +127,16 @@ impl GameBoy {
     }
 }
 
+impl Emulator for GameBoy {
+    fn save(&self) -> Result<(), std::io::Error> {
+        self.cpu.bus.gamepak.write_sav()?;
+
+        Ok(())
+    }
+}
+
 impl Drop for GameBoy {
     fn drop(&mut self) {
-        let _ = self.battery_save();
+        let _ = self.save();
     }
 }

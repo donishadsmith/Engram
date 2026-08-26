@@ -13,6 +13,7 @@ pub mod mbc;
 use std::path::PathBuf;
 
 use crate::components::gamepak::mbc::prelude::*;
+use shared::utils::error_message;
 
 // "RTC" in ASCII
 const MAGIC_NUMBERS: [u8; 3] = [0x52, 0x54, 0x43];
@@ -209,16 +210,10 @@ pub struct GamePak {
 }
 
 impl GamePak {
-    pub fn load(filename: Option<std::path::PathBuf>) -> Result<Self, std::io::Error> {
-        let Some(rom_path) = filename else {
-            let file_error_msg = "Issue occured with file selection".to_string();
-
-            return Err(Self::error_message(file_error_msg));
-        };
-
+    pub fn load(rom_path: std::path::PathBuf) -> Result<Self, std::io::Error> {
         let rom = std::fs::read(&rom_path)?;
         if rom.len() < 0x150 {
-            return Err(Self::error_message(
+            return Err(error_message(
                 "File too small to be a valid ROM".to_string(),
             ));
         }
@@ -236,10 +231,6 @@ impl GamePak {
         })
     }
 
-    pub fn error_message(message: String) -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, message)
-    }
-
     fn get_mbc(
         header: &Header,
         rom: Vec<u8>,
@@ -251,9 +242,7 @@ impl GamePak {
             .mbc_type
             .to_struct(rom, ram, rtc_save_state, has_rumble)
             .ok_or_else(|| {
-                Self::error_message(
-                    "Only MBC1, MBC2, MBC3, MBC5, and RomOnly are supported.".to_string(),
-                )
+                error_message("Only MBC1, MBC2, MBC3, MBC5, and RomOnly are supported.".to_string())
             })
     }
 

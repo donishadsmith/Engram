@@ -623,8 +623,7 @@ where
     fn add_16bit(&mut self, source: Register16Bits, destination: Register16Bits) {
         let a = self.registers.get_16bit(source);
         let b = self.registers.get_16bit(destination);
-        // 0000 | 0000 | 0000 | 0000;
-        //        ^ bit 11
+
         let half_carry = (a & 0x0FFF) + (b & 0x0FFF) > 0x0FFF;
         let (value, overflow) = a.overflowing_add(b);
 

@@ -1,11 +1,11 @@
 [package]
-name = "engram_gba"
+name = "shared"
 version = "0.1.0"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
 
 [dependencies]
-chrono = "0.4.45"
-macroquad = { version = "0.4", default-features = false }
-shared.workspace = true
+cpal = "0.18.2"
+macroquad = "0.4.16"
+rtrb = "0.4.0"

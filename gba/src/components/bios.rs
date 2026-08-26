@@ -881,11 +881,9 @@ fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
         }
     }
 
-    // Could be an unpaired byte for halfword
     packer.flush_unpaired_byte(bus, destination_address);
 }
 
-// Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
 // Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
 fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
     bus.idle(20); // CHECK THIS LATER

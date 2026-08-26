@@ -9,6 +9,7 @@ use flash::Flash;
 use sram::Sram;
 
 use crate::components::{gamepak::flash::FlashSize, utils::BitOps};
+use shared::utils::error_message;
 use std::{
     fs::{read, write},
     io::Error,
@@ -70,10 +71,6 @@ pub enum BackupChip {
     Flash(Flash),
 }
 
-fn error_message(message: String) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidData, message)
-}
-
 fn kilobytes(value: usize) -> usize {
     value * 1024
 }
@@ -85,13 +82,7 @@ pub struct GamePak {
 }
 
 impl GamePak {
-    pub fn load(filename: Option<PathBuf>) -> Result<Self, Error> {
-        let Some(rom_path) = filename else {
-            let file_error_msg = "Issue occured with file selection".to_string();
-
-            return Err(error_message(file_error_msg));
-        };
-
+    pub fn load(rom_path: PathBuf) -> Result<Self, Error> {
         let rom = std::fs::read(&rom_path)?;
 
         let sav_path = rom_path.with_extension("sav");

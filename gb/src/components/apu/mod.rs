@@ -4,8 +4,9 @@ pub mod pulse;
 pub mod sound_control;
 pub mod wave;
 
+use shared::audio::LowPassFilter;
 use {
-    crate::components::apu::noise::NoiseChannel, fir::LowPassFilter, pulse::PulseChannel,
+    crate::components::apu::noise::NoiseChannel, fir::FIR_KERNEL, pulse::PulseChannel,
     wave::WaveChannel,
 };
 
@@ -141,8 +142,8 @@ impl APU {
             frame_sequencer: FrameSequencer::new(),
             sample_counter: 0,
             sample_buffer: Vec::new(),
-            low_pass_left: LowPassFilter::new(),
-            low_pass_right: LowPassFilter::new(),
+            low_pass_left: LowPassFilter::new(FIR_KERNEL),
+            low_pass_right: LowPassFilter::new(FIR_KERNEL),
         }
     }
 

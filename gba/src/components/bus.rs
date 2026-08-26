@@ -304,7 +304,7 @@ impl Bus {
         self.cost(address, 16, access_type);
 
         if self.is_eeprom_address(address) {
-            return self.eeprom_read_halfword();
+            return self.eeprom_read_u16();
         }
 
         if address & !1 == 0x4000300 {
@@ -349,7 +349,7 @@ impl Bus {
         self.cost(address, 16, access_type);
 
         if self.is_eeprom_address(address) {
-            self.eeprom_write_halfword(value);
+            self.eeprom_write_u16(value);
 
             return;
         }
@@ -884,14 +884,14 @@ impl Bus {
         self.dma.channels[channel].transfer_complete(&mut self.interrupt_flag);
     }
 
-    fn eeprom_read_halfword(&mut self) -> u16 {
+    fn eeprom_read_u16(&mut self) -> u16 {
         match &mut self.gamepak.backup_chip {
             BackupChip::Eeprom(eeprom) => eeprom.read_bit(),
             _ => unreachable!(),
         }
     }
 
-    fn eeprom_write_halfword(&mut self, value: u16) {
+    fn eeprom_write_u16(&mut self, value: u16) {
         match &mut self.gamepak.backup_chip {
             BackupChip::Eeprom(eeprom) => eeprom.write_bit(value),
             _ => unreachable!(),

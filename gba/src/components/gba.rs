@@ -4,7 +4,9 @@ use crate::components::{
     cpu::{Arm7tdmi, HaltState},
     gamepak::{BackupChip, GamePak},
     scheduler::Event,
+    utils::BitOps,
 };
+use shared::utils::Emulator;
 
 pub struct GBA {
     pub bus: Bus,
@@ -58,8 +60,8 @@ impl GBA {
                     );
 
                     for timer_id in 0..2 {
-                        if overflow_mask & (1 << timer_id) != 0 {
-                            self.bus.sound_fifo(timer_id);
+                        if overflow_mask.is_set(timer_id) {
+                            self.bus.sound_fifo(timer_id as u8);
                         }
                     }
                 }
@@ -76,12 +78,6 @@ impl GBA {
         }
     }
 
-    pub fn backup_save(&self) -> Result<(), std::io::Error> {
-        self.bus.gamepak.write_sav()?;
-
-        Ok(())
-    }
-
     pub fn backup_ram_updated(&mut self) -> bool {
         let updated = match &mut self.bus.gamepak.backup_chip {
             BackupChip::Eeprom(eeprom) => &mut eeprom.updated,
@@ -94,5 +90,24 @@ impl GBA {
         *updated = false;
 
         was_updated
+    }
+
+    pub fn take_frame(&mut self) -> bool {
+        //std::mem::take(&mut self.bus.ppu.frame_ready)
+        false
+    }
+}
+
+impl Emulator for GBA {
+    fn save(&self) -> Result<(), std::io::Error> {
+        self.bus.gamepak.write_sav()?;
+
+        Ok(())
+    }
+}
+
+impl Drop for GBA {
+    fn drop(&mut self) {
+        let _ = self.save();
     }
 }

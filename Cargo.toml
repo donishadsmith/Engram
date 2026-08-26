@@ -1,3 +1,11 @@
 [workspace]
-members = ["gb", "gba"]
-resolver = "2"
+members = ["engram", "gb", "gba", "shared"]
+resolver = "3"
+
+[workspace.dependencies]
+shared = { path = "shared" }
+engram_gb = { path = "gb" }
+engram_gba = { path = "gba" }
+
+[profile.dev]
+opt-level = 1

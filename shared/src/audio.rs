@@ -4,6 +4,7 @@
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::{Producer, RingBuffer};
+use std::collections::VecDeque;
 
 // Audibly tested constants that don't result in popping
 const BASE_AUDIO_TARGET_OCCUPANCY: usize = 4096;
@@ -61,5 +62,35 @@ impl AudioOutput {
             _stream: stream,
             sample_rate: config.sample_rate(),
         }
+    }
+}
+
+pub struct LowPassFilter {
+    samples: VecDeque<f64>,
+    kernel: [f64; 46],
+}
+
+impl LowPassFilter {
+    pub fn new(kernel: [f64; 46]) -> Self {
+        Self {
+            samples: VecDeque::with_capacity(kernel.len()),
+            kernel,
+        }
+    }
+
+    pub fn collect_sample(&mut self, sample: f64) {
+        self.samples.push_back(sample);
+        if self.samples.len() > self.kernel.len() {
+            self.samples.pop_front();
+        }
+    }
+
+    pub fn convolve(&self) -> f64 {
+        self.samples
+            .iter()
+            .copied()
+            .zip(self.kernel.iter().copied())
+            .map(|(a, b)| a * b)
+            .sum()
     }
 }

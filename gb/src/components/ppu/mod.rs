@@ -13,6 +13,7 @@ use crate::components::{
     },
     utils::ByteOps8,
 };
+use shared::render::Frame;
 /*
     https://github.com/Ashiepaws/GBEDG/blob/master/ppu/index.md
     https://blog.tigris.fr/2019/09/15/writing-an-emulator-the-first-pixel/
@@ -148,7 +149,7 @@ pub struct PPU {
     pub current_mode: PPUMode,
     pub entered_hblank: bool,
     is_cgb: bool,
-    pub viewport: [[u16; SCREEN_WIDTH]; SCREEN_HEIGHT],
+    pub frame: Frame,
 }
 
 impl PPU {
@@ -179,7 +180,11 @@ impl PPU {
             current_mode: PPUMode::OAMSearch,
             entered_hblank: false,
             is_cgb,
-            viewport: [[0u16; SCREEN_WIDTH]; SCREEN_HEIGHT],
+            frame: Frame {
+                pixels: Box::new([0u16; SCREEN_WIDTH * SCREEN_HEIGHT]),
+                width: SCREEN_WIDTH,
+                height: SCREEN_HEIGHT,
+            },
         }
     }
 
@@ -293,7 +298,7 @@ impl PPU {
             bg_indices[pixel] = color_index;
             bg_priority[pixel] = attributes.priority;
 
-            self.viewport[self.ly as usize][pixel] = if self.is_cgb {
+            self.frame.pixels[self.ly as usize * SCREEN_WIDTH + pixel] = if self.is_cgb {
                 cram_color(&self.bg_palette_ram, attributes.color_palette, color_index)
             } else {
                 let shade = (self.bgp >> (color_index * 2)) & 0x03;
@@ -365,7 +370,7 @@ impl PPU {
                         && (!sprite_attribute.priority || bg_priority[x as usize]);
 
                     if !bg_priority {
-                        self.viewport[self.ly as usize][x as usize] = color;
+                        self.frame.pixels[self.ly as usize * SCREEN_WIDTH + x as usize] = color;
                     }
                 }
             }
