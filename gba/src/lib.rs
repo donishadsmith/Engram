@@ -8,7 +8,7 @@
 
 #![windows_subsystem = "windows"]
 
-mod components;
+pub mod components;
 mod debug;
 
 use crate::components::{gamepak::GamePak, gba::GBA};
@@ -24,20 +24,29 @@ use std::{io::Error, path::PathBuf};
 pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
     let gamepak = GamePak::load(rom_path)?;
     let mut gba = GBA::boot(gamepak);
+    let mut screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
 
     loop {
         if quit_emulator(&gba)? {
             break;
         }
 
-        let _ = save_progress(&gba);
+        if gba.backup_updated() {
+            let _ = save_progress(&gba);
+        }
 
-        let keypad: [bool; 10] = get_relevant_key_presses(&GBA_KEYMAP)
+        gba.keypad = get_relevant_key_presses(&GBA_KEYMAP)
             .as_slice()
             .try_into()
             .unwrap();
 
-        gba.run(keypad);
+        gba.run();
+
+        if gba.take_frame() {
+            screen.update(&gba.bus.ppu.frame);
+        }
+
+        screen.draw(&gba.bus.ppu.frame);
 
         next_frame().await;
     }

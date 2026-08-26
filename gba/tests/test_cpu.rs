@@ -1,5 +1,5 @@
 use engram_gba::components::{cpu::HaltState, gamepak::GamePak, gba::GBA};
-use std::{fs::File, io::Write, path::PathBuf};
+use std::path::PathBuf;
 
 fn get_custom_rom_path(filename: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -14,12 +14,12 @@ fn get_vendored_path(filename: &str) -> PathBuf {
 }
 
 fn initialize_gba(path: PathBuf) -> GBA {
-    GBA::boot(GamePak::load(Some(path)).unwrap())
+    GBA::boot(GamePak::load(path).unwrap())
 }
 
 fn run_custom_instructions(gba: &mut GBA, max_iterations: usize) -> u32 {
     for _ in 0..max_iterations {
-        gba.run([false; 10]);
+        gba.run();
 
         if let HaltState::TestExit(code) = gba.cpu.halt_state {
             return code;
@@ -63,7 +63,7 @@ fn run_vendored_instructions(
     //let mut file = File::create(text_name).unwrap();
 
     while status == JsmolkaState::Running {
-        gba.run([false; 10]);
+        gba.run();
 
         //writeln!(file, "Register {target_register} value: {}, PC value: {:08x}", gba.cpu.registers.r[target_register], gba.cpu.registers.r[15]).unwrap();
         counter -= 1;

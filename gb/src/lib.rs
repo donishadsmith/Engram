@@ -7,7 +7,7 @@
 
 #![windows_subsystem = "windows"]
 
-mod components;
+pub mod components;
 
 use crate::components::{gameboy::GameBoy, gamepak::GamePak};
 use macroquad::prelude::*;
@@ -37,15 +37,17 @@ pub async fn run(rom_path: PathBuf) -> Result<(), std::io::Error> {
             break;
         }
 
-        let _ = save_progress(&gameboy);
+        if gameboy.ram_changed() {
+            let _ = save_progress(&gameboy);
+        }
 
-        let pressed: [bool; 8] = get_relevant_key_presses(&GB_KEYMAP)
+        gameboy.keypad = get_relevant_key_presses(&GB_KEYMAP)
             .as_slice()
             .try_into()
             .unwrap();
 
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
-            gameboy.run(pressed, cycles_per_sample);
+            gameboy.run(cycles_per_sample);
             for sample in gameboy.cpu.bus.apu.sample_buffer.drain(..) {
                 let _ = audio.producer.push(sample);
             }

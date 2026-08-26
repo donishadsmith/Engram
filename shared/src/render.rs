@@ -20,6 +20,7 @@ impl Screen {
             width: width as u16,
             height: height as u16,
         };
+
         let texture = Texture2D::from_image(&image);
         texture.set_filter(FilterMode::Nearest);
 
@@ -62,6 +63,7 @@ impl Screen {
 
 fn rgb555_to_rgb888(rgb555: u16) -> [u8; 3] {
     let expand = |v: u16| -> u8 { ((v << 3) | (v >> 2)) as u8 };
+
     [
         expand(rgb555 & 0x1F),
         expand((rgb555 >> 5) & 0x1F),

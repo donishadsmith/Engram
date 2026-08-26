@@ -9,6 +9,7 @@ const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 pub struct GameBoy {
     pub cpu: CPU<Bus>,
+    pub keypad: [bool; 8],
 }
 
 impl GameBoy {
@@ -19,10 +20,11 @@ impl GameBoy {
 
         Self {
             cpu: CPU::start(cgb_flag, checksum, bus),
+            keypad: [false; 8],
         }
     }
 
-    pub fn run(&mut self, pressed_key: [bool; 8], cycles_per_sample: u32) {
+    pub fn run(&mut self, cycles_per_sample: u32) {
         let mut remaining_cycles = T_CYCLES_PER_FRAME_DOUBLE;
 
         while remaining_cycles > 0 {
@@ -71,7 +73,7 @@ impl GameBoy {
         self.cpu
             .bus
             .joypad
-            .poll(pressed_key, &mut self.cpu.bus.interrupt_flag);
+            .poll(self.keypad, &mut self.cpu.bus.interrupt_flag);
 
         self.cpu.bus.gamepak.mbc.tick();
     }

@@ -131,30 +131,22 @@ impl Bus {
 
     #[inline]
     pub fn ewram_index(address: u32) -> usize {
-        let address = address.get_bit_range(0..18);
-
-        address as usize
+        address.get_bit_range(0..18) as usize
     }
 
     #[inline]
     pub fn iwram_index(address: u32) -> usize {
-        let address = address.get_bit_range(0..15);
-
-        address as usize
+        address.get_bit_range(0..15) as usize
     }
 
     #[inline]
     pub fn palette_index(address: u32) -> usize {
-        let address = address.get_bit_range(0..10);
-
-        address as usize
+        address.get_bit_range(0..10) as usize
     }
 
     #[inline]
     pub fn oam_index(address: u32) -> usize {
-        let address = address.get_bit_range(0..10);
-
-        address as usize
+        address.get_bit_range(0..10) as usize
     }
 
     #[inline]
@@ -289,9 +281,17 @@ impl Bus {
             0x06 => {
                 // https://gbadev.net/tonc/bitmaps.html
                 // https://www.patater.com/gbaguy/gba/ch5.htm
+                // https://problemkaputt.de/gbatek-gba-unpredictable-things.htm
                 let index = Bus::vram_index(address) & !1;
-                self.ppu.vram[index] = value;
-                self.ppu.vram[index + 1] = value;
+                let obj_start = if self.ppu.current_mode() >= 3 {
+                    0x14000
+                } else {
+                    0x10000
+                };
+                if index + 1 < obj_start {
+                    self.ppu.vram[index] = value;
+                    self.ppu.vram[index + 1] = value;
+                }
             }
             0x07 => {}
             0x08..=0x0D => {}
@@ -631,7 +631,7 @@ impl Bus {
             0x4000150 => self.serial.joy_recv_l,
             0x4000152 => self.serial.joy_recv_h,
             0x4000154 => self.serial.joy_trans_l,
-            0x4000156 => self.serial.joy_trans_l,
+            0x4000156 => self.serial.joy_trans_h,
             0x4000158 => self.serial.joystat,
 
             //Interrupt, Waitstate, and Power-Down Control
@@ -775,7 +775,7 @@ impl Bus {
             0x4000150 => self.serial.joy_recv_l = value,
             0x4000152 => self.serial.joy_recv_h = value,
             0x4000154 => self.serial.joy_trans_l = value,
-            0x4000156 => self.serial.joy_trans_l = value,
+            0x4000156 => self.serial.joy_trans_h = value,
             0x4000158 => self.serial.joystat = value,
 
             //Interrupt, Waitstate, and Power-Down Control
@@ -925,18 +925,6 @@ mod tests {
         let address = 0x05000001;
         let value = 0b100000001 as u32;
         let access_type = AccessType::Sequential;
-        bus.write_u32(address, value, access_type);
-
-        assert_eq!(bus.scheduler.current, 2);
-        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
-
-        let mut bus = create_bus(BackupType::Flash);
-        bus.write_u32(address, value, access_type);
-
-        assert_eq!(bus.scheduler.current, 2);
-        assert_eq!(&bus.ppu.palette_ram[..4], [1, 1, 0, 0]);
-
-        let mut bus = create_bus(BackupType::Flash);
         bus.write_u32(address, value, access_type);
 
         assert_eq!(bus.scheduler.current, 2);
