@@ -1,3 +1,5 @@
+use std::{fs::File, io::Write};
+
 // https://archive.org/details/NintendoGbaManualV1.1/page/n59/mode/1up
 use crate::components::{
     bus::Bus,
@@ -13,6 +15,7 @@ pub struct GBA {
     pub bus: Bus,
     pub cpu: Arm7tdmi,
     pub keypad: [bool; 10],
+    pub file: File,
 }
 
 impl GBA {
@@ -28,6 +31,7 @@ impl GBA {
             bus,
             cpu,
             keypad: [false; 10],
+            file: File::create("dump.txt").unwrap(),
         }
     }
 
@@ -46,6 +50,8 @@ impl GBA {
 
         self.handle_events();
 
+        //self.dump();
+
         self.check_interrupts();
     }
 
@@ -56,6 +62,7 @@ impl GBA {
                     match event {
                         Event::Hblank => {
                             let trigger = self.bus.ppu.handle_hblank(&mut self.bus.interrupt_flag);
+                            //eprintln!("{:?}", trigger);
                             self.trigger_dma(trigger);
                         }
                         Event::HblankEnd => {
@@ -134,6 +141,17 @@ impl GBA {
                 self.bus.run_dma(channel, Some(trigger));
             }
         }
+    }
+
+    fn dump(&mut self) {
+        let _ = writeln!(
+            self.file,
+            "interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}",
+            self.bus.interrupt_enable,
+            self.bus.interrupt_flag,
+            self.bus.ppu.dispstat,
+            self.bus.ime_enabled(),
+        );
     }
 }
 

@@ -564,6 +564,7 @@ impl Bus {
     }
 
     fn read_register(&mut self, address: u32) -> u16 {
+        //eprintln!("READ REGISTER: address={:08x}", address);
         match address {
             // LCD I/O Registers
             0x4000000 => self.ppu.read_dispcnt(),
@@ -659,9 +660,10 @@ impl Bus {
     }
 
     fn write_register(&mut self, address: u32, mut value: u16) {
+        //eprintln!("WRITE REGISTER: address={:08x}, value={:16b}", address, value);
         match address {
             // LCD I/O Registers
-            0x4000000 => self.ppu.write_dispstat(value),
+            0x4000000 => self.ppu.write_dispcnt(value),
             0x4000002 => {} // Undocumented 16 bit register (read + write)
             0x4000004 => self.ppu.write_dispstat(value),
             0x4000008 => {} // BG0 Control (BG0CNT) 16 bit register (read + write)

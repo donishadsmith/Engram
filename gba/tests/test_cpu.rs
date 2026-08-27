@@ -1,4 +1,4 @@
-use engram_gba::components::{cpu::HaltState, gamepak::GamePak, gba::GBA};
+use engram_gba::components::{bus::AccessType, cpu::HaltState, gamepak::GamePak, gba::GBA};
 use std::path::PathBuf;
 
 fn get_custom_rom_path(filename: &str) -> PathBuf {
@@ -31,68 +31,50 @@ fn run_custom_instructions(gba: &mut GBA, max_iterations: usize) -> u32 {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum JsmolkaState {
-    Pass(u32),
+    Pass,
     Fail(u32),
-    Running,
-}
-
-impl JsmolkaState {
-    fn from_gba(gba: &GBA) -> JsmolkaState {
-        let pc = gba.cpu.registers.r[15];
-        let test = gba.cpu.registers.r[12];
-
-        match pc {
-            0x08001e18 => JsmolkaState::Fail(test),
-            0x08001d8c => JsmolkaState::Pass(test),
-            _ => JsmolkaState::Running,
-        }
-    }
+    Timeout { pc: u32, value: u32 },
 }
 
 fn run_vendored_instructions(
     gba: &mut GBA,
     max_iterations: usize,
-    test_name: &str,
+    _test_name: &str,
     target_register: usize,
 ) -> JsmolkaState {
-    let mut status = JsmolkaState::Running;
     let mut counter = max_iterations;
 
-    //let mut text_name = String::from(test_name);
-    //text_name.push_str(".txt");
-    //let mut file = File::create(text_name).unwrap();
-
-    while status == JsmolkaState::Running {
+    loop {
         gba.run();
 
-        //writeln!(file, "Register {target_register} value: {}, PC value: {:08x}", gba.cpu.registers.r[target_register], gba.cpu.registers.r[15]).unwrap();
         counter -= 1;
         if counter == 0 {
-            gba.cpu.registers.r[15] = 0x08001e18;
+            eprintln!("Max iterations ({max_iterations}) reached");
 
-            let target_register_value = gba.cpu.registers.r[target_register];
-            eprintln!("Max iterations ({}) reached", max_iterations);
-
-            if target_register_value == 0 {
-                return JsmolkaState::Pass(target_register_value);
-            } else {
-                return JsmolkaState::Fail(target_register_value);
-            }
+            return JsmolkaState::Timeout {
+                pc: gba.cpu.registers.r[15],
+                value: gba.cpu.registers.r[target_register],
+            };
         }
 
-        status = JsmolkaState::from_gba(&gba);
+        if gba.cpu.entered_idle_loop {
+            let value = gba.cpu.registers.r[target_register];
+            return if value == 0 {
+                JsmolkaState::Pass
+            } else {
+                JsmolkaState::Fail(value)
+            };
+        }
     }
-
-    status
 }
 
 fn check_status(status: JsmolkaState) {
     match status {
-        JsmolkaState::Fail(test_id) => assert!(false, "The following test ID failed: {}", test_id),
-        JsmolkaState::Pass(test_id) => {
-            assert!(true, "All tests passed, final test ID: {}", test_id)
+        JsmolkaState::Fail(test_id) => panic!("The following test ID failed: {test_id}"),
+        JsmolkaState::Pass => {}
+        JsmolkaState::Timeout { pc, value } => {
+            panic!("The rom failed to complete, pc={pc:08x}, register={value}")
         }
-        _ => unreachable!(),
     }
 }
 
@@ -123,8 +105,6 @@ fn test_single_data_transfer_basic() {
     assert_eq!(run_custom_instructions(&mut gba, 1000), 42);
 }
 
-// Fixes for below tests made until they passed, not the best logic to prove they pass
-// but good enough for now
 #[test]
 fn test_jsmolka_arm_test() {
     let mut gba = initialize_gba(get_vendored_path("jsmolka/arm.gba"));

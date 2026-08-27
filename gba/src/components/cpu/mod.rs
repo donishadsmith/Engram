@@ -492,6 +492,7 @@ pub struct Arm7tdmi {
     branched: bool,
     next_fetch_access: AccessType,
     pub intr_wait_resume: bool,
+    pub entered_idle_loop: bool,
 }
 
 impl Arm7tdmi {
@@ -503,6 +504,7 @@ impl Arm7tdmi {
             branched: false,
             next_fetch_access: AccessType::Sequential,
             intr_wait_resume: false,
+            entered_idle_loop: false,
         }
     }
 
@@ -513,6 +515,8 @@ impl Arm7tdmi {
 
     pub fn step(&mut self, bus: &mut Bus) {
         self.branched = false;
+        self.entered_idle_loop = false;
+
         let access = self.next_fetch_access;
         self.next_fetch_access = AccessType::Sequential;
         let new_fetch = match self.registers.state() {
@@ -538,11 +542,17 @@ impl Arm7tdmi {
         // Assumes pc is +8 (arm) or +4 (thumb) aheah, essentially used to
         // to keep reversing the pipeline when the instruction wait bios command is called
         let executing_address = self.registers.r[15].wrapping_sub(2 * self.registers.pc_offset());
+
+        //eprintln!("Estimated current executing address: {}", executing_address);
         let side_effect = match decoded_instruction {
             Some(decoded_arm) => {
+                //eprintln!("Condition for instruction: {:?}", decoded_arm.condition);
+                //eprintln!("The instruction: {:?}", decoded_arm.instruction);
                 if self.registers.condition_passed(decoded_arm.condition) {
+                    //eprintln!("Instruction passed");
                     execute_arm(decoded_arm.instruction, &mut self.registers, bus)
                 } else {
+                    //eprintln!("Instruction skipped");
                     None
                 }
             }
@@ -560,6 +570,7 @@ impl Arm7tdmi {
                     if address == Self::IRQ_RETURN_ADDRESS {
                         self.handle_irq_return(bus);
                     } else {
+                        self.entered_idle_loop = address == executing_address;
                         self.branch_to(address)
                     }
                 }

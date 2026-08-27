@@ -105,10 +105,10 @@ pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
             )
         }
         _ => {
-            eprintln!(
+            /*eprintln!(
                 "The following SWI function not implemented: {:#04X}",
                 function
-            );
+            )*/
         }
     }
 }
@@ -181,6 +181,7 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
 fn intr_wait(cpu: &mut Arm7tdmi, bus: &mut Bus, clear_interrupt_flag: bool, target_flags: u16) {
     bus.write_u16(0x4000208, 1, AccessType::Nonsequential);
 
+    //eprintln!("Intr Wait called");
     // Since the cpu rewinds the program counter to execute the swi until wait is satisfied
     // cant keep clearing the IF flag and need the re-execution to check if the flag is cleared
     let bios_flags = bus.read_u16(0x03007FF8, AccessType::Nonsequential);

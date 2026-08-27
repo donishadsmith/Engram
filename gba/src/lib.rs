@@ -8,6 +8,8 @@
 
 #![windows_subsystem = "windows"]
 
+const CYCLES_PER_FRAME: u64 = 280896;
+
 pub mod components;
 mod debug;
 
@@ -40,7 +42,10 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
             .try_into()
             .unwrap();
 
-        gba.run();
+        let frame_deadline = gba.bus.scheduler.current + CYCLES_PER_FRAME;
+        while gba.bus.scheduler.current < frame_deadline {
+            gba.run();
+        }
 
         if gba.take_frame() {
             screen.update(&gba.bus.ppu.frame);

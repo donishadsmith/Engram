@@ -69,13 +69,16 @@ impl PPU {
     }
 
     pub fn write_dispstat(&mut self, mut value: u16) {
+        //eprintln!("{:16b}", value);
         self.dispstat.clear_bit_range(3..16);
         value.clear_bit_range(0..3);
 
-        self.dispstat |= value;
+        self.dispstat = value;
     }
 
     pub fn read_vcount(&self) -> u16 {
+        //eprintln!("vcount called value at {:08b}", self.vcount);
+
         self.vcount as u16
     }
 
