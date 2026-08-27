@@ -543,16 +543,11 @@ impl Arm7tdmi {
         // to keep reversing the pipeline when the instruction wait bios command is called
         let executing_address = self.registers.r[15].wrapping_sub(2 * self.registers.pc_offset());
 
-        //eprintln!("Estimated current executing address: {}", executing_address);
         let side_effect = match decoded_instruction {
             Some(decoded_arm) => {
-                //eprintln!("Condition for instruction: {:?}", decoded_arm.condition);
-                //eprintln!("The instruction: {:?}", decoded_arm.instruction);
                 if self.registers.condition_passed(decoded_arm.condition) {
-                    //eprintln!("Instruction passed");
                     execute_arm(decoded_arm.instruction, &mut self.registers, bus)
                 } else {
-                    //eprintln!("Instruction skipped");
                     None
                 }
             }

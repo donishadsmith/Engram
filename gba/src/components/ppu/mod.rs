@@ -25,6 +25,31 @@ pub struct ScanlineEvent {
     pub vcounter_match: bool,
 }
 
+struct BitmapModeParams {
+    mode: u8,
+    width: u8,
+    height: u8,
+    bpp: u8,
+    page_flip: bool,
+}
+
+fn get_bitmap_mode_params(mode: u8) -> BitmapModeParams {
+    let (width, height, bpp, page_flip) = match mode {
+        3 => (240, 160, 16, false),
+        4 => (240, 160, 8, true),
+        5 => (160, 128, 16, true),
+        _ => unreachable!(),
+    };
+
+    BitmapModeParams {
+        mode,
+        width,
+        height,
+        bpp,
+        page_flip,
+    }
+}
+
 pub struct PPU {
     pub vram: Box<[u8; 0x18000]>,
     pub palette_ram: Box<[u8; 0x400]>,
@@ -69,16 +94,13 @@ impl PPU {
     }
 
     pub fn write_dispstat(&mut self, mut value: u16) {
-        //eprintln!("{:16b}", value);
         self.dispstat.clear_bit_range(3..16);
         value.clear_bit_range(0..3);
 
-        self.dispstat = value;
+        self.dispstat |= value;
     }
 
     pub fn read_vcount(&self) -> u16 {
-        //eprintln!("vcount called value at {:08b}", self.vcount);
-
         self.vcount as u16
     }
 
@@ -96,7 +118,62 @@ impl PPU {
         }
     }
 
-    fn render_scanline(&mut self) {}
+    fn render_scanline(&mut self) {
+        let mode = self.current_mode();
+        match mode {
+            3 | 4 | 5 => {
+                let bitmap_mode_params = get_bitmap_mode_params(mode);
+
+                self.generate_bitmap_mode_line(bitmap_mode_params);
+            }
+            _ => {}
+        }
+    }
+
+    fn generate_bitmap_mode_line(&mut self, bitmap_mode_params: BitmapModeParams) {
+        let page = self.dispcnt.get_bit(4) as usize;
+        let bitmap_row = (self.vcount as usize) * bitmap_mode_params.width as usize;
+        let frame_row = (self.vcount as usize) * SCREEN_WIDTH;
+
+        if self.dispcnt.is_clear(10) {
+            self.frame.pixels[frame_row..(frame_row + SCREEN_WIDTH)].fill(u16::from_le_bytes([
+                self.palette_ram[0],
+                self.palette_ram[1],
+            ]));
+
+            return;
+        }
+
+        for pixel in 0..SCREEN_WIDTH {
+            let rgb_555 = if bitmap_mode_params.bpp == 16 {
+                if bitmap_mode_params.mode == 5
+                    && (pixel >= bitmap_mode_params.width as usize
+                        || self.vcount >= bitmap_mode_params.height)
+                {
+                    u16::from_le_bytes([self.palette_ram[0], self.palette_ram[1]])
+                } else {
+                    let page_offset = if bitmap_mode_params.page_flip {
+                        page * 0xA000
+                    } else {
+                        0
+                    };
+                    let index = page_offset + (bitmap_row + pixel) * 2;
+
+                    u16::from_le_bytes([self.vram[index], self.vram[index + 1]])
+                }
+            } else {
+                let index = (page * 0xA000) + bitmap_row + pixel;
+                let byte = self.vram[index] as usize;
+
+                u16::from_le_bytes([
+                    self.palette_ram[(byte * 2) as usize],
+                    self.palette_ram[((byte * 2) + 1) as usize],
+                ])
+            };
+
+            self.frame.pixels[frame_row + pixel] = rgb_555;
+        }
+    }
 
     pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> ScanlineEvent {
         let mut scanline_event = ScanlineEvent {

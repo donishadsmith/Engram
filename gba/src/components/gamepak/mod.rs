@@ -9,7 +9,6 @@ use flash::Flash;
 use sram::Sram;
 
 use crate::components::{gamepak::flash::FlashSize, utils::BitOps};
-use shared::utils::error_message;
 use std::{
     fs::{read, write},
     io::Error,

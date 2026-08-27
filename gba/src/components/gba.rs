@@ -50,8 +50,6 @@ impl GBA {
 
         self.handle_events();
 
-        //self.dump();
-
         self.check_interrupts();
     }
 
@@ -62,7 +60,6 @@ impl GBA {
                     match event {
                         Event::Hblank => {
                             let trigger = self.bus.ppu.handle_hblank(&mut self.bus.interrupt_flag);
-                            //eprintln!("{:?}", trigger);
                             self.trigger_dma(trigger);
                         }
                         Event::HblankEnd => {
