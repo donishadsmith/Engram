@@ -571,14 +571,9 @@ impl Bus {
             // 0x4000002 => {} // Undocumented 16 bit register (read + write)
             0x4000004 => self.ppu.read_dispstat(),
             0x4000006 => self.ppu.read_vcount(),
-            // 0x4000008 => {} // BG0 Control (BG0CNT) 16 bit register (read + write)
-            // 0x400000A => {} // BG1 Control (BG1CNT) 16 bit register (read + write)
-            // 0x400000C => {} // BG2 Control (BG2CNT) 16 bit register (read + write)
-            // 0x400000E => {} // BG3 Control (BG3CNT) 16 bit register (read + write)
-            // 0x4000048 => {} // Inside of Window 0 and 1 (WININ), 16 bit register (read + write)
-            // 0x400004A => {} // Inside of OBJ Window & Outside of Windows 2 (WINOUT) (read + write)
-            // 0x4000050 => {} // Color Special Effects Selection (BLDCNT), 16 bit register (read + write)
-            // 0x4000052 => {} // Alpha Blending Coefficients (BLDALPHA), 16 bit register (read + write)
+            0x4000008 | 0x400000A | 0x400000C | 0x400000E => self.ppu.bg_control.read_u16(address),
+            0x4000048 | 0x400004A => self.ppu.window_features.read_u16(address),
+            0x4000050 | 0x4000052 => self.ppu.color_special_effects.read_u16(address),
 
             // Sound Registers
             // 0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)
@@ -666,40 +661,30 @@ impl Bus {
             0x4000000 => self.ppu.write_dispcnt(value),
             0x4000002 => {} // Undocumented 16 bit register (read + write)
             0x4000004 => self.ppu.write_dispstat(value),
-            0x4000008 => {} // BG0 Control (BG0CNT) 16 bit register (read + write)
-            0x400000A => {} // BG1 Control (BG1CNT) 16 bit register (read + write)
-            0x400000C => {} // BG2 Control (BG2CNT) 16 bit register (read + write)
-            0x400000E => {} // BG3 Control (BG3CNT) 16 bit register (read + write)
-            0x4000010 => {} // BG0 X-Offset (BG0HOFS) 16 bit register (write only)
-            0x4000012 => {} // BG0 Y-Offset (BG0VOFS) 16 bit register (write only)
-            0x4000014 => {} // BG1 X-Offset (BG1HOFS) 16 bit register (write only)
-            0x4000016 => {} // BG1 Y-Offset (BG1VOFS) 16 bit register (write only)
-            0x4000018 => {} // BG2 X-Offset (BG2HOFS) 16 bit register (write only)
-            0x400001A => {} // BG2 Y-Offset (BG2VOFS) 16 bit register (write only)
-            0x400001C => {} // BG3 X-Offset (BG3HOFS) 16 bit register (write only)
-            0x400001E => {} // BG3 Y-Offset (BG3VOFS) 16 bit register (write only)
-            0x4000020 => {} // BG2 Rotation/Scaling Parameter A (dx) (BG2PA), 16 bit register (write only)
-            0x4000022 => {} // BG2 Rotation/Scaling Parameter B (dmx) (BG2PB), 16 bit register (write only)
-            0x4000024 => {} // BG2 Rotation/Scaling Parameter C (dy) (BG2PC), 16 bit register (write only)
-            0x4000026 => {} // BG2 Rotation/Scaling Parameter D (dmy) (BG2PD), 16 bit register (write only)
-            0x4000028 | 0x400002A => {} // BG2 Reference Point X-Coordinate (BG2X), 32 bit register (write only)
-            0x400002C | 0x400002E => {} // BG2 Reference Point Y-Coordinate (BG2Y), 32 bit register (write only)
-            0x4000030 => {} // BG3 Rotation/Scaling Parameter A (dx) (BG3PA), 16 bit register (write only)
-            0x4000032 => {} // BG3 Rotation/Scaling Parameter B (dmx) (BG3PB), 16 bit register (write only)
-            0x4000034 => {} // BG3 Rotation/Scaling Parameter C (dy) (BG3PC), 16 bit register (write only)
-            0x4000036 => {} // BG3 Rotation/Scaling Parameter D (dmy) (BG3PD), 16 bit register (write only)
-            0x4000038 | 0x400003A => {} // BG3 Reference Point X-Coordinate (BG3X), 32 bit register (write only)
-            0x400003C | 0x400003E => {} // BG3 Reference Point Y-Coordinate (BG3Y), 32 bit register (write only)
-            0x4000040 => {} // Window 0 Horizontal Dimensions (WIN0H), 16 bit register (write only)
-            0x4000042 => {} // Window 1 Horizontal Dimensions (WIN1H), 16 bit register (write only)
-            0x4000044 => {} // Window 0 Vertical Dimensions (WIN0V), 16 bit register (write only)
-            0x4000046 => {} // Window 1 Vertical Dimensions (WIN1V), 16 bit register (write only)
-            0x4000048 => {} // Inside of Window 0 and 1 (WININ), 16 bit register (read + write)
-            0x400004A => {} // Inside of OBJ Window & Outside of Windows 2 (WINOUT), 16 bit register (read + write)
-            0x400004C => {} // Mosaic Size (MOSAIC), 16 bit register (write only)
-            0x4000050 => {} // Color Special Effects Selection (BLDCNT), 16 bit register (read + write)
-            0x4000052 => {} // Alpha Blending Coefficients (BLDALPHA), 16 bit register (read + write)
-            0x4000054 => {} // Brightness (Fade-In/Out) Coefficient (BLDY), 16 bit register (write only)
+            0x4000008 | 0x400000A | 0x400000C | 0x400000E => {
+                self.ppu.bg_control.write_u16(address, value)
+            }
+            0x4000010 | 0x4000012 | 0x4000014 | 0x4000016 | 0x4000018 | 0x400001A | 0x400001C
+            | 0x400001E => self.ppu.bg_text_offset.write_u16(address, value),
+            0x4000020 | 0x4000022 | 0x4000024 | 0x4000026 => {
+                self.ppu.bg2_affine_parameters.write_u16(address, value)
+            }
+            0x4000028 | 0x400002A | 0x400002C | 0x400002E => {
+                self.ppu.bg2_affine_offset.write_u16(address, value)
+            }
+            0x4000030 | 0x4000032 | 0x4000034 | 0x4000036 => {
+                self.ppu.bg3_affine_parameters.write_u16(address, value)
+            }
+            0x4000038 | 0x400003A | 0x400003C | 0x400003E => {
+                self.ppu.bg3_affine_offset.write_u16(address, value)
+            }
+            0x4000040 | 0x4000042 | 0x4000044 | 0x4000046 | 0x4000048 | 0x400004A => {
+                self.ppu.window_features.write_u16(address, value)
+            }
+            0x400004C => self.ppu.write_mosaic(value),
+            0x4000050 | 0x4000052 | 0x4000054 => {
+                self.ppu.color_special_effects.write_u16(address, value)
+            }
 
             // Sound Registers
             0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)

@@ -1,9 +1,6 @@
-mod affine;
-mod background;
-
 use crate::components::{
     dma::Trigger,
-    utils::{BitOps, zero_arr},
+    utils::{BitOps, GroupedRegisters, zero_arr},
 };
 use shared::render::Frame;
 // https://www.patater.com/gbaguy/gba/ch5.htm
@@ -13,6 +10,9 @@ use shared::render::Frame;
 
 const SCREEN_WIDTH: usize = 240;
 const SCREEN_HEIGHT: usize = 160;
+
+const VRAM_BASE_ADDRESS: usize = 0x06000000;
+const PALETTE_BASE_ADDRESS: usize = 0x05000000;
 
 enum DispstatBit {
     VblankFlag = 0,
@@ -53,12 +53,40 @@ fn get_bitmap_mode_params(mode: u8) -> BitmapModeParams {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Fixed8Fractional(i32);
+
+impl Fixed8Fractional {
+    pub fn from_reference(value: u32) -> Self {
+        let value = (value.get_bit_range(0..28) << 4) as i32;
+
+        Self(value >> 4)
+    }
+
+    pub fn from_parameter(value: u16) -> Self {
+        Self((value as i16) as i32)
+    }
+
+    pub fn pixel(self) -> i32 {
+        self.0 >> 8
+    }
+}
+
 pub struct PPU {
     pub vram: Box<[u8; 0x18000]>,
     pub palette_ram: Box<[u8; 0x400]>,
     pub oam: Box<[u8; 0x400]>,
     pub dispcnt: u16,
     pub dispstat: u16,
+    pub bg_control: GroupedRegisters<u16>,
+    pub bg_text_offset: GroupedRegisters<u16>,
+    pub bg2_affine_parameters: GroupedRegisters<u16>,
+    pub bg2_affine_offset: GroupedRegisters<u32>,
+    pub bg3_affine_parameters: GroupedRegisters<u16>,
+    pub bg3_affine_offset: GroupedRegisters<u32>,
+    pub window_features: GroupedRegisters<u16>,
+    pub color_special_effects: GroupedRegisters<u16>,
+    pub mosaic: u16,
     pub vcount: u8,
     pub frame: Frame,
     pub frame_ready: bool,
@@ -72,6 +100,15 @@ impl PPU {
             oam: zero_arr(),
             dispcnt: 0,
             dispstat: 0,
+            bg_control: GroupedRegisters::new(4, 0x4000008),
+            bg_text_offset: GroupedRegisters::new(8, 0x4000010),
+            bg2_affine_parameters: GroupedRegisters::new(4, 0x4000020),
+            bg2_affine_offset: GroupedRegisters::new(4, 0x4000028),
+            bg3_affine_parameters: GroupedRegisters::new(4, 0x4000030),
+            bg3_affine_offset: GroupedRegisters::new(4, 0x4000038),
+            window_features: GroupedRegisters::new(6, 0x4000040),
+            mosaic: 0,
+            color_special_effects: GroupedRegisters::new(3, 0x4000050),
             vcount: 0,
             frame: Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
@@ -94,6 +131,11 @@ impl PPU {
 
     pub fn read_dispstat(&self) -> u16 {
         self.dispstat
+    }
+
+    // alot of these read/write functions are useless but do out of habi
+    pub fn write_mosaic(&mut self, value: u16) {
+        self.mosaic = value;
     }
 
     pub fn write_dispstat(&mut self, mut value: u16) {
@@ -124,6 +166,7 @@ impl PPU {
     fn render_scanline(&mut self) {
         let mode = self.current_mode();
         match mode {
+            0 | 1 | 2 => {}
             3 | 4 | 5 => {
                 let bitmap_mode_params = get_bitmap_mode_params(mode);
 
@@ -133,7 +176,7 @@ impl PPU {
         }
     }
 
-    // the roms pass but i completely missed that these modes can rotate and scale too
+    // the roms pass but i completely missed that these modes can rotate and scale
     fn generate_bitmap_mode_line(&mut self, bitmap_mode_params: BitmapModeParams) {
         let page = self.dispcnt.get_bit(4) as usize;
         let bitmap_row = (self.vcount as usize) * bitmap_mode_params.width as usize;
