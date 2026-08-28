@@ -1,3 +1,6 @@
+mod affine;
+mod background;
+
 use crate::components::{
     dma::Trigger,
     utils::{BitOps, zero_arr},
@@ -130,6 +133,7 @@ impl PPU {
         }
     }
 
+    // the roms pass but i completely missed that these modes can rotate and scale too
     fn generate_bitmap_mode_line(&mut self, bitmap_mode_params: BitmapModeParams) {
         let page = self.dispcnt.get_bit(4) as usize;
         let bitmap_row = (self.vcount as usize) * bitmap_mode_params.width as usize;
