@@ -11,9 +11,7 @@ use shared::render::Frame;
 const SCREEN_WIDTH: usize = 240;
 const SCREEN_HEIGHT: usize = 160;
 
-const VRAM_BASE_ADDRESS: usize = 0x06000000;
-const PALETTE_BASE_ADDRESS: usize = 0x05000000;
-
+#[derive(Debug)]
 enum DispstatBit {
     VblankFlag = 0,
     HblankFlag = 1,
@@ -72,6 +70,17 @@ impl Fixed8Fractional {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Bpp {
+    FourBpp,
+    EigthBpp,
+}
+
+struct Coordinate {
+    x: usize,
+    y: usize,
+}
+
 pub struct PPU {
     pub vram: Box<[u8; 0x18000]>,
     pub palette_ram: Box<[u8; 0x400]>,
@@ -88,6 +97,7 @@ pub struct PPU {
     pub color_special_effects: GroupedRegisters<u16>,
     pub mosaic: u16,
     pub vcount: u8,
+    pub frontend: Frame,
     pub frame: Frame,
     pub frame_ready: bool,
 }
@@ -110,6 +120,11 @@ impl PPU {
             mosaic: 0,
             color_special_effects: GroupedRegisters::new(3, 0x4000050),
             vcount: 0,
+            frontend: Frame {
+                pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
+                width: SCREEN_WIDTH,
+                height: SCREEN_HEIGHT,
+            },
             frame: Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
                 width: SCREEN_WIDTH,
@@ -166,13 +181,151 @@ impl PPU {
     fn render_scanline(&mut self) {
         let mode = self.current_mode();
         match mode {
-            0 | 1 | 2 => {}
+            0 | 1 | 2 => {
+                let backdrop = u16::from_le_bytes([self.palette_ram[0], self.palette_ram[1]]);
+                for pixel in 0..SCREEN_WIDTH {
+                    let mut winner: Option<(u8, u16)> = None;
+                    for bg_id in 0..4 {
+                        if self.dispcnt.is_clear(8 + bg_id) {
+                            continue;
+                        }
+                        if let Some(rgb555) = self.get_text_bg_pixel(1, pixel) {
+                            let priority =
+                                self.bg_control.from_index(bg_id).get_bit_range(0..2) as u8;
+                            if winner.map_or(true, |(p, _)| priority < p) {
+                                winner = Some((priority, rgb555));
+                            }
+                        }
+
+                        self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
+                            winner.map_or(backdrop, |(_, c)| c);
+                    }
+                }
+            }
             3 | 4 | 5 => {
                 let bitmap_mode_params = get_bitmap_mode_params(mode);
 
                 self.generate_bitmap_mode_line(bitmap_mode_params);
             }
             _ => {}
+        }
+    }
+
+    fn get_text_bg_pixel(&self, bg_id: usize, lcd_pixel_x: usize) -> Option<u16> {
+        let control = self.bg_control.from_index(bg_id);
+        let character_base_block = control.get_bit_range(2..4) as usize;
+        let screen_base_block = control.get_bit_range(8..13) as usize;
+        let bpp = if control.is_set(7) {
+            Bpp::EigthBpp
+        } else {
+            Bpp::FourBpp
+        };
+
+        let lcd = Coordinate {
+            x: lcd_pixel_x,
+            y: self.vcount as usize,
+        };
+        let bg_screen_size = self.text_bg_screen_size(bg_id);
+        let bg_scroll = Coordinate {
+            x: self.bg_text_offset.from_index(bg_id * 2) as usize,
+            y: self.bg_text_offset.from_index((bg_id * 2) + 1) as usize,
+        };
+
+        let bg_map_pixel = Coordinate {
+            x: (lcd.x + bg_scroll.x) % bg_screen_size.x,
+            y: (lcd.y + bg_scroll.y) % bg_screen_size.y,
+        };
+
+        let tile = Coordinate {
+            x: bg_map_pixel.x / 8,
+            y: bg_map_pixel.y / 8,
+        };
+
+        let mut pixel_inside_tile = Coordinate {
+            x: bg_map_pixel.x % 8,
+            y: bg_map_pixel.y % 8,
+        };
+
+        let blocks_per_row = (bg_screen_size.x / 8) / 32;
+        let screen_block_offset = (tile.y / 32) * blocks_per_row + (tile.x / 32);
+        let screen_block_vram_index = (screen_base_block + screen_block_offset) * 0x800
+            + ((tile.y % 32) * 32 + (tile.x % 32)) * 2;
+
+        let tile_attributes = u16::from_le_bytes([
+            self.vram[screen_block_vram_index],
+            self.vram[screen_block_vram_index + 1],
+        ]);
+        let tileset_offset = tile_attributes.get_bit_range(0..10) as usize;
+        pixel_inside_tile.x = if tile_attributes.is_set(10) {
+            7 - pixel_inside_tile.x
+        } else {
+            pixel_inside_tile.x
+        };
+        pixel_inside_tile.y = if tile_attributes.is_set(11) {
+            7 - pixel_inside_tile.y
+        } else {
+            pixel_inside_tile.y
+        };
+        let palette_bank = tile_attributes.get_bit_range(12..16) as usize;
+
+        let palette_index = self.read_tile_pixel_palette_index(
+            character_base_block,
+            tileset_offset,
+            pixel_inside_tile,
+            bpp,
+            palette_bank,
+        );
+
+        if palette_index == 0 {
+            None
+        } else {
+            Some(u16::from_le_bytes([
+                self.palette_ram[palette_index * 2],
+                self.palette_ram[palette_index * 2 + 1],
+            ]))
+        }
+    }
+
+    fn read_tile_pixel_palette_index(
+        &self,
+        character_base_block: usize,
+        tileset_offset: usize,
+        pixel_inside_tile: Coordinate,
+        bpp: Bpp,
+        palette_bank: usize,
+    ) -> usize {
+        match bpp {
+            Bpp::EigthBpp => {
+                self.vram[character_base_block * 0x4000
+                    + tileset_offset * 64
+                    + pixel_inside_tile.y * 8
+                    + pixel_inside_tile.x] as usize
+            }
+            Bpp::FourBpp => {
+                let byte = self.vram[character_base_block * 0x4000
+                    + tileset_offset * 32
+                    + pixel_inside_tile.y * 4
+                    + pixel_inside_tile.x / 2];
+                let nibble = if pixel_inside_tile.x % 2 == 0 {
+                    byte & 0xF
+                } else {
+                    byte >> 4
+                };
+                if nibble == 0 {
+                    0
+                } else {
+                    palette_bank * 16 + nibble as usize
+                }
+            }
+        }
+    }
+
+    fn text_bg_screen_size(&self, bg_id: usize) -> Coordinate {
+        match self.bg_control.from_index(bg_id).get_bit_range(14..16) {
+            0 => Coordinate { x: 256, y: 256 },
+            1 => Coordinate { x: 512, y: 256 },
+            2 => Coordinate { x: 256, y: 512 },
+            _ => Coordinate { x: 512, y: 512 },
         }
     }
 
@@ -243,6 +396,7 @@ impl PPU {
 
         if self.vcount == 160 {
             self.frame_ready = true;
+            std::mem::swap(&mut self.frame, &mut self.frontend);
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
             scanline_event.vblank = true;
@@ -266,6 +420,7 @@ impl PPU {
     }
 
     fn set_interrupt(&self, flag: DispstatBit, interrupt_flag: &mut u16) {
+        //eprintln!("INTERRUPT: {:?}", flag);
         match flag {
             DispstatBit::VblankInterrupt => {
                 if self.dispstat.is_set(DispstatBit::VblankInterrupt as usize) {

@@ -2,6 +2,7 @@ pub mod arm;
 pub mod thumb;
 
 use arm::{decode::*, execute::*};
+use macroquad::input::KeyCode::PrintScreen;
 use thumb::decode::*;
 
 use crate::components::{
@@ -217,7 +218,7 @@ enum FetchedInstruction {
     Thumb(u16),
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HaltState {
     Running,
     Halted,
@@ -225,6 +226,7 @@ pub enum HaltState {
     TestExit(u32),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SideEffect {
     Branch(u32),
     BranchRestoreCpsr(u32),
@@ -545,6 +547,7 @@ impl Arm7tdmi {
 
         let side_effect = match decoded_instruction {
             Some(decoded_arm) => {
+                //eprintln!("EXECUTING ADDRESS={:08x}; CONDITION: {:?}, CURRENT INSTRUCTION: {:?}", executing_address, decoded_arm.condition, decoded_arm.instruction);
                 if self.registers.condition_passed(decoded_arm.condition) {
                     execute_arm(decoded_arm.instruction, &mut self.registers, bus)
                 } else {
@@ -555,6 +558,7 @@ impl Arm7tdmi {
         };
 
         if let Some(request) = side_effect {
+            //eprintln!("SIDE EFFECT: {:?}",request);
             match request {
                 SideEffect::Swi(function) => {
                     bus.idle(45);
@@ -646,6 +650,8 @@ impl Arm7tdmi {
     }
 
     pub fn handle_irq_return(&mut self, bus: &mut Bus) {
+        //eprintln!("Interrupt returned");
+        //println!("{}", self.registers.r[0]);
         bus.last_bios_fetch = 0xE55EC002;
         let mut sp = self.registers.r[13];
 
@@ -666,8 +672,9 @@ impl Arm7tdmi {
         self.registers.r[13] = sp;
         bus.idle(3); // estination
 
+        let return_address = self.registers.r[14].wrapping_sub(4);
         self.registers.restore_cpsr_from_spsr();
-        self.branch_to(self.registers.r[14].wrapping_sub(4));
+        self.branch_to(return_address);
     }
 
     fn next_executing_address(&self) -> u32 {

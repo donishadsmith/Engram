@@ -38,6 +38,7 @@ enum CpuSetMode {
 pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
     // https://gbadev.net/gbadoc/bios.html
     // https://github.com/mgba-emu/mgba/blob/b54fc45b4ddab1c493122f6644f6d290dce319ce/src/gba/hle-bios.s#L69
+    // eprintln!("BIOS CODE CALLED: {}", function);
     match function {
         0x00 => soft_reset(cpu, bus), // https://problemkaputt.de/gbatek-bios-reset-functions.htm
         0x01 => register_ram_reset(cpu, bus),
@@ -1109,10 +1110,10 @@ mod tests {
 
             let n_cycles = arctan(&mut registers);
 
-            assert_eq!(registers.r[0], r0, "r0 for arctan({input:#010X})");
-            assert_eq!(registers.r[1], r1, "r1 (a) for arctan({input:#010X})");
-            assert_eq!(registers.r[3], r3, "r3 (b) for arctan({input:#010X})");
-            assert_eq!(n_cycles, cycles, "cycles for arctan({input:#010X})");
+            assert_eq!(registers.r[0], r0, "r0 for arctan({input:10x})");
+            assert_eq!(registers.r[1], r1, "r1 (a) for arctan({input:10x})");
+            assert_eq!(registers.r[3], r3, "r3 (b) for arctan({input:10x})");
+            assert_eq!(n_cycles, cycles, "cycles for arctan({input:10x})");
         }
     }
 
@@ -1144,7 +1145,7 @@ mod tests {
             (0xFFFFFFE2, 0x00000064, 0x00004BE0, 0xFFFFFA3E, 0x170, 63),
             (0xFFFFFF9C, 0xFFFFFFE2, 0x00008BDF, 0xFFFFFA3E, 0x170, 63),
             (0x0000001E, 0xFFFFFF9C, 0x0000CBE0, 0xFFFFFA3E, 0x170, 63),
-            // inputs with wrappig issues
+            // edge cases - wrapping issue and large ratio
             (0x80000000, 0x00000005, 0x00004000, 0x00000000, 0x170, 45),
             (0x000003E8, 0x000493E0, 0x00003FDE, 0x00000000, 0x170, 46),
         ] {
@@ -1152,20 +1153,17 @@ mod tests {
             registers.r[1] = y;
             let n_cycles = arctan2(&mut registers);
 
-            assert_eq!(registers.r[0], r0, "r0 for arctan2({x:#010X}, {y:#010X})");
+            assert_eq!(registers.r[0], r0, "r0 for arctan2({x:10x}, {y:10x})");
             if r1 == 0xDEADBEEF {
                 assert_eq!(
                     registers.r[1], y,
-                    "r1 should not be touched here ({x:#010X}, {y:#010X})"
+                    "r1 should not be touched here ({x:10x}, {y:10x})"
                 );
             } else {
-                assert_eq!(
-                    registers.r[1], r1,
-                    "r1 (a) for arctan2({x:#010X}, {y:#010X})"
-                );
+                assert_eq!(registers.r[1], r1, "r1 (a) for arctan2({x:10x}, {y:10x})");
             }
-            assert_eq!(registers.r[3], r3, "r3 for arctan2({x:#010X}, {y:#010X})");
-            assert_eq!(n_cycles, cycles, "cycles for arctan2({x:#010X}, {y:#010X})");
+            assert_eq!(registers.r[3], r3, "r3 for arctan2({x:10x}, {y:10x})");
+            assert_eq!(n_cycles, cycles, "cycles for arctan2({x:10x}, {y:10x})");
         }
     }
 
@@ -1400,7 +1398,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cpuset_fill_reads_source_once() {
+    fn test_cpuset() {
         let mut bus = create_bus(BackupType::Flash);
         let mut cpu = Arm7tdmi::new();
 

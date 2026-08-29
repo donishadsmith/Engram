@@ -4,6 +4,7 @@ use crate::components::{
     gamepak::{BackupType, GamePak},
     utils::unsigned_int::UnsignedInt,
 };
+use core::hash;
 use std::{
     mem::size_of,
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Range, Shl, Shr},
@@ -57,7 +58,7 @@ pub fn get_word_mask(address: u32) -> u32 {
 
 pub struct GroupedRegisters<T: UnsignedInt> {
     registers: Box<[T]>,
-    base_address: usize,
+    pub base_address: usize,
 }
 
 impl<T: UnsignedInt> GroupedRegisters<T> {
@@ -81,6 +82,10 @@ impl GroupedRegisters<u16> {
     pub fn write_u16(&mut self, address: u32, value: u16) {
         let index = self.index(address & !1);
         self.registers[index] = value;
+    }
+
+    pub fn from_index(&self, index: usize) -> u16 {
+        self.registers[index]
     }
 }
 
@@ -109,6 +114,10 @@ impl GroupedRegisters<u32> {
         let register = &mut self.registers[index];
 
         *register = (*register & get_word_mask(address)) | ((value as u32) << shift);
+    }
+
+    pub fn from_index(&self, index: usize) -> u32 {
+        self.registers[index]
     }
 }
 

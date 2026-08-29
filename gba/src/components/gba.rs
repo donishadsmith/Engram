@@ -50,6 +50,7 @@ impl GBA {
 
         self.handle_events();
 
+        //self.dump();
         self.check_interrupts();
     }
 
@@ -107,6 +108,7 @@ impl GBA {
 
     fn check_interrupts(&mut self) {
         if self.bus.pending_interrupt() != 0 {
+            //eprintln!("INTERRUPT PENDING: {:16b}", self.bus.pending_interrupt());
             self.cpu.awake();
             if self.bus.ime_enabled() && self.cpu.registers.irq_enabled() {
                 self.cpu.raise_irq(&mut self.bus)
