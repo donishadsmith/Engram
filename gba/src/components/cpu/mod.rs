@@ -642,6 +642,7 @@ impl Arm7tdmi {
             first_access = false;
         }
 
+        self.registers.r[0] = 0x04000000;
         self.registers.r[14] = Self::IRQ_RETURN_ADDRESS;
         let handler = bus.read_u32(0x03FFFFFC, AccessType::Nonsequential);
 
@@ -651,7 +652,6 @@ impl Arm7tdmi {
 
     pub fn handle_irq_return(&mut self, bus: &mut Bus) {
         //eprintln!("Interrupt returned");
-        //println!("{}", self.registers.r[0]);
         bus.last_bios_fetch = 0xE55EC002;
         let mut sp = self.registers.r[13];
 
