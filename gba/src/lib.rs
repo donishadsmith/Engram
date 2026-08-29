@@ -48,10 +48,10 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
         }
 
         if gba.take_frame() {
-            screen.update(&gba.bus.ppu.frame);
+            screen.update(&gba.bus.ppu.frontend);
         }
 
-        screen.draw(&gba.bus.ppu.frame);
+        screen.draw(&gba.bus.ppu.frontend);
 
         next_frame().await;
     }
