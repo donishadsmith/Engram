@@ -4,7 +4,6 @@
 
 // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
-// *****CHECK THE THREE ADITIONAL IDLE CHARGES IN THE LZ COMPRESSION *******
 use crate::components::{
     bus::{AccessType, Bus},
     cpu::{Arm7tdmi, HaltState, Registers},
@@ -33,8 +32,6 @@ enum CpuSetMode {
     CpuSetFast,
 }
 
-// Yeah, im just going to ifnore, multiboot, stop, and the entire sound driver family
-// Need to determine if stop is a priority swi
 pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
     // https://gbadev.net/gbadoc/bios.html
     // https://github.com/mgba-emu/mgba/blob/b54fc45b4ddab1c493122f6644f6d290dce319ce/src/gba/hle-bios.s#L69
@@ -99,12 +96,7 @@ pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
         ),
         0x1F => midi_key_2_freq(&mut cpu.registers, bus),
         0xFF => cpu.halt_state = HaltState::TestExit(cpu.registers.r[0]),
-        _ => {
-            /*eprintln!(
-                "The following SWI function not implemented: {:#04X}",
-                function
-            )*/
-        }
+        _ => {}
     }
 }
 
@@ -881,7 +873,7 @@ fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
 
 // Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
 fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
-    bus.idle(20); // CHECK THIS LATER
+    bus.idle(20);
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
 
@@ -893,7 +885,7 @@ fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
     let mut packer = Packer::new(write_width);
 
     while remaining_bytes != 0 {
-        bus.idle(14); // CHECK THIS LATER
+        bus.idle(14);
         let flag = bus.read_u8(source_address, AccessType::Sequential);
         source_address += 1;
 
@@ -902,7 +894,7 @@ fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
                 break;
             }
 
-            bus.idle(18); // CHECK THIS LATER
+            bus.idle(18);
             if flag.is_set(bit) {
                 let byte1 = bus.read_u8(source_address, AccessType::Sequential);
                 source_address += 1;
@@ -922,7 +914,7 @@ fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
                         break;
                     }
 
-                    bus.idle(10); // CHECK THIS LATER
+                    bus.idle(10);
                     remaining_bytes -= 1;
 
                     let byte = if displacement == 0 && packer.pending.is_some() {

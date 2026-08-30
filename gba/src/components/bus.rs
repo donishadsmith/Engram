@@ -222,7 +222,7 @@ impl Bus {
             mov  r3, #0x4000000 = base 0x4000000 in r3
             ldr  r2, [r3, #0x200] = 32 bit read of x4000200 stored in r2
             and  r2, r2, r2, lsr #16 = bitwise and; r2 & (r2 >> 16) - IE & IF flags
-            ands r1, r2, #0x80 = r1 = r2 & 0x80 checking bit 7 (serial), which i will never implement - s updates condition flag
+            ands r1, r2, #0x80 = r1 = r2 & 0x80 checking bit 7 (serial) - s updates condition flag
             ldrne r0, _00000AB8 = if (ne = Z flag is clear = !0) load value at _00000AB8 to r0
             andeq r1, r2, #1 = r1 = r2 & 1, if (eq = Z flag is set = 0) - bit 1 is vblank
             ldreq r0, _00000ABC - load address from _00000ABC into r0 if Z flag set
@@ -248,9 +248,8 @@ impl Bus {
 
         if address & !1 == 0x4000300 {
             if address.is_clear(0) {
-                self.postflg = value & 1; // postflag is touched in boot sequence, consider if want to support bios
+                self.postflg = value & 1;
             } else {
-                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
                 self.haltcnt = Some(value)
             }
 
@@ -311,15 +310,13 @@ impl Bus {
             if address.is_clear(0) {
                 return self.postflg as u16;
             } else {
-                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-                // technically not read but just in case
                 return 0;
             }
         }
 
         let shifted_address = address >> 24;
         if !matches!(shifted_address, 0x0E | 0x0F) {
-            address.clear_bit(0); //ensure even
+            address.clear_bit(0);
         }
 
         let little_endian =
@@ -360,8 +357,6 @@ impl Bus {
             if address.is_clear(0) {
                 self.postflg = value.get_bit_range(0..8) as u8;
             } else {
-                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-                // technically not read but just in case
                 self.haltcnt = Some(value.get_bit_range(8..16) as u8);
             }
 
@@ -370,11 +365,11 @@ impl Bus {
 
         let shifted_address = address >> 24;
         if !matches!(shifted_address, 0x0E | 0x0F) {
-            address.clear_bit(0); //ensure even
+            address.clear_bit(0);
         }
 
         match shifted_address {
-            0x00 => {} // BIOS no write,
+            0x00 => {}
             0x02 => {
                 let index = Bus::ewram_index(address);
                 self.ewram[index] = bytes[0];
@@ -415,15 +410,13 @@ impl Bus {
             if address.is_clear(0) {
                 return self.postflg as u32;
             } else {
-                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-                // technically not read but just in case
                 return 0;
             }
         }
 
         let shifted_address = address >> 24;
         if !matches!(shifted_address, 0x0E | 0x0F) {
-            address.clear_bit_range(0..2); // every 4th address
+            address.clear_bit_range(0..2);
         }
 
         let little_endian = |arr: &[u8], index: usize| {
@@ -464,8 +457,6 @@ impl Bus {
             if address.is_clear(0) {
                 self.postflg = value.get_bit_range(0..8) as u8;
             } else {
-                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-                // technically not read but just in case
                 self.haltcnt = Some(value.get_bit_range(8..16) as u8);
             }
 
@@ -474,11 +465,11 @@ impl Bus {
 
         let shifted_address = address >> 24;
         if !matches!(shifted_address, 0x0E | 0x0F) {
-            address.clear_bit_range(0..2); // every 4th address
+            address.clear_bit_range(0..2);
         }
 
         match shifted_address {
-            0x00 => {} // BIOS no write,
+            0x00 => {}
             0x02 => {
                 let index = Bus::ewram_index(address);
                 self.ewram[index] = bytes[0];

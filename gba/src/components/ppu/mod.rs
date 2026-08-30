@@ -149,10 +149,27 @@ impl PPU {
     }
 
     pub fn skip_boot(&mut self) {
+        self.dispcnt = 0x0080;
         self.bg2_affine_parameters.registers[0] = 0x0100;
         self.bg2_affine_parameters.registers[3] = 0x0100;
         self.bg3_affine_parameters.registers[0] = 0x0100;
         self.bg3_affine_parameters.registers[3] = 0x0100;
+    }
+
+    pub fn reset_registers(&mut self) {
+        self.bg_control = GroupedRegisters::new(4, 0x4000008);
+        self.bg_text_offset = GroupedRegisters::new(8, 0x4000010);
+        self.bg2_affine_parameters = GroupedRegisters::new(4, 0x4000020);
+        self.bg2_affine_reference = GroupedRegisters::new(2, 0x4000028);
+        self.bg2_affine_state = AffineState::default();
+        self.bg3_affine_parameters = GroupedRegisters::new(4, 0x4000030);
+        self.bg3_affine_reference = GroupedRegisters::new(2, 0x4000038);
+        self.bg3_affine_state = AffineState::default();
+        self.window_features = GroupedRegisters::new(6, 0x4000040);
+        self.mosaic = 0;
+        self.color_special_effects = GroupedRegisters::new(3, 0x4000050);
+
+        self.skip_boot();
     }
 
     pub fn write_dispcnt(&mut self, value: u16) {
