@@ -822,10 +822,7 @@ impl Bus {
 
     pub fn skip_boot(&mut self) {
         self.postflg = 1;
-        self.ppu.bg2_affine_parameters.registers[0] = 0x0100;
-        self.ppu.bg2_affine_parameters.registers[3] = 0x0100;
-        self.ppu.bg3_affine_parameters.registers[0] = 0x0100;
-        self.ppu.bg3_affine_parameters.registers[3] = 0x0100;
+        self.ppu.skip_boot();
     }
 
     pub fn take_halt_request(&mut self) -> Option<u8> {

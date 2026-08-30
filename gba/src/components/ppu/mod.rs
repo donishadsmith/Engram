@@ -1,4 +1,6 @@
 mod affine;
+mod special_effects;
+mod sprites;
 
 use crate::components::{
     dma::Trigger,
@@ -144,6 +146,13 @@ impl PPU {
             },
             frame_ready: false,
         }
+    }
+
+    pub fn skip_boot(&mut self) {
+        self.bg2_affine_parameters.registers[0] = 0x0100;
+        self.bg2_affine_parameters.registers[3] = 0x0100;
+        self.bg3_affine_parameters.registers[0] = 0x0100;
+        self.bg3_affine_parameters.registers[3] = 0x0100;
     }
 
     pub fn write_dispcnt(&mut self, value: u16) {
