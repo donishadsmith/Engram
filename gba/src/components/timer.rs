@@ -68,14 +68,6 @@ impl Timer {
         }
     }
 
-    pub fn write_counter_register(&mut self, value: u16) {
-        self.counter_register = value
-    }
-
-    pub fn read_control_register(&self) -> u16 {
-        self.control_register
-    }
-
     pub fn write_control_register(&mut self, value: u16, scheduler: &mut EventScheduler) {
         if self.on {
             self.counter = self.current_counter(scheduler.current);

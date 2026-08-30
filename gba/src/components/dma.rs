@@ -104,8 +104,8 @@ pub struct Dma {
     pub current_source_address: u32,
     pub current_destination_address: u32,
     pub current_word_count: u32,
-    word_count_register: u16,
-    control_register: u16,
+    pub word_count_register: u16,
+    pub control_register: u16,
     source_increment_mode: IncrementDmaMode,
     destination_increment_mode: IncrementDmaMode,
     start_timing: StartTiming,
@@ -142,14 +142,6 @@ impl Dma {
         self.destination_address_register = self.destination_address_register
             & get_word_mask(address)
             | (value as u32) << get_halfword_shift(address);
-    }
-
-    pub fn write_word_count(&mut self, value: u16) {
-        self.word_count_register = value;
-    }
-
-    pub fn read_control_register(&self) -> u16 {
-        self.control_register
     }
 
     pub fn write_control_register(&mut self, value: u16) {
@@ -304,7 +296,7 @@ mod tests {
         let mut dma = Dma::new(1);
         dma.write_destination_address(0x40000C0, 0x00A0);
         dma.write_destination_address(0x40000C2, 0x0400);
-        dma.write_word_count(0x1234);
+        dma.word_count_register = 0x1234;
 
         dma.write_control_register(0b1011011000000000);
 
@@ -314,12 +306,12 @@ mod tests {
     #[test]
     fn test_transfer_complete_bit_clears() {
         let mut dma = Dma::new(0);
-        dma.write_word_count(1);
+        dma.word_count_register = 1;
         dma.write_control_register(1 << 15);
 
         let mut if_flag = 0;
         dma.transfer_complete(&mut if_flag);
 
-        assert!(dma.read_control_register().is_clear(15));
+        assert!(dma.control_register.is_clear(15));
     }
 }

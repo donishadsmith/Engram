@@ -4,7 +4,6 @@ use crate::components::{
     gamepak::{BackupType, GamePak},
     utils::unsigned_int::UnsignedInt,
 };
-use core::hash;
 use std::{
     mem::size_of,
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Range, Shl, Shr},
@@ -57,7 +56,7 @@ pub fn get_word_mask(address: u32) -> u32 {
 }
 
 pub struct GroupedRegisters<T: UnsignedInt> {
-    registers: Box<[T]>,
+    pub registers: Box<[T]>,
     pub base_address: usize,
 }
 

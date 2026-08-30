@@ -1,8 +1,12 @@
+mod affine;
+
 use crate::components::{
     dma::Trigger,
     utils::{BitOps, GroupedRegisters, zero_arr},
 };
+use affine::{AffineMatrix, AffineState};
 use shared::render::Frame;
+use std::mem::take;
 // https://www.patater.com/gbaguy/gba/ch5.htm
 // https://gbadev.net/tonc/
 // https://github.com/gbadev-org/awesome-gbadev/blob/master/README.md#tutorials
@@ -21,13 +25,19 @@ enum DispstatBit {
     VcounterInterrupt = 5,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RenderType {
+    Text,
+    Affine,
+    Bitmap,
+}
+
 pub struct ScanlineEvent {
     pub vblank: bool,
     pub vcounter_match: bool,
 }
 
 struct BitmapModeParams {
-    mode: u8,
     width: u8,
     height: u8,
     bpp: u8,
@@ -43,7 +53,6 @@ fn get_bitmap_mode_params(mode: u8) -> BitmapModeParams {
     };
 
     BitmapModeParams {
-        mode,
         width,
         height,
         bpp,
@@ -51,22 +60,21 @@ fn get_bitmap_mode_params(mode: u8) -> BitmapModeParams {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Fixed8Fractional(i32);
+pub struct BgLine {
+    id: usize,
+    on: bool,
+    priority: u8,
+    palette_indices: [Option<usize>; SCREEN_WIDTH],
+}
 
-impl Fixed8Fractional {
-    pub fn from_reference(value: u32) -> Self {
-        let value = (value.get_bit_range(0..28) << 4) as i32;
-
-        Self(value >> 4)
-    }
-
-    pub fn from_parameter(value: u16) -> Self {
-        Self((value as i16) as i32)
-    }
-
-    pub fn pixel(self) -> i32 {
-        self.0 >> 8
+impl BgLine {
+    fn new(id: usize, on: bool, priority: u8) -> Self {
+        Self {
+            id,
+            on,
+            priority,
+            palette_indices: [None; SCREEN_WIDTH],
+        }
     }
 }
 
@@ -90,9 +98,11 @@ pub struct PPU {
     pub bg_control: GroupedRegisters<u16>,
     pub bg_text_offset: GroupedRegisters<u16>,
     pub bg2_affine_parameters: GroupedRegisters<u16>,
-    pub bg2_affine_offset: GroupedRegisters<u32>,
+    pub bg2_affine_reference: GroupedRegisters<u32>,
+    pub bg2_affine_state: AffineState,
     pub bg3_affine_parameters: GroupedRegisters<u16>,
-    pub bg3_affine_offset: GroupedRegisters<u32>,
+    pub bg3_affine_reference: GroupedRegisters<u32>,
+    pub bg3_affine_state: AffineState,
     pub window_features: GroupedRegisters<u16>,
     pub color_special_effects: GroupedRegisters<u16>,
     pub mosaic: u16,
@@ -113,9 +123,11 @@ impl PPU {
             bg_control: GroupedRegisters::new(4, 0x4000008),
             bg_text_offset: GroupedRegisters::new(8, 0x4000010),
             bg2_affine_parameters: GroupedRegisters::new(4, 0x4000020),
-            bg2_affine_offset: GroupedRegisters::new(4, 0x4000028),
+            bg2_affine_reference: GroupedRegisters::new(2, 0x4000028),
+            bg2_affine_state: AffineState::default(),
             bg3_affine_parameters: GroupedRegisters::new(4, 0x4000030),
-            bg3_affine_offset: GroupedRegisters::new(4, 0x4000038),
+            bg3_affine_reference: GroupedRegisters::new(2, 0x4000038),
+            bg3_affine_state: AffineState::default(),
             window_features: GroupedRegisters::new(6, 0x4000040),
             mosaic: 0,
             color_special_effects: GroupedRegisters::new(3, 0x4000050),
@@ -134,23 +146,10 @@ impl PPU {
         }
     }
 
-    pub fn read_dispcnt(&self) -> u16 {
-        self.dispcnt
-    }
-
     pub fn write_dispcnt(&mut self, value: u16) {
         self.dispcnt = value;
 
         self.dispcnt.clear_bit(3);
-    }
-
-    pub fn read_dispstat(&self) -> u16 {
-        self.dispstat
-    }
-
-    // alot of these read/write functions are useless but do out of habi
-    pub fn write_mosaic(&mut self, value: u16) {
-        self.mosaic = value;
     }
 
     pub fn write_dispstat(&mut self, mut value: u16) {
@@ -160,11 +159,15 @@ impl PPU {
         self.dispstat |= value;
     }
 
-    pub fn read_vcount(&self) -> u16 {
-        self.vcount as u16
-    }
-
     pub fn handle_hblank(&mut self, interrupt_flag: &mut u16) -> Option<Trigger> {
+        if take(&mut self.bg2_affine_state.reload) {
+            self.bg2_affine_state.reload_internal_reference();
+        }
+
+        if take(&mut self.bg3_affine_state.reload) {
+            self.bg3_affine_state.reload_internal_reference();
+        }
+
         self.dispstat.set_bit(DispstatBit::HblankFlag as usize);
 
         self.set_interrupt(DispstatBit::HblankInterrupt, interrupt_flag);
@@ -174,44 +177,160 @@ impl PPU {
 
             Some(Trigger::Hblank)
         } else {
+            self.bg2_affine_state.reload = true;
+            self.bg3_affine_state.reload = true;
+
             None
         }
     }
 
+    // ***still needs, sprite, window, and the special effects
+    // probably not the cleanest implementation, refactor after ppu produces
+    // visuals reasonably close to what commercial roms are supposed to look like
     fn render_scanline(&mut self) {
+        let bg2_matrix = AffineMatrix::from_registers(
+            self.bg2_affine_parameters.from_index(0),
+            self.bg2_affine_parameters.from_index(1),
+            self.bg2_affine_parameters.from_index(2),
+            self.bg2_affine_parameters.from_index(3),
+        );
+        let bg3_matrix = AffineMatrix::from_registers(
+            self.bg3_affine_parameters.from_index(0),
+            self.bg3_affine_parameters.from_index(1),
+            self.bg3_affine_parameters.from_index(2),
+            self.bg3_affine_parameters.from_index(3),
+        );
+
+        if self.dispcnt.is_set(7) {
+            let row = self.vcount as usize * SCREEN_WIDTH;
+            self.frame.pixels[row..row + SCREEN_WIDTH].fill(0x7FFF);
+
+            self.bg2_affine_state
+                .increment_internal_reference(bg2_matrix);
+            self.bg3_affine_state
+                .increment_internal_reference(bg3_matrix);
+
+            return;
+        }
+
+        let mut bg_lines: [BgLine; 4] = std::array::from_fn(|i| BgLine::new(i, false, 0));
+        let mut sprite_line: [Option<u8>; 240] = [None; 240];
+
         let mode = self.current_mode();
         match mode {
-            0 | 1 | 2 => {
-                let backdrop = u16::from_le_bytes([self.palette_ram[0], self.palette_ram[1]]);
-                for pixel in 0..SCREEN_WIDTH {
-                    let mut winner: Option<(u8, u16)> = None;
-                    for bg_id in 0..4 {
-                        if self.dispcnt.is_clear(8 + bg_id) {
+            0..=2 => {
+                for bg_id in 0..4 {
+                    let priority = self.bg_control.from_index(bg_id).get_bit_range(0..2) as u8;
+                    bg_lines[bg_id] = BgLine::new(bg_id, self.dispcnt.is_set(8 + bg_id), priority);
+                    if !bg_lines[bg_id].on {
+                        continue;
+                    }
+
+                    if self.current_mode() == 0 {
+                        self.populate_bg_array(&mut bg_lines[bg_id], RenderType::Text, None);
+                    } else if self.current_mode() == 1 {
+                        if bg_id > 2 {
                             continue;
                         }
-                        if let Some(rgb555) = self.get_text_bg_pixel(1, pixel) {
-                            let priority =
-                                self.bg_control.from_index(bg_id).get_bit_range(0..2) as u8;
-                            if winner.map_or(true, |(p, _)| priority < p) {
-                                winner = Some((priority, rgb555));
-                            }
+
+                        if bg_id != 2 {
+                            self.populate_bg_array(&mut bg_lines[bg_id], RenderType::Text, None);
+                        } else {
+                            self.populate_bg_array(
+                                &mut bg_lines[bg_id],
+                                RenderType::Affine,
+                                Some(bg2_matrix),
+                            );
+                        }
+                    } else {
+                        if bg_id < 2 {
+                            continue;
                         }
 
-                        self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
-                            winner.map_or(backdrop, |(_, c)| c);
+                        if bg_id == 2 {
+                            self.populate_bg_array(
+                                &mut bg_lines[bg_id],
+                                RenderType::Affine,
+                                Some(bg2_matrix),
+                            );
+                        } else {
+                            self.populate_bg_array(
+                                &mut bg_lines[bg_id],
+                                RenderType::Affine,
+                                Some(bg3_matrix),
+                            );
+                        }
                     }
                 }
             }
-            3 | 4 | 5 => {
-                let bitmap_mode_params = get_bitmap_mode_params(mode);
-
-                self.generate_bitmap_mode_line(bitmap_mode_params);
+            3..=5 => {
+                let priority = self.bg_control.from_index(2).get_bit_range(0..2) as u8;
+                bg_lines[2] = BgLine::new(2, self.dispcnt.is_set(10), priority);
+                if bg_lines[2].on {
+                    self.populate_bg_array(&mut bg_lines[2], RenderType::Bitmap, Some(bg2_matrix));
+                }
             }
             _ => {}
         }
+
+        self.composite(&bg_lines, &sprite_line);
+
+        self.bg2_affine_state
+            .increment_internal_reference(bg2_matrix);
+        self.bg3_affine_state
+            .increment_internal_reference(bg3_matrix);
     }
 
-    fn get_text_bg_pixel(&self, bg_id: usize, lcd_pixel_x: usize) -> Option<u16> {
+    fn populate_bg_array(
+        &mut self,
+        bg_line: &mut BgLine,
+        mode_type: RenderType,
+        matrix: Option<AffineMatrix>,
+    ) {
+        for pixel in 0..SCREEN_WIDTH {
+            let index = match mode_type {
+                RenderType::Text => self.get_text_bg_palette_index(bg_line.id, pixel),
+                RenderType::Affine => {
+                    self.get_affine_bg_palette_index(bg_line.id, pixel, matrix.unwrap())
+                }
+                RenderType::Bitmap => self.get_bitmap_palette_index(
+                    get_bitmap_mode_params(self.current_mode()),
+                    pixel,
+                    matrix.unwrap(),
+                ),
+            };
+
+            bg_line.palette_indices[pixel] = index
+        }
+    }
+
+    fn composite(&mut self, bg_lines: &[BgLine; 4], sprite_line: &[Option<u8>; 240]) {
+        let backdrop = u16::from_le_bytes([self.palette_ram[0], self.palette_ram[1]]);
+        for pixel in 0..SCREEN_WIDTH {
+            let mut winner: Option<(u8, usize)> = None;
+            for bg in bg_lines {
+                if !bg.on {
+                    continue;
+                }
+
+                if let Some(index) = bg.palette_indices[pixel] {
+                    if winner.map_or(true, |(p, _)| bg.priority < p) {
+                        winner = Some((bg.priority, index));
+                    }
+                }
+            }
+
+            self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = winner
+                .and_then(|(_, index)| self.fetch_color(index as usize))
+                .unwrap_or(backdrop);
+        }
+    }
+
+    fn direct_color(&self) -> bool {
+        matches!(self.current_mode(), 3 | 5)
+    }
+
+    fn get_text_bg_palette_index(&self, bg_id: usize, lcd_pixel_x: usize) -> Option<usize> {
         let control = self.bg_control.from_index(bg_id);
         let character_base_block = control.get_bit_range(2..4) as usize;
         let screen_base_block = control.get_bit_range(8..13) as usize;
@@ -279,11 +398,66 @@ impl PPU {
         if palette_index == 0 {
             None
         } else {
-            Some(u16::from_le_bytes([
-                self.palette_ram[palette_index * 2],
-                self.palette_ram[palette_index * 2 + 1],
-            ]))
+            Some(palette_index)
         }
+    }
+
+    fn get_affine_bg_palette_index(
+        &self,
+        bg_id: usize,
+        lcd_pixel_x: usize,
+        matrix: AffineMatrix,
+    ) -> Option<usize> {
+        let control = self.bg_control.from_index(bg_id);
+        let character_base_block = control.get_bit_range(2..4) as usize;
+        let screen_base_block = control.get_bit_range(8..13) as usize;
+        let wrap = control.is_set(13);
+        let screen_size = [128, 256, 512, 1024][control.get_bit_range(14..16) as usize] as i32;
+        let affine_state = if bg_id == 2 {
+            &self.bg2_affine_state
+        } else {
+            &self.bg3_affine_state
+        };
+
+        let mut affine_map_pixel_x = affine_state
+            .internal_reference
+            .x
+            .transformed_pixel(matrix.pa, lcd_pixel_x);
+        let mut affine_map_pixel_y = affine_state
+            .internal_reference
+            .y
+            .transformed_pixel(matrix.pc, lcd_pixel_x);
+
+        if wrap {
+            affine_map_pixel_x = affine_map_pixel_x.rem_euclid(screen_size);
+            affine_map_pixel_y = affine_map_pixel_y.rem_euclid(screen_size);
+        } else if affine_map_pixel_x < 0
+            || affine_map_pixel_x >= screen_size
+            || affine_map_pixel_y < 0
+            || affine_map_pixel_y >= screen_size
+        {
+            return None;
+        }
+
+        let (affine_map_pixel_x, affine_map_pixel_y) =
+            (affine_map_pixel_x as usize, affine_map_pixel_y as usize);
+
+        let tiles_per_side = screen_size as usize / 8;
+        let tileset_offset = self.vram[screen_base_block * 0x800
+            + (affine_map_pixel_y / 8) * tiles_per_side
+            + affine_map_pixel_x / 8] as usize;
+        let index = self.read_tile_pixel_palette_index(
+            character_base_block,
+            tileset_offset,
+            Coordinate {
+                x: affine_map_pixel_x % 8,
+                y: affine_map_pixel_y % 8,
+            },
+            Bpp::EigthBpp,
+            0,
+        );
+
+        if index == 0 { None } else { Some(index) }
     }
 
     fn read_tile_pixel_palette_index(
@@ -307,7 +481,7 @@ impl PPU {
                     + pixel_inside_tile.y * 4
                     + pixel_inside_tile.x / 2];
                 let nibble = if pixel_inside_tile.x % 2 == 0 {
-                    byte & 0xF
+                    byte & 0x0F
                 } else {
                     byte >> 4
                 };
@@ -329,50 +503,70 @@ impl PPU {
         }
     }
 
-    // the roms pass but i completely missed that these modes can rotate and scale
-    fn generate_bitmap_mode_line(&mut self, bitmap_mode_params: BitmapModeParams) {
-        let page = self.dispcnt.get_bit(4) as usize;
-        let bitmap_row = (self.vcount as usize) * bitmap_mode_params.width as usize;
-        let frame_row = (self.vcount as usize) * SCREEN_WIDTH;
-
-        if self.dispcnt.is_clear(10) {
-            self.frame.pixels[frame_row..(frame_row + SCREEN_WIDTH)].fill(u16::from_le_bytes([
-                self.palette_ram[0],
-                self.palette_ram[1],
+    fn fetch_color(&self, palette_index: usize) -> Option<u16> {
+        if self.direct_color() {
+            return Some(u16::from_le_bytes([
+                self.vram[palette_index],
+                self.vram[palette_index + 1],
             ]));
-
-            return;
         }
 
-        for pixel in 0..SCREEN_WIDTH {
-            let rgb_555 = if bitmap_mode_params.bpp == 16 {
-                if bitmap_mode_params.mode == 5
-                    && (pixel >= bitmap_mode_params.width as usize
-                        || self.vcount >= bitmap_mode_params.height)
-                {
-                    u16::from_le_bytes([self.palette_ram[0], self.palette_ram[1]])
-                } else {
-                    let page_offset = if bitmap_mode_params.page_flip {
-                        page * 0xA000
-                    } else {
-                        0
-                    };
-                    let index = page_offset + (bitmap_row + pixel) * 2;
-
-                    u16::from_le_bytes([self.vram[index], self.vram[index + 1]])
-                }
-            } else {
-                let index = (page * 0xA000) + bitmap_row + pixel;
-                let byte = self.vram[index] as usize;
-
-                u16::from_le_bytes([
-                    self.palette_ram[(byte * 2) as usize],
-                    self.palette_ram[((byte * 2) + 1) as usize],
-                ])
-            };
-
-            self.frame.pixels[frame_row + pixel] = rgb_555;
+        if palette_index == 0 {
+            None
+        } else {
+            Some(u16::from_le_bytes([
+                self.palette_ram[palette_index * 2],
+                self.palette_ram[palette_index * 2 + 1],
+            ]))
         }
+    }
+
+    fn get_bitmap_palette_index(
+        &self,
+        bitmap_mode_params: BitmapModeParams,
+        pixel: usize,
+        matrix: AffineMatrix,
+    ) -> Option<usize> {
+        let affine_x = self
+            .bg2_affine_state
+            .internal_reference
+            .x
+            .transformed_pixel(matrix.pa, pixel);
+        let affine_y = self
+            .bg2_affine_state
+            .internal_reference
+            .y
+            .transformed_pixel(matrix.pc, pixel);
+
+        let width = bitmap_mode_params.width as i32;
+        let height = bitmap_mode_params.height as i32;
+
+        if affine_x < 0 || affine_x >= width || affine_y < 0 || affine_y >= height {
+            return None;
+        }
+
+        let linear_index =
+            affine_y as usize * bitmap_mode_params.width as usize + affine_x as usize;
+
+        let page = self.dispcnt.get_bit(4) as usize;
+        let page_offset = if bitmap_mode_params.page_flip {
+            page * 0xA000
+        } else {
+            0
+        };
+
+        if bitmap_mode_params.bpp == 16 {
+            Some(page_offset + linear_index * 2)
+        } else {
+            let index = page_offset + linear_index;
+
+            Some(self.vram[index] as usize)
+        }
+    }
+
+    // skip the sprite maximum based on size and cycle budget and put all the sprites on screen
+    fn render_sprite_line(&self) {
+        //let sprites: Vec<Sprite> = Vec::with_capacity(128);
     }
 
     pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> ScanlineEvent {
@@ -420,7 +614,6 @@ impl PPU {
     }
 
     fn set_interrupt(&self, flag: DispstatBit, interrupt_flag: &mut u16) {
-        //eprintln!("INTERRUPT: {:?}", flag);
         match flag {
             DispstatBit::VblankInterrupt => {
                 if self.dispstat.is_set(DispstatBit::VblankInterrupt as usize) {

@@ -567,10 +567,10 @@ impl Bus {
         //eprintln!("READ REGISTER: address={:08x}", address);
         match address {
             // LCD I/O Registers
-            0x4000000 => self.ppu.read_dispcnt(),
+            0x4000000 => self.ppu.dispcnt,
             // 0x4000002 => {} // Undocumented 16 bit register (read + write)
-            0x4000004 => self.ppu.read_dispstat(),
-            0x4000006 => self.ppu.read_vcount(),
+            0x4000004 => self.ppu.dispstat,
+            0x4000006 => self.ppu.vcount as u16,
             0x4000008 | 0x400000A | 0x400000C | 0x400000E => self.ppu.bg_control.read_u16(address),
             0x4000048 | 0x400004A => self.ppu.window_features.read_u16(address),
             0x4000050 | 0x4000052 => self.ppu.color_special_effects.read_u16(address),
@@ -593,20 +593,20 @@ impl Bus {
             // 0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
 
             // DMA Transfer Channels
-            0x40000BA => self.dma.channels[0].read_control_register(),
-            0x40000C6 => self.dma.channels[1].read_control_register(),
-            0x40000D2 => self.dma.channels[2].read_control_register(),
-            0x40000DE => self.dma.channels[3].read_control_register(),
+            0x40000BA => self.dma.channels[0].control_register,
+            0x40000C6 => self.dma.channels[1].control_register,
+            0x40000D2 => self.dma.channels[2].control_register,
+            0x40000DE => self.dma.channels[3].control_register,
 
             // Timer Registers
             0x4000100 => self.timers.timers[0].current_counter(self.scheduler.current),
-            0x4000102 => self.timers.timers[0].read_control_register(),
+            0x4000102 => self.timers.timers[0].control_register,
             0x4000104 => self.timers.timers[1].current_counter(self.scheduler.current),
-            0x4000106 => self.timers.timers[1].read_control_register(),
+            0x4000106 => self.timers.timers[1].control_register,
             0x4000108 => self.timers.timers[2].current_counter(self.scheduler.current),
-            0x400010A => self.timers.timers[2].read_control_register(),
+            0x400010A => self.timers.timers[2].control_register,
             0x400010C => self.timers.timers[3].current_counter(self.scheduler.current),
-            0x400010E => self.timers.timers[3].read_control_register(),
+            0x400010E => self.timers.timers[3].control_register,
 
             // Serial Communication (1)
             // https://problemkaputt.de/gbatek-sio-multi-player-mode.htm
@@ -662,26 +662,46 @@ impl Bus {
             0x4000002 => {} // Undocumented 16 bit register (read + write)
             0x4000004 => self.ppu.write_dispstat(value),
             0x4000008 | 0x400000A | 0x400000C | 0x400000E => {
-                self.ppu.bg_control.write_u16(address, value)
+                self.ppu.bg_control.write_u16(address, value);
             }
             0x4000010 | 0x4000012 | 0x4000014 | 0x4000016 | 0x4000018 | 0x400001A | 0x400001C
             | 0x400001E => self.ppu.bg_text_offset.write_u16(address, value),
             0x4000020 | 0x4000022 | 0x4000024 | 0x4000026 => {
-                self.ppu.bg2_affine_parameters.write_u16(address, value)
+                self.ppu.bg2_affine_parameters.write_u16(address, value);
             }
             0x4000028 | 0x400002A | 0x400002C | 0x400002E => {
-                self.ppu.bg2_affine_offset.write_u16(address, value)
+                self.ppu.bg2_affine_reference.write_u16(address, value);
+                match address {
+                    0x4000028 | 0x400002A => self
+                        .ppu
+                        .bg2_affine_state
+                        .write_x(self.ppu.bg2_affine_reference.from_index(0)),
+                    _ => self
+                        .ppu
+                        .bg2_affine_state
+                        .write_y(self.ppu.bg2_affine_reference.from_index(1)),
+                }
             }
             0x4000030 | 0x4000032 | 0x4000034 | 0x4000036 => {
-                self.ppu.bg3_affine_parameters.write_u16(address, value)
+                self.ppu.bg3_affine_parameters.write_u16(address, value);
             }
             0x4000038 | 0x400003A | 0x400003C | 0x400003E => {
-                self.ppu.bg3_affine_offset.write_u16(address, value)
+                self.ppu.bg3_affine_reference.write_u16(address, value);
+                match address {
+                    0x4000038 | 0x400003A => self
+                        .ppu
+                        .bg3_affine_state
+                        .write_x(self.ppu.bg3_affine_reference.from_index(0)),
+                    _ => self
+                        .ppu
+                        .bg3_affine_state
+                        .write_y(self.ppu.bg3_affine_reference.from_index(1)),
+                }
             }
             0x4000040 | 0x4000042 | 0x4000044 | 0x4000046 | 0x4000048 | 0x400004A => {
                 self.ppu.window_features.write_u16(address, value)
             }
-            0x400004C => self.ppu.write_mosaic(value),
+            0x400004C => self.ppu.mosaic = value,
             0x4000050 | 0x4000052 | 0x4000054 => {
                 self.ppu.color_special_effects.write_u16(address, value)
             }
@@ -708,41 +728,41 @@ impl Bus {
             // DMA Transfer Channels
             0x40000B0 | 0x40000B2 => self.dma.channels[0].write_source_address(address, value),
             0x40000B4 | 0x40000B6 => self.dma.channels[0].write_destination_address(address, value),
-            0x40000B8 => self.dma.channels[0].write_word_count(value),
+            0x40000B8 => self.dma.channels[0].word_count_register = value,
             0x40000BA => {
                 self.dma.channels[0].write_control_register(value);
                 self.run_dma(0, None);
             }
             0x40000BC | 0x40000BE => self.dma.channels[1].write_source_address(address, value),
             0x40000C0 | 0x40000C2 => self.dma.channels[1].write_destination_address(address, value),
-            0x40000C4 => self.dma.channels[1].write_word_count(value),
+            0x40000C4 => self.dma.channels[1].word_count_register = value,
             0x40000C6 => {
                 self.dma.channels[1].write_control_register(value);
                 self.run_dma(1, None);
             }
             0x40000C8 | 0x40000CA => self.dma.channels[2].write_source_address(address, value),
             0x40000CC | 0x40000CE => self.dma.channels[2].write_destination_address(address, value),
-            0x40000D0 => self.dma.channels[2].write_word_count(value),
+            0x40000D0 => self.dma.channels[2].word_count_register = value,
             0x40000D2 => {
                 self.dma.channels[2].write_control_register(value);
                 self.run_dma(2, None);
             }
             0x40000D4 | 0x40000D6 => self.dma.channels[3].write_source_address(address, value),
             0x40000D8 | 0x40000DA => self.dma.channels[3].write_destination_address(address, value),
-            0x40000DC => self.dma.channels[3].write_word_count(value),
+            0x40000DC => self.dma.channels[3].word_count_register = value,
             0x40000DE => {
                 self.dma.channels[3].write_control_register(value);
                 self.run_dma(3, None);
             }
 
             // Timer Registers
-            0x4000100 => self.timers.timers[0].write_counter_register(value),
+            0x4000100 => self.timers.timers[0].counter_register = value,
             0x4000102 => self.timers.timers[0].write_control_register(value, &mut self.scheduler),
-            0x4000104 => self.timers.timers[1].write_counter_register(value),
+            0x4000104 => self.timers.timers[1].counter_register = value,
             0x4000106 => self.timers.timers[1].write_control_register(value, &mut self.scheduler),
-            0x4000108 => self.timers.timers[2].write_counter_register(value),
+            0x4000108 => self.timers.timers[2].counter_register = value,
             0x400010A => self.timers.timers[2].write_control_register(value, &mut self.scheduler),
-            0x400010C => self.timers.timers[3].write_counter_register(value),
+            0x400010C => self.timers.timers[3].counter_register = value,
             0x400010E => self.timers.timers[3].write_control_register(value, &mut self.scheduler),
 
             // Serial Communication (1)
@@ -802,6 +822,10 @@ impl Bus {
 
     pub fn skip_boot(&mut self) {
         self.postflg = 1;
+        self.ppu.bg2_affine_parameters.registers[0] = 0x0100;
+        self.ppu.bg2_affine_parameters.registers[3] = 0x0100;
+        self.ppu.bg3_affine_parameters.registers[0] = 0x0100;
+        self.ppu.bg3_affine_parameters.registers[3] = 0x0100;
     }
 
     pub fn take_halt_request(&mut self) -> Option<u8> {
