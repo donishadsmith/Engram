@@ -149,14 +149,15 @@ impl PPU {
     }
 
     pub fn skip_boot(&mut self) {
-        self.dispcnt = 0x0080;
-        self.bg2_affine_parameters.registers[0] = 0x0100;
-        self.bg2_affine_parameters.registers[3] = 0x0100;
-        self.bg3_affine_parameters.registers[0] = 0x0100;
-        self.bg3_affine_parameters.registers[3] = 0x0100;
+        // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/gpu/mod.rs
+        self.bg2_affine_parameters.registers[0] = 0x100;
+        self.bg2_affine_parameters.registers[3] = 0x100;
+        self.bg3_affine_parameters.registers[0] = 0x100;
+        self.bg3_affine_parameters.registers[3] = 0x100;
     }
 
     pub fn reset_registers(&mut self) {
+        self.dispcnt = 0x0080; // https://problemkaputt.de/gbatek-bios-reset-functions.htm
         self.bg_control = GroupedRegisters::new(4, 0x4000008);
         self.bg_text_offset = GroupedRegisters::new(8, 0x4000010);
         self.bg2_affine_parameters = GroupedRegisters::new(4, 0x4000020);

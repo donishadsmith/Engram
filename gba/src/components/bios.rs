@@ -1,4 +1,4 @@
-// BIOS Functions need implementing: https://problemkaputt.de/gbatek-bios-function-summary.htm
+// https://problemkaputt.de/gbatek-bios-function-summary.htm
 // https://github.com/mgba-emu/mgba/blob/master/src/gba/hle-bios.s
 // https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c
 
@@ -162,6 +162,8 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
 
         // check for other registers
         bus.keypad.reset();
+
+        bus.ppu.reset_registers();
     }
 }
 
