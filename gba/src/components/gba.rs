@@ -1,5 +1,3 @@
-use std::{fs::File, io::Write};
-
 // https://archive.org/details/NintendoGbaManualV1.1/page/n59/mode/1up
 use crate::components::{
     bus::Bus,
@@ -15,7 +13,6 @@ pub struct GBA {
     pub bus: Bus,
     pub cpu: Arm7tdmi,
     pub keypad: [bool; 10],
-    pub file: File,
 }
 
 impl GBA {
@@ -31,7 +28,6 @@ impl GBA {
             bus,
             cpu,
             keypad: [false; 10],
-            file: File::create("dump.txt").unwrap(),
         }
     }
 
@@ -50,7 +46,8 @@ impl GBA {
 
         self.handle_events();
 
-        //self.dump();
+        self.dump();
+
         self.check_interrupts();
     }
 
@@ -108,7 +105,6 @@ impl GBA {
 
     fn check_interrupts(&mut self) {
         if self.bus.pending_interrupt() != 0 {
-            //eprintln!("INTERRUPT PENDING: {:16b}", self.bus.pending_interrupt());
             self.cpu.awake();
             if self.bus.ime_enabled() && self.cpu.registers.irq_enabled() {
                 self.cpu.raise_irq(&mut self.bus)
@@ -143,14 +139,16 @@ impl GBA {
     }
 
     fn dump(&mut self) {
-        let _ = writeln!(
-            self.file,
-            "interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}",
+        let (ie, iflag, dispstat, ime) = (
             self.bus.interrupt_enable,
             self.bus.interrupt_flag,
             self.bus.ppu.dispstat,
             self.bus.ime_enabled(),
         );
+
+        self.bus.trace(|write| {
+        let _ = writeln!(write, "interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}", ie, iflag, dispstat, ime);
+    });
     }
 }
 

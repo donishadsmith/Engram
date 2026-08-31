@@ -5,7 +5,6 @@
 // https://medium.com/@michelheily/hello-gba-journey-of-making-an-emulator-part-1-8793000e8606
 // https://www.cs.rit.edu/~tjh8300/CowBite/CowBiteSpec.htm#Memory%20Map
 // https://www.nesdev.org/wiki/Open_bus_behavior
-// https://www.cs.rit.edu/~tjh8300/CowBite/CowBiteSpec.htm#Memory%20Map
 // https://www.chibiakumas.com/arm/gba.php
 // https://gbadev.net/gbadoc/interrupts.html
 // https://mgba.io/2017/05/29/holy-grail-bugs/
@@ -15,6 +14,12 @@
 // Just do an afterboot startup
 
 // https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
+
+use std::{
+    env::var,
+    fs::File,
+    io::{BufWriter, Write},
+};
 
 use crate::components::{
     apu::APU,
@@ -79,6 +84,12 @@ impl WaitState {
     }
 }
 
+pub struct Trace {
+    file: BufWriter<File>,
+    limit: u64,
+    pub count: u64,
+}
+
 pub struct Bus {
     pub scheduler: EventScheduler,
     _bios: Box<[u8; 0x4000]>,
@@ -101,10 +112,20 @@ pub struct Bus {
     pub waitcnt: u16,
     haltcnt: Option<u8>,
     internal_memory_control: u32,
+    pub trace: Option<Trace>,
 }
 
 impl Bus {
     pub fn new(gamepak: GamePak) -> Self {
+        let trace = var("TRACE")
+            .ok()
+            .and_then(|str| str.parse().ok())
+            .map(|limit| Trace {
+                file: BufWriter::with_capacity(1 << 20, File::create("trace.txt").unwrap()),
+                limit,
+                count: 0,
+            });
+
         Self {
             scheduler: EventScheduler::new(),
             _bios: zero_arr(),
@@ -126,6 +147,7 @@ impl Bus {
             waitcnt: 0,
             haltcnt: None,
             internal_memory_control: 0x0D000020,
+            trace,
         }
     }
 
@@ -555,7 +577,8 @@ impl Bus {
     }
 
     fn read_register(&mut self, address: u32) -> u16 {
-        //eprintln!("READ REGISTER: address={:08x}", address);
+        self.dump(address, None);
+
         match address {
             // LCD I/O Registers
             0x4000000 => self.ppu.dispcnt,
@@ -646,7 +669,8 @@ impl Bus {
     }
 
     fn write_register(&mut self, address: u32, mut value: u16) {
-        //eprintln!("WRITE REGISTER: address={:08x}, value={:16b}", address, value);
+        self.dump(address, Some(value));
+
         match address {
             // LCD I/O Registers
             0x4000000 => self.ppu.write_dispcnt(value),
@@ -910,6 +934,35 @@ impl Bus {
     }
 
     pub fn sound_fifo(&mut self, timer_id: u8) {}
+
+    pub fn trace(&mut self, write: impl FnOnce(&mut dyn Write)) {
+        if let Some(trace) = &mut self.trace {
+            if trace.count <= trace.limit {
+                write(&mut trace.file);
+            }
+        }
+    }
+
+    fn dump(&mut self, address: u32, programmed_value: Option<u16>) {
+        self.trace(|write| {
+            let _ = match programmed_value {
+                Some(value) => writeln!(
+                    write,
+                    "WRITE REGISTER: address={:08x}, value={:16b}",
+                    address, value
+                ),
+                None => writeln!(write, "READ REGISTER: address={:08x}", address),
+            };
+        });
+    }
+}
+
+impl Drop for Bus {
+    fn drop(&mut self) {
+        if let Some(trace) = &mut self.trace {
+            let _ = trace.file.flush();
+        }
+    }
 }
 
 #[cfg(test)]

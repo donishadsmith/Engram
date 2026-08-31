@@ -8,6 +8,7 @@ use crate::components::{
 };
 use affine::{AffineMatrix, AffineState};
 use shared::render::Frame;
+use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
 use std::mem::take;
 // https://www.patater.com/gbaguy/gba/ch5.htm
 // https://gbadev.net/tonc/
@@ -62,7 +63,7 @@ fn get_bitmap_mode_params(mode: u8) -> BitmapModeParams {
     }
 }
 
-pub struct BgLine {
+struct BgLine {
     id: usize,
     on: bool,
     priority: u8,
@@ -78,6 +79,35 @@ impl BgLine {
             palette_indices: [None; SCREEN_WIDTH],
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LayerId {
+    Bg0,
+    Bg1,
+    Bg2,
+    Bg3,
+    Sprite,
+    Backdrop,
+}
+
+impl LayerId {
+    fn from_background(bg_id: usize) -> LayerId {
+        match bg_id {
+            0 => LayerId::Bg0,
+            1 => LayerId::Bg1,
+            2 => LayerId::Bg2,
+            3 => LayerId::Bg3,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Pixel {
+    pub id: LayerId,
+    priority: u8,
+    pub color: u16,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -241,7 +271,6 @@ impl PPU {
         }
 
         let mut bg_lines: [BgLine; 4] = std::array::from_fn(|i| BgLine::new(i, false, 0));
-        let mut sprite_line: [Option<u8>; 240] = [None; 240];
 
         let mode = self.current_mode();
         match mode {
@@ -300,7 +329,14 @@ impl PPU {
             _ => {}
         }
 
-        self.composite(&bg_lines, &sprite_line);
+        let (sprite_line, obj_window) = if self.dispcnt.is_set(12) {
+            self.render_sprite_line()
+        } else {
+            (std::array::from_fn(|_| None), [false; 240])
+        };
+        //let window_mask = self.build_window_mask();
+
+        self.composite(&bg_lines, &sprite_line, [0xFF; 240]);
 
         self.bg2_affine_state
             .increment_internal_reference(bg2_matrix);
@@ -331,30 +367,72 @@ impl PPU {
         }
     }
 
-    fn composite(&mut self, bg_lines: &[BgLine; 4], sprite_line: &[Option<u8>; 240]) {
+    fn composite(
+        &mut self,
+        bg_lines: &[BgLine; 4],
+        sprite_line: &[Option<SpritePixel>; 240],
+        window_mask: [u8; 240],
+    ) {
         let backdrop = u16::from_le_bytes([self.palette_ram[0], self.palette_ram[1]]);
         for pixel in 0..SCREEN_WIDTH {
-            let mut winner: Option<(u8, usize)> = None;
+            let mut first = Pixel {
+                id: LayerId::Backdrop,
+                priority: 4,
+                color: backdrop,
+            };
+            let mut second = first;
+
+            let mask = window_mask[pixel];
+
             for bg in bg_lines {
-                if !bg.on {
+                if !bg.on || mask & (1 << bg.id) == 0 {
                     continue;
                 }
 
-                if let Some(index) = bg.palette_indices[pixel] {
-                    if winner.map_or(true, |(p, _)| bg.priority < p) {
-                        winner = Some((bg.priority, index));
+                let Some(index) = bg.palette_indices[pixel] else {
+                    continue;
+                };
+                let layer_id = LayerId::from_background(bg.id);
+                let color = self.fetch_color(index, layer_id);
+                let candidate = Pixel {
+                    id: layer_id,
+                    priority: bg.priority,
+                    color,
+                };
+
+                if candidate.priority < first.priority {
+                    second = first;
+                    first = candidate;
+                } else if candidate.priority < second.priority {
+                    second = candidate;
+                }
+            }
+
+            if mask & (1 << 4) != 0 {
+                if let Some(sprite_pixel) = &sprite_line[pixel] {
+                    let candidate = Pixel {
+                        id: LayerId::Sprite,
+                        priority: sprite_pixel.priority,
+                        color: self.fetch_color(sprite_pixel.palette_index + 256, LayerId::Sprite),
+                    };
+
+                    if candidate.priority <= first.priority {
+                        second = first;
+                        first = candidate;
+                    } else if candidate.priority <= second.priority {
+                        second = candidate;
                     }
                 }
             }
 
-            self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = winner
-                .and_then(|(_, index)| self.fetch_color(index as usize))
-                .unwrap_or(backdrop);
+            // self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel]  = if mask & (1 << 5) != 0 {apply_effects(first, second, semi_transparent)} else {first.color}
+
+            self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = first.color;
         }
     }
 
-    fn direct_color(&self) -> bool {
-        matches!(self.current_mode(), 3 | 5)
+    fn direct_color(&self, layer_id: LayerId) -> bool {
+        matches!(self.current_mode(), 3 | 5) && layer_id == LayerId::Bg2
     }
 
     fn get_text_bg_palette_index(&self, bg_id: usize, lcd_pixel_x: usize) -> Option<usize> {
@@ -530,21 +608,14 @@ impl PPU {
         }
     }
 
-    fn fetch_color(&self, palette_index: usize) -> Option<u16> {
-        if self.direct_color() {
-            return Some(u16::from_le_bytes([
-                self.vram[palette_index],
-                self.vram[palette_index + 1],
-            ]));
-        }
-
-        if palette_index == 0 {
-            None
+    fn fetch_color(&self, palette_index: usize, layer_id: LayerId) -> u16 {
+        if self.direct_color(layer_id) {
+            u16::from_le_bytes([self.vram[palette_index], self.vram[palette_index + 1]])
         } else {
-            Some(u16::from_le_bytes([
+            u16::from_le_bytes([
                 self.palette_ram[palette_index * 2],
                 self.palette_ram[palette_index * 2 + 1],
-            ]))
+            ])
         }
     }
 
@@ -586,14 +657,132 @@ impl PPU {
             Some(page_offset + linear_index * 2)
         } else {
             let index = page_offset + linear_index;
-
-            Some(self.vram[index] as usize)
+            let value = self.vram[index];
+            if value == 0 {
+                None
+            } else {
+                Some(value as usize)
+            }
         }
     }
 
     // skip the sprite maximum based on size and cycle budget and put all the sprites on screen
-    fn render_sprite_line(&self) {
-        //let sprites: Vec<Sprite> = Vec::with_capacity(128);
+    pub fn render_sprite_line(&self) -> ([Option<SpritePixel>; 240], [bool; 240]) {
+        let mut sprite_line: [Option<SpritePixel>; 240] = std::array::from_fn(|_| None);
+        let mut obj_window = [false; 240];
+
+        for sprite_id in 0..128 {
+            let sprite = SpriteAttributes::from_bytes(sprite_id, &self.oam);
+
+            if self.current_mode() >= 3 && sprite.tile < 512 {
+                continue;
+            }
+
+            let Some(row) = sprite.visible_row(self.vcount) else {
+                continue;
+            };
+
+            for col in 0..sprite.bounding_box.width {
+                let pixel = sprite.coordinate.x + col;
+                if pixel < 0 || pixel >= SCREEN_WIDTH as i32 {
+                    continue;
+                }
+
+                let (texture_x, texture_y) = match sprite.matrix {
+                    Some(matrix) => {
+                        let dx = col - sprite.bounding_box.width / 2;
+                        let dy = row - sprite.bounding_box.height / 2;
+
+                        let texture_x = ((matrix.pa.raw() * dx + matrix.pb.raw() * dy) >> 8)
+                            + sprite.dimension.width as i32 / 2;
+                        let texture_y = ((matrix.pc.raw() * dx + matrix.pd.raw() * dy) >> 8)
+                            + sprite.dimension.height as i32 / 2;
+
+                        (texture_x, texture_y)
+                    }
+                    None => {
+                        let texture_x = if sprite.horizontal_flip {
+                            sprite.dimension.width - 1 - col
+                        } else {
+                            col
+                        };
+                        let texture_y = if sprite.vertical_flip {
+                            sprite.dimension.height - 1 - row
+                        } else {
+                            row
+                        };
+
+                        (texture_x, texture_y)
+                    }
+                };
+
+                if texture_x < 0
+                    || texture_x >= sprite.dimension.width as i32
+                    || texture_y < 0
+                    || texture_y >= sprite.dimension.height as i32
+                {
+                    continue;
+                }
+
+                let tile = Coordinate {
+                    x: texture_x as usize / 8,
+                    y: texture_y as usize / 8,
+                };
+                let pixel_inside_tile = Coordinate {
+                    x: texture_x as usize % 8,
+                    y: texture_y as usize % 8,
+                };
+
+                let tiles_wide = sprite.dimension.width as usize / 8;
+                let step = if sprite.bpp == Bpp::EigthBpp { 2 } else { 1 };
+
+                let tile_number = if self.dispcnt.is_set(6) {
+                    sprite.tile + (tile.y * tiles_wide + tile.x) * step
+                } else {
+                    sprite.tile + tile.y * 32 + tile.x * step
+                } & 0x3FF;
+
+                let tile_number = if sprite.bpp == Bpp::EigthBpp {
+                    tile_number / 2
+                } else {
+                    tile_number
+                };
+
+                let palette_index = self.read_tile_pixel_palette_index(
+                    4,
+                    tile_number,
+                    pixel_inside_tile,
+                    sprite.bpp,
+                    sprite.palette_bank,
+                );
+
+                if palette_index == 0 {
+                    continue;
+                }
+
+                if sprite.mode == SpriteMode::ObjWindow {
+                    if palette_index != 0 {
+                        obj_window[pixel as usize] = true;
+                    }
+
+                    continue;
+                }
+
+                if let Some(old_sprite_pixel) = &sprite_line[pixel as usize] {
+                    if old_sprite_pixel.priority <= sprite.priority {
+                        continue;
+                    }
+                }
+
+                sprite_line[pixel as usize] = Some(SpritePixel {
+                    palette_index,
+                    priority: sprite.priority,
+                    semi_transparent: sprite.mode == SpriteMode::Semitransparent,
+                });
+            }
+        }
+
+        (sprite_line, obj_window)
     }
 
     pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> ScanlineEvent {

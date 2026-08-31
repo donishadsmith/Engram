@@ -3,3 +3,5 @@ pub enum SpecialEffects {
     IncreaseBrightness,
     DecreaseBrightness,
 }
+
+pub fn apply_effects() {}

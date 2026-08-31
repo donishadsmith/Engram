@@ -23,6 +23,7 @@ use shared::{
 };
 use std::{io::Error, path::PathBuf};
 
+// **FIX SPEED EVENTUALLY, run on audio when implemented
 pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
     let gamepak = GamePak::load(rom_path)?;
     let mut gba = GBA::boot(gamepak);
