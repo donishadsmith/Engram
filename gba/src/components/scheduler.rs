@@ -37,7 +37,9 @@ impl EventScheduler {
     }
 
     pub fn next(&self) -> u64 {
-        self.queue.peek().map_or(u64::MAX, |Reverse((t, _))| *t)
+        self.queue
+            .peek()
+            .map_or(u64::MAX, |Reverse((time, _))| *time)
     }
 
     pub fn skip_to_next_event(&mut self) {

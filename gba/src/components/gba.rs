@@ -46,7 +46,14 @@ impl GBA {
 
         self.handle_events();
 
-        self.dump();
+        let (ie, iflag, dispstat, ime) = (
+            self.bus.interrupt_enable,
+            self.bus.interrupt_flag,
+            self.bus.ppu.dispstat,
+            self.bus.ime_enabled(),
+        );
+
+        self.bus.dump(format_args!("interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}", ie, iflag, dispstat, ime));
 
         self.check_interrupts();
     }
@@ -136,19 +143,6 @@ impl GBA {
                 self.bus.run_dma(channel, Some(trigger));
             }
         }
-    }
-
-    fn dump(&mut self) {
-        let (ie, iflag, dispstat, ime) = (
-            self.bus.interrupt_enable,
-            self.bus.interrupt_flag,
-            self.bus.ppu.dispstat,
-            self.bus.ime_enabled(),
-        );
-
-        self.bus.trace(|write| {
-        let _ = writeln!(write, "interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}", ie, iflag, dispstat, ime);
-    });
     }
 }
 

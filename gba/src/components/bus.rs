@@ -17,6 +17,7 @@
 
 use std::{
     env::var,
+    fmt::Arguments,
     fs::File,
     io::{BufWriter, Write},
 };
@@ -577,7 +578,7 @@ impl Bus {
     }
 
     fn read_register(&mut self, address: u32) -> u16 {
-        self.dump(address, None);
+        self.dump(format_args!("READ REGISTER: address={:08x}", address));
 
         match address {
             // LCD I/O Registers
@@ -669,7 +670,10 @@ impl Bus {
     }
 
     fn write_register(&mut self, address: u32, mut value: u16) {
-        self.dump(address, Some(value));
+        self.dump(format_args!(
+            "WRITE REGISTER: address={:08x}, value={:16b}",
+            address, value
+        ));
 
         match address {
             // LCD I/O Registers
@@ -943,16 +947,10 @@ impl Bus {
         }
     }
 
-    fn dump(&mut self, address: u32, programmed_value: Option<u16>) {
+    pub fn dump(&mut self, arguments: Arguments) {
         self.trace(|write| {
-            let _ = match programmed_value {
-                Some(value) => writeln!(
-                    write,
-                    "WRITE REGISTER: address={:08x}, value={:16b}",
-                    address, value
-                ),
-                None => writeln!(write, "READ REGISTER: address={:08x}", address),
-            };
+            let _ = write.write_fmt(arguments);
+            let _ = writeln!(write);
         });
     }
 }

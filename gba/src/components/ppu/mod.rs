@@ -4,12 +4,16 @@ mod sprites;
 
 use crate::components::{
     dma::Trigger,
+    ppu::special_effects::apply_effects,
     utils::{BitOps, GroupedRegisters, zero_arr},
 };
 use affine::{AffineMatrix, AffineState};
 use shared::render::Frame;
 use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
-use std::mem::take;
+use std::{
+    array::from_fn,
+    mem::{swap, take},
+};
 // https://www.patater.com/gbaguy/gba/ch5.htm
 // https://gbadev.net/tonc/
 // https://github.com/gbadev-org/awesome-gbadev/blob/master/README.md#tutorials
@@ -83,12 +87,12 @@ impl BgLine {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LayerId {
-    Bg0,
-    Bg1,
-    Bg2,
-    Bg3,
-    Sprite,
-    Backdrop,
+    Bg0 = 0,
+    Bg1 = 1,
+    Bg2 = 2,
+    Bg3 = 3,
+    Sprite = 4,
+    Backdrop = 5,
 }
 
 impl LayerId {
@@ -108,6 +112,7 @@ pub struct Pixel {
     pub id: LayerId,
     priority: u8,
     pub color: u16,
+    pub semitransparent: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -241,9 +246,9 @@ impl PPU {
         }
     }
 
-    // ***still needs, sprite, window, and the special effects
-    // probably not the cleanest implementation, refactor after ppu produces
+    // probably not the cleanest implementation, maybe refactor after ppu produces
     // visuals reasonably close to what commercial roms are supposed to look like
+    // still nneds mosaic an the sprite budget
     fn render_scanline(&mut self) {
         let bg2_matrix = AffineMatrix::from_registers(
             self.bg2_affine_parameters.from_index(0),
@@ -270,7 +275,7 @@ impl PPU {
             return;
         }
 
-        let mut bg_lines: [BgLine; 4] = std::array::from_fn(|i| BgLine::new(i, false, 0));
+        let mut bg_lines: [BgLine; 4] = from_fn(|i| BgLine::new(i, false, 0));
 
         let mode = self.current_mode();
         match mode {
@@ -332,11 +337,12 @@ impl PPU {
         let (sprite_line, obj_window) = if self.dispcnt.is_set(12) {
             self.render_sprite_line()
         } else {
-            (std::array::from_fn(|_| None), [false; 240])
+            (from_fn(|_| None), [false; 240])
         };
-        //let window_mask = self.build_window_mask();
 
-        self.composite(&bg_lines, &sprite_line, [0xFF; 240]);
+        let window_mask = self.build_window_mask(obj_window);
+
+        self.composite(&bg_lines, &sprite_line, window_mask);
 
         self.bg2_affine_state
             .increment_internal_reference(bg2_matrix);
@@ -379,6 +385,7 @@ impl PPU {
                 id: LayerId::Backdrop,
                 priority: 4,
                 color: backdrop,
+                semitransparent: false,
             };
             let mut second = first;
 
@@ -398,6 +405,7 @@ impl PPU {
                     id: layer_id,
                     priority: bg.priority,
                     color,
+                    semitransparent: false,
                 };
 
                 if candidate.priority < first.priority {
@@ -414,6 +422,7 @@ impl PPU {
                         id: LayerId::Sprite,
                         priority: sprite_pixel.priority,
                         color: self.fetch_color(sprite_pixel.palette_index + 256, LayerId::Sprite),
+                        semitransparent: sprite_pixel.semi_transparent,
                     };
 
                     if candidate.priority <= first.priority {
@@ -425,9 +434,12 @@ impl PPU {
                 }
             }
 
-            // self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel]  = if mask & (1 << 5) != 0 {apply_effects(first, second, semi_transparent)} else {first.color}
-
-            self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = first.color;
+            self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = if mask & (1 << 5) != 0
+            {
+                apply_effects(first, second, &self.color_special_effects)
+            } else {
+                first.color
+            };
         }
     }
 
@@ -608,6 +620,69 @@ impl PPU {
         }
     }
 
+    fn build_window_mask(&self, obj_window: [bool; 240]) -> [u8; 240] {
+        let mut window_mask = [0u8; 240];
+
+        let win0h = self.window_features.from_index(0);
+        let win1h = self.window_features.from_index(1);
+
+        let win0v = self.window_features.from_index(2);
+        let win1v = self.window_features.from_index(3);
+
+        let winin = self.window_features.from_index(4);
+        let winout = self.window_features.from_index(5);
+
+        let window0_x1 = win0h.get_bit_range(8..16);
+        let mut window0_x2 = win0h.get_bit_range(0..8).min(240);
+        if window0_x1 > window0_x2 {
+            window0_x2 = 240;
+        }
+
+        let window0_y1 = win0v.get_bit_range(8..16);
+        let mut window0_y2 = win0v.get_bit_range(0..8).min(160);
+        if window0_y1 > window0_y2 {
+            window0_y2 = 160;
+        }
+
+        let window1_x1 = win1h.get_bit_range(8..16);
+        let mut window1_x2 = win1h.get_bit_range(0..8).min(240);
+        if window1_x1 > window1_x2 {
+            window1_x2 = 240;
+        }
+
+        let window1_y1 = win1v.get_bit_range(8..16);
+        let mut window1_y2 = win1v.get_bit_range(0..8).min(160);
+        if window1_y1 > window1_y2 {
+            window1_y2 = 160;
+        }
+
+        for pixel in 0..SCREEN_WIDTH {
+            if self.dispcnt.get_bit_range(13..15) == 0 {
+                window_mask[pixel] = 0xFF;
+
+                continue;
+            }
+
+            if (window0_x1..window0_x2).contains(&(pixel as u16))
+                && (window0_y1..window0_y2).contains(&(self.vcount as u16))
+                && self.dispcnt.is_set(13)
+            {
+                window_mask[pixel] = winin.get_bit_range(0..6) as u8;
+            } else if (window1_x1..window1_x2).contains(&(pixel as u16))
+                && (window1_y1..window1_y2).contains(&(self.vcount as u16))
+                && self.dispcnt.is_set(14)
+            {
+                window_mask[pixel] = winin.get_bit_range(8..14) as u8;
+            } else if obj_window[pixel] && self.dispcnt.is_set(15) {
+                window_mask[pixel] = winout.get_bit_range(8..14) as u8;
+            } else {
+                window_mask[pixel] = winout.get_bit_range(0..6) as u8;
+            }
+        }
+
+        window_mask
+    }
+
     fn fetch_color(&self, palette_index: usize, layer_id: LayerId) -> u16 {
         if self.direct_color(layer_id) {
             u16::from_le_bytes([self.vram[palette_index], self.vram[palette_index + 1]])
@@ -668,7 +743,7 @@ impl PPU {
 
     // skip the sprite maximum based on size and cycle budget and put all the sprites on screen
     pub fn render_sprite_line(&self) -> ([Option<SpritePixel>; 240], [bool; 240]) {
-        let mut sprite_line: [Option<SpritePixel>; 240] = std::array::from_fn(|_| None);
+        let mut sprite_line: [Option<SpritePixel>; 240] = from_fn(|_| None);
         let mut obj_window = [false; 240];
 
         for sprite_id in 0..128 {
@@ -806,7 +881,7 @@ impl PPU {
 
         if self.vcount == 160 {
             self.frame_ready = true;
-            std::mem::swap(&mut self.frame, &mut self.frontend);
+            swap(&mut self.frame, &mut self.frontend);
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
             scanline_event.vblank = true;

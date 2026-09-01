@@ -549,7 +549,12 @@ impl Arm7tdmi {
                 if let Some(trace) = &mut bus.trace {
                     trace.count += 1
                 }
-                self.dump(executing_address, &decoded_arm, bus);
+
+                bus.dump(format_args!(
+                    "EXECUTING ADDRESS={:08x}; CONDITION: {:?}, CURRENT INSTRUCTION: {:?}",
+                    executing_address, decoded_arm.condition, decoded_arm.instruction,
+                ));
+
                 if self.registers.condition_passed(decoded_arm.condition) {
                     execute_arm(decoded_arm.instruction, &mut self.registers, bus)
                 } else {
@@ -582,6 +587,7 @@ impl Arm7tdmi {
         }
 
         if let HaltState::IntrWait { .. } = self.halt_state {
+            bus.dump(format_args!("INSTR WAIT LOOP"));
             self.registers.r[15] = executing_address;
             self.flush_pipeline();
         }
@@ -652,7 +658,7 @@ impl Arm7tdmi {
     }
 
     pub fn handle_irq_return(&mut self, bus: &mut Bus) {
-        //eprintln!("Interrupt returned");
+        bus.dump(format_args!("INTERRUPT RETURNED"));
         bus.last_bios_fetch = 0xE55EC002;
         let mut sp = self.registers.r[13];
 
@@ -690,6 +696,7 @@ impl Arm7tdmi {
     }
 
     pub fn raise_irq(&mut self, bus: &mut Bus) {
+        bus.dump(format_args!("INTERRUPT RAISED"));
         let lr = self.next_executing_address().wrapping_add(4);
         let old_cpsr = self.registers.cpsr;
 
@@ -727,16 +734,6 @@ impl Arm7tdmi {
         self.registers.r[13] = 0x03007F00;
 
         self.intr_wait_resume = false;
-    }
-
-    fn dump(&self, executing_address: u32, decodedarm: &DecodedArm, bus: &mut Bus) {
-        bus.trace(|write| {
-            let _ = writeln!(
-                write,
-                "EXECUTING ADDRESS={:08x}; CONDITION: {:?}, CURRENT INSTRUCTION: {:?}",
-                executing_address, decodedarm.condition, decodedarm.instruction,
-            );
-        });
     }
 }
 

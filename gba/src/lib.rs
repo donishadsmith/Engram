@@ -21,15 +21,33 @@ use shared::{
     render::Screen,
     utils::{quit_emulator, save_progress},
 };
-use std::{io::Error, path::PathBuf};
+use std::{
+    io::Error,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
+// https://github.com/not-fl3/macroquad/issues/749
 // **FIX SPEED EVENTUALLY, run on audio when implemented
+// temporary fix since run too fast, 59/60 makes it a tad too slow
+// so reduce the sleep time a bit to match mgba's feel
+fn fps_lock(frame_start_time: Instant) {
+    let frame_duration = Duration::from_secs_f64(1.0 / 67.0);
+
+    let elapsed_time = frame_start_time.elapsed();
+    if elapsed_time < frame_duration {
+        spin_sleep::sleep(frame_duration - elapsed_time);
+    }
+}
+
 pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
     let gamepak = GamePak::load(rom_path)?;
     let mut gba = GBA::boot(gamepak);
     let mut screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
 
     loop {
+        let frame_start_time = Instant::now();
+
         if quit_emulator(&gba)? {
             break;
         }
@@ -54,6 +72,7 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
 
         screen.draw(&gba.bus.ppu.frontend);
 
+        fps_lock(frame_start_time);
         next_frame().await;
     }
 

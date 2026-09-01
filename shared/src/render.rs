@@ -28,12 +28,12 @@ impl Screen {
     }
 
     pub fn update(&mut self, frame: &Frame) {
-        for (px, out) in frame
+        for (pixel, out) in frame
             .pixels
             .iter()
             .zip(self.image.bytes.chunks_exact_mut(RGBA_BYTES_PER_PIXEL))
         {
-            let [r, g, b] = rgb555_to_rgb888(*px);
+            let [r, g, b] = rgb555_to_rgb888(*pixel);
             out.copy_from_slice(&[r, g, b, 255]);
         }
 

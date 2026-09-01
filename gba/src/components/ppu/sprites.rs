@@ -40,7 +40,7 @@ pub struct SpriteCoordinate {
 }
 
 #[derive(Clone, Copy)]
-pub struct SpriteDimensions {
+pub struct SpriteDimension {
     pub width: i32,
     pub height: i32,
 }
@@ -53,11 +53,11 @@ pub struct SpriteAttributes {
     pub vertical_flip: bool,
     pub bpp: Bpp,
     pub matrix: Option<AffineMatrix>,
-    pub dimension: SpriteDimensions,
+    pub dimension: SpriteDimension,
     pub tile: usize,
     pub priority: u8,
     pub palette_bank: usize,
-    pub bounding_box: SpriteDimensions,
+    pub bounding_box: SpriteDimension,
 }
 
 impl SpriteAttributes {
@@ -85,7 +85,7 @@ impl SpriteAttributes {
         let shape = attribute0.get_bit_range(14..16) as usize;
         let size = attribute1.get_bit_range(14..16) as usize;
         let dimension = SPRITE_DIMENSIONS[shape][size];
-        let dimension = SpriteDimensions {
+        let dimension = SpriteDimension {
             width: dimension.0 as i32,
             height: dimension.1 as i32,
         };
@@ -103,7 +103,7 @@ impl SpriteAttributes {
         };
 
         let bounding_box = if double_size {
-            SpriteDimensions {
+            SpriteDimension {
                 width: dimension.width * 2,
                 height: dimension.height * 2,
             }

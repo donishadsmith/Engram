@@ -96,6 +96,7 @@ impl GamePak {
     }
 
     // Eventually incorporate RTC data; https://problemkaputt.de/gbatek-gba-cart-backup-eeprom.htm
+    // maybe an override like mgba for games using rtc: https://github.com/mgba-emu/mgba/blob/master/src/gba/overrides.c
     pub fn read_sav(sav_path: &PathBuf, backup_chip: &mut BackupChip) -> Result<(), Error> {
         if !sav_path.exists() {
             return Ok(());
