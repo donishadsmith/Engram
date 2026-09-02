@@ -24,7 +24,7 @@ use std::{
 
 use crate::components::{
     apu::APU,
-    dma::{DmaChannels, TransferType, Trigger},
+    dma::{DmaChannels, FifoChannel, TransferType, Trigger},
     gamepak::{BackupChip, GamePak},
     keypad::Keypad,
     ppu::PPU,
@@ -117,7 +117,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(gamepak: GamePak) -> Self {
+    pub fn new(gamepak: GamePak, apu_sample_period: u32) -> Self {
         let trace = var("TRACE")
             .ok()
             .and_then(|str| str.parse().ok())
@@ -128,7 +128,7 @@ impl Bus {
             });
 
         Self {
-            scheduler: EventScheduler::new(),
+            scheduler: EventScheduler::new(apu_sample_period),
             _bios: zero_arr(),
             ewram: zero_arr(),
             iwram: zero_arr(),
@@ -601,11 +601,11 @@ impl Bus {
             // 0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
             // 0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
             // 0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
-            // 0x4000080 => {} // Control Stereo/Volume/Enable (NR50, NR51) (SOUNDCNT_L), 16 bit register (read + write)
-            // 0x4000082 => {} // Control Mixing/DMA Control (SOUNDCNT_H), 16 bit register (read + write)
-            // 0x4000084 => {} // Control Sound on/off (NR52) (SOUNDCNT_X), 16 bit register (read + write)
-            // 0x4000088 => {} // BIOS/Sound PWM Control (SOUNDBIAS), 16 bit register (read + write)
-            // 0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
+            0x4000080 => self.apu.global_control.soundcnt_l,
+            0x4000082 => self.apu.global_control.soundcnt_h,
+            0x4000084 => self.apu.global_control.soundcnt_x,
+            0x4000088 => self.apu.global_control.soundbias,
+            // 0x4000090..=0x400009F => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
 
             // DMA Transfer Channels
             0x40000BA => self.dma.channels[0].control_register,
@@ -736,13 +736,31 @@ impl Bus {
             0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
             0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
             0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
-            0x4000080 => {} // Control Stereo/Volume/Enable (NR50, NR51) (SOUNDCNT_L), 16 bit register (read + write)
-            0x4000082 => {} // Control Mixing/DMA Control (SOUNDCNT_H), 16 bit register (read + write)
-            0x4000084 => {} // Control Sound on/off (NR52) (SOUNDCNT_X), 16 bit register (read + write)
-            0x4000088 => {} // BIOS/Sound PWM Control (SOUNDBIAS), 16 bit register (read + write)
-            0x4000090 => {} // Channel 3 Wave Pattern RAM (2 banks) (WAVE_RAM) 2x10h in size, (read + write)
-            0x40000A0 | 0x40000A2 => {} // Channel A FIFO, Data 0-3, (FIFO_A) (write only), 32 bit register
-            0x40000A4 | 0x40000A6 => {} // Channel B FIFO, Data 0-3, (FIFO_B) (write only), 32 bit register
+            0x4000080 => self.apu.global_control.soundcnt_l = value,
+            0x4000082 => {
+                self.apu.global_control.soundcnt_h = value;
+
+                if self.apu.global_control.reset_fifo(FifoChannel::A) {
+                    self.apu.fifo_a.reset();
+                }
+
+                if self.apu.global_control.reset_fifo(FifoChannel::B) {
+                    self.apu.fifo_b.reset();
+                }
+            }
+            0x4000084 => {
+                self.apu.global_control.soundcnt_x = value;
+
+                self.apu.enable_channels();
+            }
+            0x4000088 => self.apu.global_control.soundbias = value,
+            0x4000090..=0x400009F => {}
+            0x40000A0 | 0x40000A2 => {
+                self.apu.fifo_a.push_samples(value);
+            }
+            0x40000A4 | 0x40000A6 => {
+                self.apu.fifo_b.push_samples(value);
+            }
 
             // DMA Transfer Channels
             0x40000B0 | 0x40000B2 => self.dma.channels[0].write_source_address(address, value),
@@ -902,9 +920,10 @@ impl Bus {
             }
 
             access_type = AccessType::Sequential;
-            self.dma.channels[channel].update_address_pointers();
 
             self.dma.channels[channel].current_word_count -= 1;
+
+            self.dma.channels[channel].update_address_pointers(trigger);
         }
 
         self.dma.channels[channel].reload_destination_address();
@@ -937,8 +956,31 @@ impl Bus {
         }
     }
 
-    pub fn sound_fifo(&mut self, timer_id: u8) {}
+    pub fn pop_fifo(&mut self, timer_id: u8) {
+        let fifo_a_timer = self.apu.global_control.timer_select(FifoChannel::A);
+        let fifo_b_timer = self.apu.global_control.timer_select(FifoChannel::B);
 
+        if timer_id == fifo_a_timer {
+            self.apu.fifo_a.update_latched_sample();
+            if let Some(trigger) = self.apu.fifo_a.transfer_request() {
+                for channel_id in 1..3 {
+                    self.run_dma(channel_id, Some(trigger));
+                }
+            }
+        }
+
+        if timer_id == fifo_b_timer {
+            self.apu.fifo_b.update_latched_sample();
+            if let Some(trigger) = self.apu.fifo_b.transfer_request() {
+                for channel_id in 1..3 {
+                    self.run_dma(channel_id, Some(trigger));
+                }
+            }
+        }
+    }
+
+    // TODO: really need to make a real debugger else its just dumps
+    // and print debug
     pub fn trace(&mut self, write: impl FnOnce(&mut dyn Write)) {
         if let Some(trace) = &mut self.trace {
             if trace.count <= trace.limit {

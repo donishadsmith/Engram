@@ -35,7 +35,6 @@ enum CpuSetMode {
 pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
     // https://gbadev.net/gbadoc/bios.html
     // https://github.com/mgba-emu/mgba/blob/b54fc45b4ddab1c493122f6644f6d290dce319ce/src/gba/hle-bios.s#L69
-    // eprintln!("BIOS CODE CALLED: {}", function);
     match function {
         0x00 => soft_reset(cpu, bus), // https://problemkaputt.de/gbatek-bios-reset-functions.htm
         0x01 => register_ram_reset(cpu, bus),
@@ -150,7 +149,7 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
     }
 
     if reset_flags.is_set(6) {
-        bus.apu.reset_registers();
+        bus.apu.reset_sound_registers();
     }
 
     if reset_flags.is_set(7) {

@@ -35,8 +35,8 @@ impl AudioOutput {
                     for frame in data.chunks_mut(channels) {
                         let left = consumer.pop().unwrap_or(0.0);
                         let right = consumer.pop().unwrap_or(0.0);
-                        for (i, out) in frame.iter_mut().enumerate() {
-                            *out = match i {
+                        for (i, sample) in frame.iter_mut().enumerate() {
+                            *sample = match i {
                                 0 => {
                                     if channels == 1 {
                                         (left + right) * 0.5
@@ -50,7 +50,7 @@ impl AudioOutput {
                         }
                     }
                 },
-                |err| eprintln!("Some audio-related error occured: {err}"),
+                |error| eprintln!("Some audio-related error occured: {error}"),
                 None,
             )
             .unwrap();

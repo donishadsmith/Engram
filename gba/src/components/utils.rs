@@ -42,7 +42,7 @@ pub fn zero_arr<const N: usize>() -> Box<[u8; N]> {
 
 pub fn create_bus(backup_type: BackupType) -> Bus {
     let gamepak = GamePak::mock(backup_type);
-    let bus = Bus::new(gamepak);
+    let bus = Bus::new(gamepak, 512);
 
     bus
 }

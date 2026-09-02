@@ -7,7 +7,6 @@ use std::{cmp::Reverse, collections::BinaryHeap};
 
 pub const HBLANK_OFFSET: u64 = 1006;
 pub const CYCLES_PER_SCANLINE: u64 = 1232;
-pub const APU_SAMPLE: u64 = 512;
 pub const APU_SEQUENCER: u64 = 32768;
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Debug)]
@@ -21,13 +20,15 @@ pub enum Event {
 
 pub struct EventScheduler {
     pub current: u64,
+    apu_sample_period: u64,
     queue: BinaryHeap<Reverse<(u64, Event)>>,
 }
 
 impl EventScheduler {
-    pub fn new() -> Self {
+    pub fn new(apu_sample_period: u32) -> Self {
         Self {
             current: 0,
+            apu_sample_period: apu_sample_period as u64,
             queue: BinaryHeap::new(),
         }
     }
@@ -64,7 +65,7 @@ impl EventScheduler {
     pub fn reschedule(&mut self, event: Event, deadline: u64) {
         match event {
             Event::Hblank | Event::HblankEnd => self.push(event, deadline + CYCLES_PER_SCANLINE),
-            Event::ApuSample => self.push(event, deadline + APU_SAMPLE),
+            Event::ApuSample => self.push(event, deadline + self.apu_sample_period),
             Event::ApuSequencer => self.push(event, deadline + APU_SEQUENCER),
             _ => unreachable!(),
         }
@@ -73,7 +74,7 @@ impl EventScheduler {
     pub fn initialize_events(&mut self) {
         self.push(Event::Hblank, HBLANK_OFFSET);
         self.push(Event::HblankEnd, CYCLES_PER_SCANLINE);
-        self.push(Event::ApuSample, APU_SAMPLE);
+        self.push(Event::ApuSample, self.apu_sample_period);
         self.push(Event::ApuSequencer, APU_SEQUENCER);
     }
 
@@ -92,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_scheduler_with_schedule() {
-        let mut scheduler = EventScheduler::new();
+        let mut scheduler = EventScheduler::new(512);
 
         scheduler.push(Event::Hblank, 5);
 
@@ -106,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_scheduler_with_no_schedule() {
-        let mut scheduler = EventScheduler::new();
+        let mut scheduler = EventScheduler::new(512);
 
         assert_eq!(scheduler.next(), u64::MAX);
         assert_eq!(scheduler.pop(), None);
@@ -114,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_scheduler_order() {
-        let mut scheduler = EventScheduler::new();
+        let mut scheduler = EventScheduler::new(512);
 
         scheduler.push(Event::Hblank, 10);
         scheduler.push(Event::ApuSample, 4);
@@ -131,7 +132,7 @@ mod tests {
 
     #[test]
     fn test_cancel() {
-        let mut scheduler = EventScheduler::new();
+        let mut scheduler = EventScheduler::new(512);
         scheduler.push(Event::Hblank, 5);
         scheduler.cancel(Event::Hblank);
 
@@ -141,7 +142,7 @@ mod tests {
 
     #[test]
     fn test_event_in_queue() {
-        let mut scheduler = EventScheduler::new();
+        let mut scheduler = EventScheduler::new(512);
         scheduler.push(Event::Hblank, 5);
 
         assert!(scheduler.is_scheduled(Event::Hblank));

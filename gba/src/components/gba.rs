@@ -16,9 +16,10 @@ pub struct GBA {
 }
 
 impl GBA {
-    pub fn boot(gamepak: GamePak) -> Self {
-        let mut bus = Bus::new(gamepak);
+    pub fn boot(gamepak: GamePak, apu_sample_period: u32) -> Self {
+        let mut bus = Bus::new(gamepak, apu_sample_period);
         bus.skip_boot();
+
         bus.scheduler.initialize_events();
 
         let mut cpu = Arm7tdmi::new();
@@ -85,7 +86,7 @@ impl GBA {
                                 self.trigger_dma(Some(Trigger::Vcount));
                             }
                         }
-                        Event::ApuSample => {}
+                        Event::ApuSample => self.bus.apu.produce_sample(),
                         Event::ApuSequencer => {}
                         _ => unreachable!(),
                     }
@@ -102,7 +103,7 @@ impl GBA {
 
                     for timer_id in 0..2 {
                         if overflow_mask.is_set(timer_id) {
-                            self.bus.sound_fifo(timer_id as u8);
+                            self.bus.pop_fifo(timer_id as u8)
                         }
                     }
                 }

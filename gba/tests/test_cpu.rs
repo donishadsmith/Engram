@@ -1,4 +1,4 @@
-use engram_gba::components::{bus::AccessType, cpu::HaltState, gamepak::GamePak, gba::GBA};
+use engram_gba::components::{cpu::HaltState, gamepak::GamePak, gba::GBA};
 use std::path::PathBuf;
 
 fn get_custom_rom_path(filename: &str) -> PathBuf {
@@ -14,7 +14,7 @@ fn get_vendored_path(filename: &str) -> PathBuf {
 }
 
 fn initialize_gba(path: PathBuf) -> GBA {
-    GBA::boot(GamePak::load(path).unwrap())
+    GBA::boot(GamePak::load(path).unwrap(), 512)
 }
 
 fn run_custom_instructions(gba: &mut GBA, max_iterations: usize) -> u32 {

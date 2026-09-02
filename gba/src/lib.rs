@@ -8,46 +8,29 @@
 
 #![windows_subsystem = "windows"]
 
-const CYCLES_PER_FRAME: u64 = 280896;
-
 pub mod components;
 mod debug;
 
 use crate::components::{gamepak::GamePak, gba::GBA};
 use macroquad::prelude::*;
 use shared::{
-    audio::AudioOutput,
+    audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     input::{GBA_KEYMAP, get_relevant_key_presses},
     render::Screen,
     utils::{quit_emulator, save_progress},
 };
-use std::{
-    io::Error,
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{io::Error, path::PathBuf};
 
-// https://github.com/not-fl3/macroquad/issues/749
-// **FIX SPEED EVENTUALLY, run on audio when implemented
-// temporary fix since run too fast, 59/60 makes it a tad too slow
-// so reduce the sleep time a bit to match mgba's feel
-fn fps_lock(frame_start_time: Instant) {
-    let frame_duration = Duration::from_secs_f64(1.0 / 67.0);
-
-    let elapsed_time = frame_start_time.elapsed();
-    if elapsed_time < frame_duration {
-        spin_sleep::sleep(frame_duration - elapsed_time);
-    }
-}
+const GBA_CLOCK_SPEED: u32 = 16777216;
 
 pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
+    let mut audio = AudioOutput::new();
     let gamepak = GamePak::load(rom_path)?;
-    let mut gba = GBA::boot(gamepak);
+    let apu_sample_cycles = GBA_CLOCK_SPEED / audio.sample_rate;
+    let mut gba = GBA::boot(gamepak, apu_sample_cycles);
     let mut screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
 
     loop {
-        let frame_start_time = Instant::now();
-
         if quit_emulator(&gba)? {
             break;
         }
@@ -61,9 +44,11 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
             .try_into()
             .unwrap();
 
-        let frame_deadline = gba.bus.scheduler.current + CYCLES_PER_FRAME;
-        while gba.bus.scheduler.current < frame_deadline {
+        while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             gba.run();
+            for sample in gba.bus.apu.sample_buffer.drain(..) {
+                let _ = audio.producer.push(sample);
+            }
         }
 
         if gba.take_frame() {
@@ -72,7 +57,6 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
 
         screen.draw(&gba.bus.ppu.frontend);
 
-        fps_lock(frame_start_time);
         next_frame().await;
     }
 

@@ -2,8 +2,14 @@ use crate::components::utils::{BitOps, get_halfword_shift, get_word_mask};
 
 // https://problemkaputt.de/gbatek-gba-dma-transfers.htm
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FifoChannel {
+    A = 0x040000A0,
+    B = 0x040000A4,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Trigger {
-    SoundFifo,
+    SoundFifo(FifoChannel),
     Vcount,
     Hblank,
     Vblank,
@@ -187,11 +193,10 @@ impl Dma {
             match trigger {
                 Trigger::Hblank => self.start_timing == StartTiming::Hblank,
                 Trigger::Vblank => self.start_timing == StartTiming::Vblank,
-                Trigger::SoundFifo => {
+                Trigger::SoundFifo(channel) => {
                     let is_sound_channel = self.id == 1 || self.id == 2;
-                    let is_sound_destination_address = self.current_destination_address
-                        == 0x040000A0
-                        || self.current_destination_address == 0x040000A4;
+                    let is_sound_destination_address =
+                        self.current_destination_address == channel as u32;
 
                     is_sound_channel
                         && is_sound_destination_address
@@ -226,7 +231,7 @@ impl Dma {
         }
     }
 
-    pub fn update_address_pointers(&mut self) {
+    pub fn update_address_pointers(&mut self, trigger: Option<Trigger>) {
         let offset = match self.transfer_type {
             TransferType::Halfword => 2,
             TransferType::Word => 4,
@@ -238,6 +243,11 @@ impl Dma {
             IncrementDmaMode::Fixed => self.current_source_address,
             _ => unreachable!(),
         };
+
+        // very salty how long this bug took to fix for audio
+        if matches!(trigger, Some(Trigger::SoundFifo(_))) {
+            return;
+        }
 
         self.current_destination_address = match self.destination_increment_mode {
             IncrementDmaMode::Increment | IncrementDmaMode::Reload => {
