@@ -18,13 +18,13 @@ impl AudioSamples {
     }
 }
 
-pub struct Debugger {
+pub struct AudioDebugger {
     pub visible: bool,
     pub frozen: bool,
     samples: AudioSamples,
 }
 
-impl Debugger {
+impl AudioDebugger {
     pub fn new() -> Self {
         Self {
             visible: false,
