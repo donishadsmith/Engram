@@ -9,21 +9,24 @@
 #![windows_subsystem = "windows"]
 
 pub mod components;
-mod debug;
+mod debugger;
+mod dump;
 
 use crate::components::{gamepak::GamePak, gba::GBA};
+use debugger::Debugger;
 use macroquad::prelude::*;
 use shared::{
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     input::{GBA_KEYMAP, get_relevant_key_presses},
     render::Screen,
-    utils::{quit_emulator, save_progress},
+    utils::{quit_emulator, save_progress, screenshot},
 };
 use std::{io::Error, path::PathBuf};
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
 
 pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
+    let mut debugger = Debugger::new();
     let mut audio = AudioOutput::new();
     let gamepak = GamePak::load(rom_path)?;
     let apu_sample_cycles = GBA_CLOCK_SPEED / audio.sample_rate;
@@ -44,6 +47,16 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
             .try_into()
             .unwrap();
 
+        debugger.turn_on();
+        debugger.freeze();
+
+        while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
+            gba.run();
+            for sample in gba.bus.apu.sample_buffer.drain(..) {
+                let _ = audio.producer.push(sample);
+            }
+        }
+
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             gba.run();
             for sample in gba.bus.apu.sample_buffer.drain(..) {
@@ -56,6 +69,8 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
         }
 
         screen.draw(&gba.bus.ppu.frontend);
+        debugger.show_ui(&mut gba);
+        screenshot();
 
         next_frame().await;
     }

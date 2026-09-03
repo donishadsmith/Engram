@@ -63,4 +63,8 @@ cargo run --release
 | I           | R          |                 |
 | O           | L          |                 |
 
-`F1` key to dump data into a .sav.
+`F1` key to dump data into a .sav and `F2` for screenshot.
+
+`F12` key to toggle audio debugger and `Space` to pause debugger.
+
+<img src="assets/more_hamsters.png" width="500">

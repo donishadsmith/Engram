@@ -74,7 +74,6 @@ impl SpriteAttributes {
         };
         let double_size = affine && attribute0.is_set(9);
         let disabled = !affine && attribute0.is_set(9);
-        let mode = SpriteMode::from_value(attribute0.get_bit_range(10..12));
         let horizontal_flip = !affine && attribute1.is_set(12);
         let vertical_flip = !affine && attribute1.is_set(13);
         let bpp = if attribute0.is_set(13) {
@@ -84,7 +83,16 @@ impl SpriteAttributes {
         };
         let shape = attribute0.get_bit_range(14..16) as usize;
         let size = attribute1.get_bit_range(14..16) as usize;
-        let dimension = SPRITE_DIMENSIONS[shape][size];
+        let mode = if shape == 3 {
+            SpriteMode::Prohibited
+        } else {
+            SpriteMode::from_value(attribute0.get_bit_range(10..12))
+        };
+        let dimension = if shape == 3 {
+            (0, 0)
+        } else {
+            SPRITE_DIMENSIONS[shape][size]
+        };
         let dimension = SpriteDimension {
             width: dimension.0 as i32,
             height: dimension.1 as i32,

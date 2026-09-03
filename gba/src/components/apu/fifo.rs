@@ -5,10 +5,11 @@ use crate::components::{
 use std::collections::VecDeque;
 
 pub struct Fifo {
-    queue: VecDeque<u8>,
+    pub queue: VecDeque<u8>,
     channel_id: FifoChannel,
     pub latched: u8,
     pub enabled: bool,
+    pub history: Vec<u8>,
 }
 
 impl Fifo {
@@ -18,6 +19,7 @@ impl Fifo {
             channel_id,
             latched: 0,
             enabled: false,
+            history: Vec::with_capacity(2048),
         }
     }
 
@@ -48,6 +50,8 @@ impl Fifo {
         if let Some(data) = self.queue.pop_front() {
             self.latched = data;
         }
+
+        self.history.push(self.latched);
     }
 
     pub fn transfer_request(&self) -> Option<Trigger> {

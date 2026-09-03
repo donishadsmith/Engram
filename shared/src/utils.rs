@@ -6,7 +6,7 @@ pub trait Emulator {
 }
 
 pub fn screenshot() {
-    if is_key_pressed(KeyCode::O) {
+    if is_key_pressed(KeyCode::F2) {
         get_screen_data().export_png("screenshot.png");
     }
 }

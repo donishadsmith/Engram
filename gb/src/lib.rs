@@ -15,7 +15,7 @@ use shared::{
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     input::{GB_KEYMAP, get_relevant_key_presses},
     render::Screen,
-    utils::{quit_emulator, save_progress},
+    utils::{quit_emulator, save_progress, screenshot},
 };
 use std::path::PathBuf;
 
@@ -37,6 +37,8 @@ pub async fn run(rom_path: PathBuf) -> Result<(), std::io::Error> {
             break;
         }
 
+        screenshot();
+
         if gameboy.ram_changed() {
             let _ = save_progress(&gameboy);
         }
@@ -46,6 +48,7 @@ pub async fn run(rom_path: PathBuf) -> Result<(), std::io::Error> {
             .try_into()
             .unwrap();
 
+        // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             gameboy.run(cycles_per_sample);
             for sample in gameboy.cpu.bus.apu.sample_buffer.drain(..) {

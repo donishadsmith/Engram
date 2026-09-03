@@ -1,6 +1,6 @@
 use std::{
     error::Error,
-    fmt::Write as _,
+    fmt::Write,
     fs::{read, write},
     path::PathBuf,
 };
