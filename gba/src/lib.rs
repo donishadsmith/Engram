@@ -57,19 +57,16 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
             }
         }
 
-        while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
-            gba.run();
-            for sample in gba.bus.apu.sample_buffer.drain(..) {
-                let _ = audio.producer.push(sample);
-            }
-        }
-
-        if gba.take_frame() {
+        if gba.take_frame() && !audio_debugger.visible {
             screen.update(&gba.bus.ppu.frontend);
         }
 
-        screen.draw(&gba.bus.ppu.frontend);
-        audio_debugger.show_ui(&mut gba);
+        if !audio_debugger.visible {
+            screen.draw(&gba.bus.ppu.frontend);
+        } else {
+            audio_debugger.show_ui(&mut gba);
+        }
+
         screenshot();
 
         next_frame().await;

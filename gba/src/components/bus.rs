@@ -583,7 +583,6 @@ impl Bus {
         match address {
             // LCD I/O Registers
             0x4000000 => self.ppu.dispcnt,
-            // 0x4000002 => {} // Undocumented 16 bit register (read + write)
             0x4000004 => self.ppu.dispstat,
             0x4000006 => self.ppu.vcount as u16,
             0x4000008 | 0x400000A | 0x400000C | 0x400000E => self.ppu.bg_control.read_u16(address),
@@ -660,10 +659,9 @@ impl Bus {
 
             // https://github.com/mgba-emu/mgba/blob/master/src/gba/io.c
             // https://codeberg.org/nba-emu/NanoBoyAdvance/src/branch/master/src/nba/src/bus/io.cc
-            0x4000066 | 0x400006A | 0x400006E | 0x4000076 | 0x400007A | 0x400007E | 0x4000086
-            | 0x400008A | 0x4000136 | 0x4000142 | 0x400015A | 0x4000206 | 0x4000302 => 0,
-            0x40000B8 | 0x40000C4 | 0x40000D0 | 0x40000DC => 0,
-            0x400020A => 0,
+            0x4000002 | 0x4000066 | 0x400006A | 0x400006E | 0x4000076 | 0x400007A | 0x400007E
+            | 0x4000086 | 0x400008A | 0x4000136 | 0x4000142 | 0x400015A | 0x4000206 | 0x4000302
+            | 0x40000B8 | 0x40000C4 | 0x40000D0 | 0x40000DC | 0x400020A => 0,
 
             _ => (self.last_instruction_read >> (8 * (address & 2))) as u16,
         }
@@ -678,7 +676,6 @@ impl Bus {
         match address {
             // LCD I/O Registers
             0x4000000 => self.ppu.write_dispcnt(value),
-            0x4000002 => {} // Undocumented 16 bit register (read + write)
             0x4000004 => self.ppu.write_dispstat(value),
             0x4000008 | 0x400000A | 0x400000C | 0x400000E => {
                 self.ppu.bg_control.write_u16(address, value);

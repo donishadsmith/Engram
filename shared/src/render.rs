@@ -61,7 +61,7 @@ impl Screen {
     }
 }
 
-fn rgb555_to_rgb888(rgb555: u16) -> [u8; 3] {
+pub fn rgb555_to_rgb888(rgb555: u16) -> [u8; 3] {
     let expand = |v: u16| -> u8 { ((v << 3) | (v >> 2)) as u8 };
 
     [
@@ -69,4 +69,15 @@ fn rgb555_to_rgb888(rgb555: u16) -> [u8; 3] {
         expand((rgb555 >> 5) & 0x1F),
         expand((rgb555 >> 10) & 0x1F),
     ]
+}
+
+pub fn to_rgba(frame: &Frame) -> Vec<u8> {
+    let mut rgba: Vec<u8> = Vec::with_capacity(frame.height * frame.width * RGBA_BYTES_PER_PIXEL);
+    for pixel in &frame.pixels {
+        let rgb888 = rgb555_to_rgb888(*pixel);
+        rgba.extend(rgb888);
+        rgba.push(255);
+    }
+
+    rgba
 }

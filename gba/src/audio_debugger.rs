@@ -1,9 +1,10 @@
+use egui::{CentralPanel, SidePanel, TextureHandle, TextureOptions};
 use egui_plot::{HLine, Line, Plot};
 use macroquad::input::{KeyCode, get_keys_pressed};
 use std::collections::VecDeque;
 
 use crate::components::gba::GBA;
-
+use shared::render::to_rgba;
 enum AudioChannel {
     Channel1 = 0,
     Channel2 = 1,
@@ -47,6 +48,7 @@ pub struct AudioDebugger {
     samples: AudioSamples,
     occupancy: AudioOccupancy,
     mute: [bool; 6],
+    texture: Option<TextureHandle>,
 }
 
 impl AudioDebugger {
@@ -57,6 +59,7 @@ impl AudioDebugger {
             samples: AudioSamples::new(),
             occupancy: AudioOccupancy::new(),
             mute: [false; 6],
+            texture: None,
         }
     }
 
@@ -83,6 +86,7 @@ impl AudioDebugger {
         }
     }
 
+    // TODO: Add useful register states + psg channels when iplemented
     pub fn show_ui(&mut self, gba: &mut GBA) {
         if !self.visible {
             return;
@@ -125,7 +129,10 @@ impl AudioDebugger {
         }
 
         egui_macroquad::ui(|egui_ctx| {
-            egui::Window::new("FIFO Audio").show(egui_ctx, |ui| {
+            SidePanel::right("FIFO Audio").show(egui_ctx, |ui| {
+                ui.heading("FIFO Audio").highlight();
+                ui.separator();
+
                 let fifo_a_samples = Line::new(
                     "FIFO A Samples",
                     self.samples
@@ -203,9 +210,9 @@ impl AudioDebugger {
                         plot_ui.line(fifo_b_occupancy);
                         plot_ui.hline(HLine::new("FIFO B Occupancy", 16.0));
                     });
-            });
 
-            egui::Window::new("Mute").show(egui_ctx, |ui| {
+                ui.heading("Mute FIFO Channels").highlight();
+                ui.separator();
                 let text = "Silences channel contribution to sound; graphs still show";
                 ui.checkbox(&mut self.mute[AudioChannel::FifoA as usize], "FIFO A")
                     .on_hover_text(text);
@@ -213,6 +220,29 @@ impl AudioDebugger {
                     .on_hover_text(text);
 
                 self.mute_channels(gba);
+            });
+
+            let frame = &gba.bus.ppu.frame;
+            let image = egui::ColorImage::from_rgba_unmultiplied(
+                [frame.width, frame.height],
+                &to_rgba(&frame),
+            );
+            let texture = self.texture.get_or_insert_with(|| {
+                egui_ctx.load_texture("GBA", image.clone(), TextureOptions::NEAREST)
+            });
+            texture.set(image, TextureOptions::NEAREST);
+
+            CentralPanel::default().show(egui_ctx, |ui| {
+                let size = ui.available_size();
+                let scale = (size.x / frame.width as f32)
+                    .min(size.y / frame.height as f32)
+                    .floor()
+                    .max(1.0);
+
+                let size = egui::vec2(frame.width as f32 * scale, frame.height as f32 * scale);
+                ui.centered_and_justified(|ui| {
+                    ui.image((texture.id(), size));
+                });
             });
         });
 
