@@ -47,7 +47,7 @@ pub async fn run(rom_path: PathBuf) -> Result<(), Error> {
             .try_into()
             .unwrap();
 
-        audio_debugger.turn_on();
+        audio_debugger.turn_on(&mut gba);
         audio_debugger.freeze();
 
         while AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {

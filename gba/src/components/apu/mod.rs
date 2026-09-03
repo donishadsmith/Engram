@@ -44,8 +44,8 @@ impl APU {
 
     pub fn produce_sample(&mut self) {
         // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/sound/mod.rs
-        let a = (self.fifo_a.latched as i8) as i16;
-        let b = (self.fifo_b.latched as i8) as i16;
+        let a = ((!self.fifo_a.mute as u8 * self.fifo_a.latched) as i8) as i16;
+        let b = ((!self.fifo_b.mute as u8 * self.fifo_b.latched) as i8) as i16;
         let mixed = (a << 2) + (b << 2);
         let clamped = mixed.clamp(-512, 511);
         let sample = ((clamped - 512) as f32) / 512.0;

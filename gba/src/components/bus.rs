@@ -979,8 +979,6 @@ impl Bus {
         }
     }
 
-    // TODO: really need to make a real debugger else its just dumps
-    // and print debug
     pub fn trace(&mut self, write: impl FnOnce(&mut dyn Write)) {
         if let Some(trace) = &mut self.trace {
             if trace.count <= trace.limit {

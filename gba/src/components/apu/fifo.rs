@@ -10,6 +10,8 @@ pub struct Fifo {
     pub latched: u8,
     pub enabled: bool,
     pub history: Vec<u8>,
+    pub occupancy: Vec<u8>,
+    pub mute: bool,
 }
 
 impl Fifo {
@@ -20,6 +22,8 @@ impl Fifo {
             latched: 0,
             enabled: false,
             history: Vec::with_capacity(2048),
+            occupancy: Vec::with_capacity(2048),
+            mute: false,
         }
     }
 
@@ -52,6 +56,7 @@ impl Fifo {
         }
 
         self.history.push(self.latched);
+        self.occupancy.push(self.queue.len() as u8);
     }
 
     pub fn transfer_request(&self) -> Option<Trigger> {
