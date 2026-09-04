@@ -2,39 +2,36 @@ use crate::components::{
     bus::Bus,
     cpu::arm::decode::ShiftType,
     gamepak::{BackupType, GamePak},
-    utils::unsigned_int::UnsignedInt,
 };
 use std::{
     mem::size_of,
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Range, Shl, Shr},
 };
 
-pub mod unsigned_int {
-    pub trait UnsignedInt: Copy {
-        const ZERO: Self;
-        const ONE: Self;
-    }
-
-    impl UnsignedInt for u8 {
-        const ZERO: Self = 0;
-        const ONE: Self = 1;
-    }
-
-    impl UnsignedInt for u16 {
-        const ZERO: Self = 0;
-        const ONE: Self = 1;
-    }
-
-    impl UnsignedInt for u32 {
-        const ZERO: Self = 0;
-        const ONE: Self = 1;
-    }
-
-    impl UnsignedInt for u64 {
-        const ZERO: Self = 0;
-        const ONE: Self = 1;
-    } // Just to give ceertain traits to u64 for multiply long
+pub trait UnsignedInt: Copy {
+    const ZERO: Self;
+    const ONE: Self;
 }
+
+impl UnsignedInt for u8 {
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+}
+
+impl UnsignedInt for u16 {
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+}
+
+impl UnsignedInt for u32 {
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+}
+
+impl UnsignedInt for u64 {
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+} // Just to give ceertain traits to u64 for multiply long
 
 pub fn zero_arr<const N: usize>() -> Box<[u8; N]> {
     vec![0u8; N].into_boxed_slice().try_into().unwrap()
@@ -123,9 +120,8 @@ impl GroupedRegisters<u32> {
 // Inspired to create a trait for bit setting after seeing this:
 // https://github.com/michelhe/rustboyadvance-ng/blob/master/arm7tdmi/src/psr.rs
 pub trait BitOps:
-    unsigned_int::UnsignedInt
+    UnsignedInt
     + Sized
-    + Copy
     + Shl<usize, Output = Self>
     + Shr<usize, Output = Self>
     + BitAnd<Output = Self>
