@@ -1,20 +1,12 @@
-use egui::{CentralPanel, SidePanel, TextureHandle, TextureOptions};
+use egui::{CentralPanel, SidePanel, TextureHandle, TextureOptions, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
 use macroquad::input::{KeyCode, get_keys_pressed};
 use std::collections::VecDeque;
 
-use crate::components::gba::GBA;
+use crate::components::{apu::AudioChannel, gba::GBA};
 use shared::render::to_rgba;
-enum AudioChannel {
-    Channel1 = 0,
-    Channel2 = 1,
-    Channel3 = 2,
-    Channel4 = 3,
-    FifoA = 4,
-    FifoB = 5,
-}
 
-pub struct AudioSamples {
+struct AudioSamples {
     channel1: VecDeque<i8>,
     channel2: VecDeque<i8>,
     fifo_a: VecDeque<i8>,
@@ -32,7 +24,7 @@ impl AudioSamples {
     }
 }
 
-pub struct AudioOccupancy {
+struct AudioOccupancy {
     fifo_a: VecDeque<u8>,
     fifo_b: VecDeque<u8>,
 }
@@ -46,6 +38,36 @@ impl AudioOccupancy {
     }
 }
 
+struct AudioRegisters {
+    channel1: [u16; 3],
+    channel2: [u16; 2],
+}
+
+impl AudioRegisters {
+    fn new() -> Self {
+        Self {
+            channel1: [0; 3],
+            channel2: [0; 2],
+        }
+    }
+}
+
+struct VolumeSettings {
+    fifo_a: f32,
+    fifo_b: f32,
+    psg: f32,
+}
+
+impl VolumeSettings {
+    fn new() -> Self {
+        Self {
+            fifo_a: 0.0,
+            fifo_b: 0.0,
+            psg: 0.0,
+        }
+    }
+}
+
 pub struct AudioDebugger {
     pub visible: bool,
     pub frozen: bool,
@@ -53,6 +75,8 @@ pub struct AudioDebugger {
     occupancy: AudioOccupancy,
     mute: [bool; 6],
     texture: Option<TextureHandle>,
+    registers: AudioRegisters,
+    volume: VolumeSettings,
 }
 
 impl AudioDebugger {
@@ -64,6 +88,8 @@ impl AudioDebugger {
             occupancy: AudioOccupancy::new(),
             mute: [false; 6],
             texture: None,
+            registers: AudioRegisters::new(),
+            volume: VolumeSettings::new(),
         }
     }
 
@@ -145,6 +171,21 @@ impl AudioDebugger {
 
                 self.samples.channel2.push_back(sample as i8);
             }
+
+            self.registers.channel1 = [
+                gba.bus.apu.channel1.soundcnt.from_index(0),
+                gba.bus.apu.channel1.soundcnt.from_index(1),
+                gba.bus.apu.channel1.soundcnt.from_index(2),
+            ];
+
+            self.registers.channel2 = [
+                gba.bus.apu.channel2.soundcnt.from_index(0),
+                gba.bus.apu.channel2.soundcnt.from_index(2),
+            ];
+
+            self.volume.fifo_a = gba.bus.apu.volume_control(AudioChannel::FifoA);
+            self.volume.fifo_b = gba.bus.apu.volume_control(AudioChannel::FifoB);
+            self.volume.psg = gba.bus.apu.volume_control(AudioChannel::Channel1);
         }
 
         egui_macroquad::ui(|egui_ctx| {
@@ -239,7 +280,7 @@ impl AudioDebugger {
                     .on_hover_text(text);
             });
 
-            let frame = &gba.bus.ppu.frame;
+            let frame = &gba.bus.ppu.frontend;
             let image = egui::ColorImage::from_rgba_unmultiplied(
                 [frame.width, frame.height],
                 &to_rgba(&frame),
@@ -250,6 +291,9 @@ impl AudioDebugger {
             texture.set(image, TextureOptions::NEAREST);
 
             SidePanel::left("PSG").show(egui_ctx, |ui| {
+                ui.heading("PSG Channels").highlight();
+                ui.separator();
+
                 let channel1_samples = Line::new(
                     "Channel 1 Samples",
                     self.samples
@@ -295,6 +339,60 @@ impl AudioDebugger {
                     .on_hover_text(text);
                 ui.checkbox(&mut self.mute[AudioChannel::Channel2 as usize], "Channel 2")
                     .on_hover_text(text);
+            });
+
+            TopBottomPanel::top("Global Controls").show(egui_ctx, |ui| {
+                ui.heading("Global Control Register Settings").highlight();
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    egui::Grid::new("First")
+                        .num_columns(1)
+                        .spacing([20.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label(format!("Fifo A Volume: {}", self.volume.fifo_a));
+                            ui.end_row();
+
+                            ui.label(format!("Fifo B Volume: {}", self.volume.fifo_b));
+                            ui.end_row();
+
+                            ui.label(format!("PSG Volume: {}", self.volume.psg));
+                            ui.end_row();
+                        });
+                });
+            });
+
+            TopBottomPanel::bottom("Registers").show(egui_ctx, |ui| {
+                ui.heading("PSG Registers").highlight();
+                ui.separator();
+
+                ui.horizontal(|ui| {
+                    egui::Grid::new("First")
+                        .num_columns(1)
+                        .spacing([20.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label(format!("SOUND1CNT_L: {:16b}", self.registers.channel1[0]));
+                            ui.end_row();
+
+                            ui.label(format!("SOUND1CNT_L: {:16b}", self.registers.channel1[1]));
+                            ui.end_row();
+
+                            ui.label(format!("SOUND1CNT_X: {:16b}", self.registers.channel1[2]));
+                            ui.end_row();
+                        });
+
+                    ui.add_space(30.0);
+                    egui::Grid::new("Second")
+                        .num_columns(1)
+                        .spacing([20.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label(format!("SOUND2CNT_L: {:16b}", self.registers.channel2[0]));
+                            ui.end_row();
+
+                            ui.label(format!("SOUND2CNT_X: {:16b}", self.registers.channel2[1]));
+                            ui.end_row();
+                        });
+                });
             });
 
             CentralPanel::default().show(egui_ctx, |ui| {

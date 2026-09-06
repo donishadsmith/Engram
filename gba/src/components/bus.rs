@@ -284,7 +284,7 @@ impl Bus {
             0x02 => self.ewram[Bus::ewram_index(address)] = value,
             0x03 => self.iwram[Bus::iwram_index(address)] = value,
             0x04 => {
-                let mut half_word = self.read_register(address & !1);
+                let mut half_word = self.read_halfword(address);
                 let new_half_word = if address.is_clear(0) {
                     half_word.clear_bit_range(0..8);
                     half_word | value as u16
@@ -950,6 +950,15 @@ impl Bus {
             (0x0DFFFF00..=0x0DFFFFFF).contains(&address)
         } else {
             address >> 24 == 0x0D
+        }
+    }
+
+    fn read_halfword(&mut self, address: u32) -> u16 {
+        let address = address & !1;
+        match address {
+            0x4000060 | 0x4000062 | 0x4000064 => self.apu.channel1.soundcnt.read_u16(address),
+            0x4000068 | 0x400006C => self.apu.channel2.soundcnt.read_u16(address),
+            _ => self.read_register(address),
         }
     }
 

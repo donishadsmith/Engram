@@ -13,6 +13,51 @@ use shared::audio::LowPassFilter;
 
 const FIR_KERNEL: [f64; 46] = [0.0; 46]; // temp
 
+#[derive(Clone, Copy)]
+enum Volume {
+    Quarter,
+    Full,
+    Half,
+    Prohibited,
+}
+
+impl Volume {
+    fn for_dma(full: bool) -> Volume {
+        match full {
+            true => Volume::Full,
+            false => Volume::Half,
+        }
+    }
+
+    fn for_psg(value: u16) -> Volume {
+        match value.get_bit_range(0..2) {
+            0 => Volume::Quarter,
+            1 => Volume::Half,
+            2 => Volume::Full,
+            _ => Volume::Prohibited,
+        }
+    }
+
+    fn to_float(self) -> f32 {
+        match self {
+            Volume::Quarter => 0.25,
+            Volume::Full => 1.0,
+            Volume::Half => 0.5,
+            Volume::Prohibited => 0.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AudioChannel {
+    Channel1 = 0,
+    Channel2 = 1,
+    Channel3 = 2,
+    Channel4 = 3,
+    FifoA = 4,
+    FifoB = 5,
+}
+
 struct SequencerStep {
     length: bool,
     sweep: bool,
@@ -92,12 +137,18 @@ impl APU {
 
     pub fn produce_sample(&mut self) {
         // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/sound/mod.rs
+        let fifo_a_volume = self.volume_control(AudioChannel::FifoA);
+        let fifo_b_volume = self.volume_control(AudioChannel::FifoB);
+        let psg_volume = self.volume_control(AudioChannel::Channel1);
         let psg1 = i16::from(!self.channel1.mute as u8 * self.channel1.get_sample()) * 8;
         let psg2 = i16::from(!self.channel2.mute as u8 * self.channel2.get_sample()) * 8;
         let a = ((!self.fifo_a.mute as u8 * self.fifo_a.latched) as i8) as i16;
         let b = ((!self.fifo_b.mute as u8 * self.fifo_b.latched) as i8) as i16;
-        let mixed = (a << 2) + (b << 2) + psg1 + psg2;
-        let sample = mixed.clamp(-512, 511) as f32 / 512.0;
+        let mixed = (((a << 2) as f32) * fifo_a_volume)
+            + (((b << 2) as f32) * fifo_b_volume)
+            + (psg1 as f32) * psg_volume
+            + (psg2 as f32) * psg_volume;
+        let sample = mixed.clamp(-512.0, 511.0) / 512.0;
 
         self.sample_buffer.push(sample);
         self.sample_buffer.push(sample);
@@ -123,6 +174,16 @@ impl APU {
 
         if sequencer_step.sweep {
             self.channel1.tick_sweep();
+        }
+    }
+
+    pub fn volume_control(&self, channel: AudioChannel) -> f32 {
+        if channel == AudioChannel::FifoA {
+            Volume::for_dma(self.global_control.soundcnt_h.is_set(2)).to_float()
+        } else if channel == AudioChannel::FifoB {
+            Volume::for_dma(self.global_control.soundcnt_h.is_set(3)).to_float()
+        } else {
+            Volume::for_psg(self.global_control.soundcnt_h.get_bit_range(0..2)).to_float()
         }
     }
 

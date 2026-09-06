@@ -3,7 +3,7 @@
 [![Run Tests](https://github.com/donishadsmith/Engram/actions/workflows/test.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/test.yml)
 [![Publish](https://github.com/donishadsmith/Engram/actions/workflows/build.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/build.yml)
 
-A Gameboy Advance (RTC, APU [only mono fifo-based music with fixed volume], and some other PPU features still needs to be implemented) & Game Boy Color emulator (supports DMG games too) written in Rust.
+A Gameboy Advance (RTC, APU [only mono fifo and pulse-based music], and some other PPU features still needs to be implemented) & Game Boy Color emulator (supports DMG games too) written in Rust.
 
 <table align="center">
   <tr>
@@ -67,4 +67,4 @@ cargo run --release
 
 `F12` key to toggle audio debugger and `Space` to pause debugger.
 
-<img src="assets/more_hamsters.png" width="500">
+<img src="assets/debug.png" width="500">
