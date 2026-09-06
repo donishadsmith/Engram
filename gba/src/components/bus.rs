@@ -590,11 +590,8 @@ impl Bus {
             0x4000050 | 0x4000052 => self.ppu.color_special_effects.read_u16(address),
 
             // Sound Registers
-            // 0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)
-            // 0x4000062 => {} // Channel 1 Duty/Length/Envelope (NR11, NR12) (SOUND1CNT_H), 16 bit register (read + write)
-            // 0x4000064 => {} // Channel 1 Frequency/Control (NR13, NR14) (SOUND1CNT_X), 16 bit register (read + write)
-            // 0x4000068 => {} // Channel 2 Duty/Length/Envelope (NR21, NR22) (SOUND2CNT_L), 16 bit register (read + write)
-            // 0x400006C => {} // Channel 2 Frequency/Control (NR23, NR24) (SOUND2CNT_H), 16 bit register (read + write)
+            0x4000060 | 0x4000062 | 0x4000064 => self.apu.channel1.read_from_register(address),
+            0x4000068 | 0x400006C => self.apu.channel2.read_from_register(address),
             // 0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
             // 0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
             // 0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
@@ -723,11 +720,14 @@ impl Bus {
             }
 
             // Sound Registers
-            0x4000060 => {} // Channel 1 Sweep register (NR10) (SOUND1CNT_L), 16 bit register (read + write)
-            0x4000062 => {} // Channel 1 Duty/Length/Envelope (NR11, NR12) (SOUND1CNT_H), 16 bit register (read + write)
-            0x4000064 => {} // Channel 1 Frequency/Control (NR13, NR14) (SOUND1CNT_X), 16 bit register (read + write)
-            0x4000068 => {} // Channel 2 Duty/Length/Envelope (NR21, NR22) (SOUND2CNT_L), 16 bit register (read + write)
-            0x400006C => {} // Channel 2 Frequency/Control (NR23, NR24) (SOUND2CNT_H), 16 bit register (read + write)
+            0x4000060 | 0x4000062 | 0x4000064 => {
+                self.apu.channel1.soundcnt.write_u16(address, value);
+                self.apu.channel1.update_from_register(address);
+            }
+            0x4000068 | 0x400006C => {
+                self.apu.channel2.soundcnt.write_u16(address, value);
+                self.apu.channel2.update_from_register(address);
+            }
             0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
             0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
             0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)

@@ -86,8 +86,14 @@ impl GBA {
                                 self.trigger_dma(Some(Trigger::Vcount));
                             }
                         }
-                        Event::ApuSample => self.bus.apu.produce_sample(),
-                        Event::ApuSequencer => {}
+                        Event::ApuSample => {
+                            self.bus.apu.advance_psg(deadline);
+                            self.bus.apu.produce_sample()
+                        }
+                        Event::ApuSequencer => {
+                            self.bus.apu.advance_psg(deadline);
+                            self.bus.apu.frame_sequencer_step();
+                        }
                         _ => unreachable!(),
                     }
 

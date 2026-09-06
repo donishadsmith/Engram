@@ -81,19 +81,17 @@ impl Length {
         }
     }
 
-    pub fn tick(&mut self, frame_sequencer_step_length: bool) {
+    pub fn tick(&mut self, frame_sequencer_step_length: bool) -> bool {
         if !frame_sequencer_step_length {
-            return;
+            return false;
         }
 
         if !(self.enabled && self.timer > 0) {
-            return;
+            return false;
         }
 
         self.timer -= 1;
-        if self.timer == 0 {
-            self.enabled = false
-        }
+        self.timer == 0
     }
 
     pub fn read(&self) -> u8 {

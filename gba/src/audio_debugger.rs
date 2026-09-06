@@ -15,6 +15,8 @@ enum AudioChannel {
 }
 
 pub struct AudioSamples {
+    channel1: VecDeque<i8>,
+    channel2: VecDeque<i8>,
     fifo_a: VecDeque<i8>,
     fifo_b: VecDeque<i8>,
 }
@@ -22,6 +24,8 @@ pub struct AudioSamples {
 impl AudioSamples {
     fn new() -> Self {
         Self {
+            channel1: VecDeque::new(),
+            channel2: VecDeque::new(),
             fifo_a: VecDeque::new(),
             fifo_b: VecDeque::new(),
         }
@@ -86,7 +90,6 @@ impl AudioDebugger {
         }
     }
 
-    // TODO: Add useful register states + psg channels when iplemented
     pub fn show_ui(&mut self, gba: &mut GBA) {
         if !self.visible {
             return;
@@ -125,6 +128,22 @@ impl AudioDebugger {
 
                 self.samples.fifo_b.push_back(sample as i8);
                 self.occupancy.fifo_b.push_back(occupancy as u8);
+            }
+
+            for sample in gba.bus.apu.channel1.history.drain(..) {
+                if self.samples.channel1.len() == 2048 {
+                    self.samples.channel1.pop_front();
+                }
+
+                self.samples.channel1.push_back(sample as i8);
+            }
+
+            for sample in gba.bus.apu.channel2.history.drain(..) {
+                if self.samples.channel2.len() == 2048 {
+                    self.samples.channel2.pop_front();
+                }
+
+                self.samples.channel2.push_back(sample as i8);
             }
         }
 
@@ -218,8 +237,6 @@ impl AudioDebugger {
                     .on_hover_text(text);
                 ui.checkbox(&mut self.mute[AudioChannel::FifoB as usize], "FIFO B")
                     .on_hover_text(text);
-
-                self.mute_channels(gba);
             });
 
             let frame = &gba.bus.ppu.frame;
@@ -231,6 +248,54 @@ impl AudioDebugger {
                 egui_ctx.load_texture("GBA", image.clone(), TextureOptions::NEAREST)
             });
             texture.set(image, TextureOptions::NEAREST);
+
+            SidePanel::left("PSG").show(egui_ctx, |ui| {
+                let channel1_samples = Line::new(
+                    "Channel 1 Samples",
+                    self.samples
+                        .channel1
+                        .iter()
+                        .enumerate()
+                        .map(|(index, &sample)| [index as f64, sample as f64])
+                        .collect::<Vec<[f64; 2]>>(),
+                );
+
+                ui.monospace(format!("Channel 1 Samples"));
+                Plot::new("Channel 1 Samples")
+                    .view_aspect(3.0)
+                    .include_y(0.0)
+                    .include_y(16.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(channel1_samples);
+                    });
+
+                let channel2_samples = Line::new(
+                    "Channel 2 Samples",
+                    self.samples
+                        .channel2
+                        .iter()
+                        .enumerate()
+                        .map(|(index, &sample)| [index as f64, sample as f64])
+                        .collect::<Vec<[f64; 2]>>(),
+                );
+
+                ui.monospace(format!("Channel 2 Samples"));
+                Plot::new("Channel 2 Samples")
+                    .view_aspect(3.0)
+                    .include_y(0.0)
+                    .include_y(16.0)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(channel2_samples);
+                    });
+
+                ui.heading("Mute PSG Channels").highlight();
+                ui.separator();
+                let text = "Silences channel contribution to sound; graphs still show";
+                ui.checkbox(&mut self.mute[AudioChannel::Channel1 as usize], "Channel 1")
+                    .on_hover_text(text);
+                ui.checkbox(&mut self.mute[AudioChannel::Channel2 as usize], "Channel 2")
+                    .on_hover_text(text);
+            });
 
             CentralPanel::default().show(egui_ctx, |ui| {
                 let size = ui.available_size();
@@ -246,6 +311,7 @@ impl AudioDebugger {
             });
         });
 
+        self.mute_channels(gba);
         egui_macroquad::draw()
     }
 

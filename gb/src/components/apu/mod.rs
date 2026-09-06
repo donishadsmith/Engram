@@ -163,8 +163,13 @@ impl APU {
         };
 
         if let Some(frame_sequencer_step) = frame_sequencer_step {
-            self.channel1.length.tick(frame_sequencer_step.length);
-            self.channel2.length.tick(frame_sequencer_step.length);
+            if self.channel1.length.tick(frame_sequencer_step.length) {
+                self.channel1.enabled = false;
+            }
+
+            if self.channel2.length.tick(frame_sequencer_step.length) {
+                self.channel2.enabled = false;
+            }
             self.channel3.length.tick(frame_sequencer_step.length);
             self.channel4.length.tick(frame_sequencer_step.length);
 
