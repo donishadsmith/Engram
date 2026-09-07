@@ -1,13 +1,5 @@
 use crate::components::{dma::FifoChannel, utils::BitOps};
 
-pub enum AudioChannels {
-    Channel1,
-    Channel2,
-    Channel3,
-    Channel4,
-    FifoA,
-    FifoB,
-}
 pub struct GlobalControl {
     pub soundcnt_l: u16,
     pub soundcnt_h: u16,

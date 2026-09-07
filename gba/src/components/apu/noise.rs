@@ -1,5 +1,3 @@
-// TODO: TAKEN FROM GB SIDE MAKE GBA IMPLEMNTATION
-
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 

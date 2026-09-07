@@ -436,6 +436,8 @@ dependencies = [
 name = "engram"
 version = "0.1.0"
 dependencies = [
+ "egui",
+ "egui-macroquad",
  "engram_gb",
  "engram_gba",
  "macroquad",
@@ -1454,6 +1456,7 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "egui",
  "macroquad",
  "rtrb",
 ]

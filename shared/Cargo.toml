@@ -8,4 +8,5 @@ license-file = "LICENSE"
 [dependencies]
 cpal = "0.18.2"
 macroquad = "0.4.16"
+egui = "0.31.1"
 rtrb = "0.4.0"
