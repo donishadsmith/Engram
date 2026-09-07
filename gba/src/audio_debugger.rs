@@ -3,7 +3,10 @@ use egui_plot::{HLine, Line, Plot};
 use macroquad::input::{KeyCode, get_keys_pressed};
 use std::collections::VecDeque;
 
-use crate::components::{apu::AudioChannel, gba::GBA};
+use crate::components::{
+    apu::global_control::{AudioChannel, PanDirection},
+    gba::GBA,
+};
 use shared::render::to_rgba;
 
 struct AudioSamples {
@@ -203,9 +206,21 @@ impl AudioDebugger {
                 gba.bus.apu.channel4.soundcnt_h,
             ];
 
-            self.volume.fifo_a = gba.bus.apu.volume_control(AudioChannel::FifoA);
-            self.volume.fifo_b = gba.bus.apu.volume_control(AudioChannel::FifoB);
-            self.volume.psg = gba.bus.apu.volume_control(AudioChannel::Channel1);
+            self.volume.fifo_a = gba
+                .bus
+                .apu
+                .global_control
+                .volume_control(AudioChannel::FifoA);
+            self.volume.fifo_b = gba
+                .bus
+                .apu
+                .global_control
+                .volume_control(AudioChannel::FifoB);
+            self.volume.psg = gba
+                .bus
+                .apu
+                .global_control
+                .volume_control(AudioChannel::Channel1);
         }
 
         SidePanel::right("FIFO Audio").show(egui_ctx, |ui| {
@@ -384,19 +399,112 @@ impl AudioDebugger {
             ui.separator();
 
             ui.horizontal(|ui| {
-                egui::Grid::new("First")
-                    .num_columns(1)
-                    .spacing([20.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label(format!("Fifo A Volume: {}", self.volume.fifo_a));
-                        ui.end_row();
+                ui.vertical(|ui| {
+                    ui.heading("Panned Left");
+                    ui.add_space(4.0);
 
-                        ui.label(format!("Fifo B Volume: {}", self.volume.fifo_b));
-                        ui.end_row();
+                    ui.label(format!(
+                        "Channel 1: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel1, PanDirection::Left)
+                    ));
+                    ui.label(format!(
+                        "Channel 2: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel2, PanDirection::Left)
+                    ));
+                    ui.label(format!(
+                        "Channel 3: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel3, PanDirection::Left)
+                    ));
+                    ui.label(format!(
+                        "Channel 4: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel4, PanDirection::Left)
+                    ));
+                    ui.label(format!(
+                        "FIFO A: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::FifoA, PanDirection::Left)
+                    ));
+                    ui.label(format!(
+                        "FIFO B: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::FifoB, PanDirection::Left)
+                    ));
+                });
 
-                        ui.label(format!("PSG Volume: {}", self.volume.psg));
-                        ui.end_row();
-                    });
+                ui.add_space(30.0);
+                ui.vertical(|ui| {
+                    ui.heading("Panned Right");
+                    ui.add_space(4.0);
+
+                    ui.label(format!(
+                        "Channel 1: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel1, PanDirection::Right)
+                    ));
+                    ui.label(format!(
+                        "Channel 2: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel2, PanDirection::Right)
+                    ));
+                    ui.label(format!(
+                        "Channel 3: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel3, PanDirection::Right)
+                    ));
+                    ui.label(format!(
+                        "Channel 4: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::Channel4, PanDirection::Right)
+                    ));
+                    ui.label(format!(
+                        "FIFO A: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::FifoA, PanDirection::Right)
+                    ));
+                    ui.label(format!(
+                        "FIFO B: {}",
+                        gba.bus
+                            .apu
+                            .global_control
+                            .sound_on(AudioChannel::FifoB, PanDirection::Right)
+                    ));
+                });
+
+                ui.add_space(30.0);
+                ui.vertical(|ui| {
+                    ui.heading("Volume");
+                    ui.add_space(4.0);
+
+                    ui.label(format!("PSG: {}", self.volume.psg));
+                    ui.label(format!("FIFO A: {}", self.volume.fifo_a));
+                    ui.label(format!("FIFO B: {}", self.volume.fifo_b));
+                });
             });
         });
 

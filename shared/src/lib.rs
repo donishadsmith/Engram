@@ -28,5 +28,5 @@ pub trait EmulatorSession {
 
     fn toggle_debug(&mut self) {}
 
-    fn debug_ui(&mut self, egui_ctx: &Context) {}
+    fn debug_ui(&mut self, _egui_ctx: &Context) {}
 }

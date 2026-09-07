@@ -3,6 +3,17 @@ use macroquad::prelude::*;
 use rfd::FileDialog;
 use shared::{EmulatorSession, EmulatorState, utils::screenshot};
 use std::{io::Error, path::PathBuf};
+
+fn conf() -> Conf {
+    Conf {
+        window_title: "Engram".to_string(),
+        window_width: 1800,
+        window_height: 1200,
+        high_dpi: true,
+        ..Default::default()
+    }
+}
+
 struct Session {
     state: EmulatorState,
     emulator: Option<Box<dyn EmulatorSession>>,
@@ -45,7 +56,7 @@ fn file_dialog() -> Option<PathBuf> {
         .pick_file()
 }
 
-#[macroquad::main("Engram")]
+#[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
 
@@ -83,6 +94,7 @@ async fn main() -> Result<(), Error> {
         }
 
         egui_macroquad::ui(|egui_ctx| {
+            egui_ctx.set_pixels_per_point(screen_dpi_scale());
             egui::TopBottomPanel::top("menu_bar").show(egui_ctx, |ui| {
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {

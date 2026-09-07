@@ -584,7 +584,6 @@ fn get_transfer_data(
     use_user_bank: bool,
 ) -> (&mut u32, bool) {
     let offset_pc = current_register == 15;
-    let in_usr_mode = matches!(registers.mode(), ProcessorMode::Usr | ProcessorMode::Sys);
 
     if !use_user_bank {
         return (&mut registers.r[current_register as usize], offset_pc);

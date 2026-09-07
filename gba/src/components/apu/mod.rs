@@ -1,66 +1,17 @@
-// TODO: psg folder contains structs from the gb, update structs to make them approapriate
-// for the gba
 // https://gbadev.net/gbadoc/audio/introduction.html
 mod fifo;
-mod global_control;
+pub mod global_control;
 mod noise;
 mod pulse;
 mod sound_control;
 
 use crate::components::{
-    apu::{noise::NoiseChannel, pulse::PulseChannel},
+    apu::{global_control::AudioChannel, noise::NoiseChannel, pulse::PulseChannel},
     dma::FifoChannel,
     utils::BitOps,
 };
 use fifo::Fifo;
 use global_control::GlobalControl;
-
-const FIR_KERNEL: [f64; 46] = [0.0; 46]; // temp
-
-#[derive(Clone, Copy)]
-enum Volume {
-    Quarter,
-    Full,
-    Half,
-    Prohibited,
-}
-
-impl Volume {
-    fn for_dma(full: bool) -> Volume {
-        match full {
-            true => Volume::Full,
-            false => Volume::Half,
-        }
-    }
-
-    fn for_psg(value: u16) -> Volume {
-        match value.get_bit_range(0..2) {
-            0 => Volume::Quarter,
-            1 => Volume::Half,
-            2 => Volume::Full,
-            _ => Volume::Prohibited,
-        }
-    }
-
-    fn to_float(self) -> f32 {
-        match self {
-            Volume::Quarter => 0.25,
-            Volume::Full => 1.0,
-            Volume::Half => 0.5,
-            Volume::Prohibited => 0.0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum AudioChannel {
-    Channel1 = 0,
-    Channel2 = 1,
-    Channel3 = 2,
-    Channel4 = 3,
-    FifoA = 4,
-    FifoB = 5,
-}
 
 struct SequencerStep {
     length: bool,
@@ -139,24 +90,81 @@ impl APU {
     }
 
     pub fn produce_sample(&mut self) {
-        // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/sound/mod.rs
-        let fifo_a_volume = self.volume_control(AudioChannel::FifoA);
-        let fifo_b_volume = self.volume_control(AudioChannel::FifoB);
-        let psg_volume = self.volume_control(AudioChannel::Channel1);
-        let psg1 = i16::from(!self.channel1.mute as u8 * self.channel1.get_sample()) * 8;
-        let psg2 = i16::from(!self.channel2.mute as u8 * self.channel2.get_sample()) * 8;
-        let psg4 = i16::from(!self.channel4.mute as u8 * self.channel4.get_sample()) * 8;
-        let a = ((!self.fifo_a.mute as u8 * self.fifo_a.latched) as i8) as i16;
-        let b = ((!self.fifo_b.mute as u8 * self.fifo_b.latched) as i8) as i16;
-        let mixed = (((a << 2) as f32) * fifo_a_volume)
-            + (((b << 2) as f32) * fifo_b_volume)
-            + (psg1 as f32) * psg_volume
-            + (psg2 as f32) * psg_volume
-            + (psg4 as f32) * psg_volume;
-        let sample = mixed.clamp(-512.0, 511.0) / 512.0;
+        if !self.global_control.master_enabled() {
+            self.sample_buffer.push(0.0);
+            self.sample_buffer.push(0.0);
 
-        self.sample_buffer.push(sample);
-        self.sample_buffer.push(sample);
+            return;
+        }
+
+        let fifo_a_volume = self.global_control.volume_control(AudioChannel::FifoA);
+        let fifo_b_volume = self.global_control.volume_control(AudioChannel::FifoB);
+        let psg_volume = self.global_control.volume_control(AudioChannel::Channel1);
+
+        let psg1 = if self.channel1.mute {
+            0.0
+        } else {
+            f32::from(self.channel1.get_sample()) * 8.0 * psg_volume
+        };
+
+        let psg2 = if self.channel2.mute {
+            0.0
+        } else {
+            f32::from(self.channel2.get_sample()) * 8.0 * psg_volume
+        };
+
+        let psg4 = if self.channel4.mute {
+            0.0
+        } else {
+            f32::from(self.channel4.get_sample()) * 8.0 * psg_volume
+        };
+
+        let fifo_a = if self.fifo_a.mute {
+            0.0
+        } else {
+            f32::from(self.fifo_a.latched as i8)
+        } * 4.0
+            * fifo_a_volume;
+
+        let fifo_b = if self.fifo_a.mute {
+            0.0
+        } else {
+            f32::from(self.fifo_b.latched as i8)
+        } * 4.0
+            * fifo_b_volume;
+
+        let mixed_left = self.global_control.panned_left(AudioChannel::FifoA, fifo_a)
+            + self.global_control.panned_left(AudioChannel::FifoB, fifo_b)
+            + self
+                .global_control
+                .panned_left(AudioChannel::Channel1, psg1)
+            + self
+                .global_control
+                .panned_left(AudioChannel::Channel2, psg2)
+            + self
+                .global_control
+                .panned_left(AudioChannel::Channel4, psg4);
+
+        let mixed_right = self
+            .global_control
+            .panned_right(AudioChannel::FifoA, fifo_a)
+            + self
+                .global_control
+                .panned_right(AudioChannel::FifoB, fifo_b)
+            + self
+                .global_control
+                .panned_right(AudioChannel::Channel1, psg1)
+            + self
+                .global_control
+                .panned_right(AudioChannel::Channel2, psg2)
+            + self
+                .global_control
+                .panned_right(AudioChannel::Channel4, psg4);
+
+        self.sample_buffer
+            .push(mixed_left.clamp(-512.0, 511.0) / 512.0);
+        self.sample_buffer
+            .push(mixed_right.clamp(-512.0, 511.0) / 512.0);
     }
 
     pub fn frame_sequencer_step(&mut self) {
@@ -187,19 +195,10 @@ impl APU {
         }
     }
 
-    pub fn volume_control(&self, channel: AudioChannel) -> f32 {
-        if channel == AudioChannel::FifoA {
-            Volume::for_dma(self.global_control.soundcnt_h.is_set(2)).to_float()
-        } else if channel == AudioChannel::FifoB {
-            Volume::for_dma(self.global_control.soundcnt_h.is_set(3)).to_float()
-        } else {
-            Volume::for_psg(self.global_control.soundcnt_h.get_bit_range(0..2)).to_float()
-        }
-    }
-
     pub fn reset_sound_registers(&mut self) {
         self.channel1 = PulseChannel::new_channel1();
         self.channel2 = PulseChannel::new_channel2();
+        self.channel4 = NoiseChannel::new();
         self.global_control.reset();
         self.fifo_a.reset();
         self.fifo_b.reset();
