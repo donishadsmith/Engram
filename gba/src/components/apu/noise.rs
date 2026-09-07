@@ -1,7 +1,10 @@
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 
-use crate::components::apu::sound_control::{Envelope, EnvelopeDirection, Length};
+use crate::components::{
+    apu::sound_control::{Envelope, Length},
+    utils::BitOps,
+};
 
 struct LFSR {
     width: u8,
@@ -12,17 +15,18 @@ impl LFSR {
     fn new() -> Self {
         Self {
             width: 0,
-            register: 0x0000,
+            register: 0,
         }
     }
 
     fn step(&mut self) {
-        let feedback = (self.register ^ (self.register >> 1)) & 1;
-        self.register >>= 1;
-        self.register = (self.register & !(1 << 14)) | (feedback << 14);
+        let feedback = (self.register ^ (self.register >> 1)).get_bit(0) as u16;
+        self.register.set_bit_range_value(15..16, feedback);
         if self.width == 1 {
-            self.register = (self.register & !(1 << 6)) | (feedback << 6);
+            self.register.set_bit_range_value(7..8, feedback);
         }
+
+        self.register >>= 1;
     }
 }
 
@@ -30,10 +34,14 @@ pub struct NoiseChannel {
     pub enabled: bool,
     pub length: Length,
     pub envelope: Envelope,
-    clock_shift: u8,
-    clock_divider: u8,
+    clock_shift: u16,
+    clock_divider: u16,
     frequency_timer: u32,
     lfsr: LFSR,
+    pub soundcnt_l: u16,
+    pub soundcnt_h: u16,
+    pub history: Vec<u8>,
+    pub mute: bool,
 }
 
 impl NoiseChannel {
@@ -46,63 +54,58 @@ impl NoiseChannel {
             clock_divider: 0,
             frequency_timer: 0,
             lfsr: LFSR::new(),
+            soundcnt_l: 0,
+            soundcnt_h: 0,
+            history: Vec::with_capacity(2048),
+            mute: false,
         }
     }
 
-    pub fn read_nr41(&self) -> u8 {
-        0xFF
-    }
-
-    pub fn write_nr41(&mut self, value: u8) {
-        //self.length.write(value);
-    }
-
-    pub fn read_nr42(&self) -> u8 {
-        //self.envelope.read()\
-
-        0
-    }
-
-    pub fn write_nr42(&mut self, value: u8) {
-        //self.envelope.set(value);
-    }
-
-    pub fn read_nr43(&self) -> u8 {
-        (self.clock_shift << 4) | (self.lfsr.width << 3) | self.clock_divider
-    }
-
-    pub fn write_nr43(&mut self, value: u8) {
-        self.clock_shift = (value & 0xF0) >> 4;
-        self.lfsr.width = (value & 0x08) >> 3;
-        self.clock_divider = value & 0x07;
-    }
-
-    pub fn read_nr44(&self) -> u8 {
-        //self.length.read()
-        0
-    }
-
-    pub fn write_nr44(&mut self, value: u8) {
-        self.length.enabled = (value & 0x40) != 0;
-
-        if (value >> 7) & 0x01 == 1 {
-            self.enabled = self.dac_enabled();
-
-            if self.length.timer == 0 {
-                self.length.timer = 64;
+    pub fn update_from_register(&mut self, address: u32) {
+        match address {
+            0x4000078 => {
+                self.length.set_timer(self.soundcnt_l);
+                self.envelope.set(self.soundcnt_l);
             }
+            0x400007C => {
+                let value = self.soundcnt_h;
+                self.length.enabled = value.is_set(14);
+                self.clock_divider = value.get_bit_range(0..3);
+                self.clock_shift = value.get_bit_range(4..8);
+                self.lfsr.width = value.get_bit(3);
 
-            self.frequency_timer =
-                ((DIVISORS[self.clock_divider as usize]) as u32) << self.clock_shift;
-            // self.envelope.timer = self.envelope.period;
-            self.envelope.current_volume = self.envelope.initial_volume;
-            self.lfsr.register = 0x7FFF;
+                if value.is_set(15) {
+                    self.trigger_reset_event();
+                }
+            }
+            _ => {}
         }
     }
 
-    fn dac_enabled(&self) -> bool {
-        self.envelope.initial_volume != 0
-            || matches!(self.envelope.direction, EnvelopeDirection::Increment)
+    pub fn read_from_register(&self, address: u32) -> u16 {
+        match address {
+            0x4000078 => self.envelope.read(),
+            0x400007C => {
+                (self.clock_shift << 4)
+                    | (self.lfsr.width << 3) as u16
+                    | self.clock_divider
+                    | (self.length.enabled as u16) << 14
+            }
+            _ => 0,
+        }
+    }
+
+    fn trigger_reset_event(&mut self) {
+        self.enabled = self.envelope.dac_enabled();
+
+        if self.length.timer == 0 {
+            self.length.timer = 64;
+        }
+
+        self.frequency_timer = ((DIVISORS[self.clock_divider as usize]) as u32) << self.clock_shift;
+        self.envelope.timer = self.envelope.step_time;
+        self.envelope.current_volume = self.envelope.initial_volume;
+        self.lfsr.register = 0x7FFF;
     }
 
     pub fn tick(&mut self) {
@@ -119,12 +122,15 @@ impl NoiseChannel {
         }
     }
 
-    pub fn sample(&self) -> u8 {
-        if self.enabled {
-            // (!(self.lfsr.register) as u8 & 0x01) * self.envelope.current_volume
-            0
+    pub fn get_sample(&mut self) -> u8 {
+        let sample = if self.enabled {
+            (!self.lfsr.register.is_set(0)) as u8 * self.envelope.current_volume as u8
         } else {
             0
-        }
+        };
+
+        self.history.push(sample);
+
+        sample
     }
 }

@@ -595,8 +595,7 @@ impl Bus {
             // 0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
             // 0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
             // 0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
-            // 0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
-            // 0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
+            0x4000078 | 0x400007C => self.apu.channel4.read_from_register(address),
             0x4000080 => self.apu.global_control.soundcnt_l,
             0x4000082 => self.apu.global_control.soundcnt_h,
             0x4000084 => self.apu.global_control.soundcnt_x,
@@ -731,8 +730,14 @@ impl Bus {
             0x4000070 => {} // Channel 3 Stop/Wave RAM select (NR30) (SOUND3CNT_L), 16 bit register (read + write)
             0x4000072 => {} // Channel 3 Length/Volume (NR31, NR32), 16 bit register (read + write)
             0x4000074 => {} // Channel 3 Frequency/Control (NR33, NR34) (SOUND3CNT_X), 16 bit register (read + write)
-            0x4000078 => {} // Channel 4 Length/Envelope (NR41, NR42) (SOUND4CNT_L), 16 bit register (read + write)
-            0x400007C => {} // Channel 4 Frequency/Control (NR43, NR44) (SOUND4CNT_H), 16 bit register (read + write)
+            0x4000078 => {
+                self.apu.channel4.soundcnt_l = value;
+                self.apu.channel4.update_from_register(address);
+            }
+            0x400007C => {
+                self.apu.channel4.soundcnt_h = value;
+                self.apu.channel4.update_from_register(address);
+            }
             0x4000080 => self.apu.global_control.soundcnt_l = value,
             0x4000082 => {
                 self.apu.global_control.soundcnt_h = value;
@@ -958,6 +963,8 @@ impl Bus {
         match address {
             0x4000060 | 0x4000062 | 0x4000064 => self.apu.channel1.soundcnt.read_u16(address),
             0x4000068 | 0x400006C => self.apu.channel2.soundcnt.read_u16(address),
+            0x4000078 => self.apu.channel4.soundcnt_l,
+            0x400007C => self.apu.channel4.soundcnt_h,
             _ => self.read_register(address),
         }
     }

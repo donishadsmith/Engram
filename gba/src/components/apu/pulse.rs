@@ -4,7 +4,7 @@
 // https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 
 use crate::components::{
-    apu::sound_control::{Envelope, EnvelopeDirection, Length},
+    apu::sound_control::{Envelope, Length},
     utils::{BitOps, GroupedRegisters},
 };
 
@@ -256,13 +256,8 @@ impl PulseChannel {
         }
     }
 
-    fn dac_enabled(&self) -> bool {
-        self.envelope.initial_volume != 0
-            || matches!(self.envelope.direction, EnvelopeDirection::Increment)
-    }
-
     fn trigger_reset_event(&mut self) {
-        self.enabled = self.dac_enabled();
+        self.enabled = self.envelope.dac_enabled();
 
         if self.length.timer == 0 {
             self.length.timer = 64;

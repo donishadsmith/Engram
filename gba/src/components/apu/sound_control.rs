@@ -53,6 +53,10 @@ impl Envelope {
         self.initial_volume = value.get_bit_range(12..16);
     }
 
+    pub fn dac_enabled(&self) -> bool {
+        self.initial_volume != 0 || matches!(self.direction, EnvelopeDirection::Increment)
+    }
+
     pub fn tick(&mut self) {
         if self.step_time == 0 {
             return;

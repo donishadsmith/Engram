@@ -4,7 +4,7 @@
 // https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence?utm_source
 
-use crate::components::apu::sound_control::{Envelope, EnvelopeDirection, Length};
+use crate::components::apu::sound_control::{Envelope, Length};
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -165,7 +165,7 @@ impl PulseChannel {
         self.length.enabled = (value & 0x40) != 0;
 
         if (value >> 7) & 0x01 == 1 {
-            self.enabled = self.dac_enabled();
+            self.enabled = self.envelope.dac_enabled();
 
             if self.length.timer == 0 {
                 self.length.timer = 64;
@@ -199,11 +199,6 @@ impl PulseChannel {
         sweep.pace = (value >> 4) & 0x07;
         sweep.direction = SweepDirection::from_register(value);
         sweep.shift = value & 0x07;
-    }
-
-    fn dac_enabled(&self) -> bool {
-        self.envelope.initial_volume != 0
-            || matches!(self.envelope.direction, EnvelopeDirection::Increment)
     }
 
     pub fn tick(&mut self) {

@@ -52,6 +52,10 @@ impl Envelope {
         self.period = value & 0x07;
     }
 
+    pub fn dac_enabled(&self) -> bool {
+        self.initial_volume != 0 || matches!(self.direction, EnvelopeDirection::Increment)
+    }
+
     pub fn tick(&mut self, frame_sequencer_step_envelope: bool) {
         if !frame_sequencer_step_envelope || self.period == 0 {
             return;

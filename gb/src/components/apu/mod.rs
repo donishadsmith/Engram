@@ -170,8 +170,14 @@ impl APU {
             if self.channel2.length.tick(frame_sequencer_step.length) {
                 self.channel2.enabled = false;
             }
-            self.channel3.length.tick(frame_sequencer_step.length);
-            self.channel4.length.tick(frame_sequencer_step.length);
+
+            if self.channel3.length.tick(frame_sequencer_step.length) {
+                self.channel3.enabled = false;
+            }
+
+            if self.channel4.length.tick(frame_sequencer_step.length) {
+                self.channel4.enabled = false;
+            }
 
             self.channel1.envelope.tick(frame_sequencer_step.envelope);
             self.channel2.envelope.tick(frame_sequencer_step.envelope);

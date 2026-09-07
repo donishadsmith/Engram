@@ -1,7 +1,7 @@
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 
-use crate::components::apu::sound_control::{Envelope, EnvelopeDirection, Length};
+use crate::components::apu::sound_control::{Envelope, Length};
 
 struct LFSR {
     width: u8,
@@ -18,11 +18,12 @@ impl LFSR {
 
     fn step(&mut self) {
         let feedback = (self.register ^ (self.register >> 1)) & 1;
-        self.register >>= 1;
-        self.register = (self.register & !(1 << 14)) | (feedback << 14);
+        self.register = (self.register & !(1 << 15)) | (feedback << 15);
         if self.width == 1 {
-            self.register = (self.register & !(1 << 6)) | (feedback << 6);
+            self.register = (self.register & !(1 << 7)) | (feedback << 7);
         }
+
+        self.register >>= 1;
     }
 }
 
@@ -83,7 +84,7 @@ impl NoiseChannel {
         self.length.enabled = (value & 0x40) != 0;
 
         if (value >> 7) & 0x01 == 1 {
-            self.enabled = self.dac_enabled();
+            self.enabled = self.envelope.dac_enabled();
 
             if self.length.timer == 0 {
                 self.length.timer = 64;
@@ -95,11 +96,6 @@ impl NoiseChannel {
             self.envelope.current_volume = self.envelope.initial_volume;
             self.lfsr.register = 0x7FFF;
         }
-    }
-
-    fn dac_enabled(&self) -> bool {
-        self.envelope.initial_volume != 0
-            || matches!(self.envelope.direction, EnvelopeDirection::Increment)
     }
 
     pub fn tick(&mut self) {

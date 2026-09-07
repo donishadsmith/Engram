@@ -9,6 +9,7 @@ use shared::render::to_rgba;
 struct AudioSamples {
     channel1: VecDeque<i8>,
     channel2: VecDeque<i8>,
+    channel4: VecDeque<i8>,
     fifo_a: VecDeque<i8>,
     fifo_b: VecDeque<i8>,
 }
@@ -18,6 +19,7 @@ impl AudioSamples {
         Self {
             channel1: VecDeque::new(),
             channel2: VecDeque::new(),
+            channel4: VecDeque::new(),
             fifo_a: VecDeque::new(),
             fifo_b: VecDeque::new(),
         }
@@ -41,6 +43,7 @@ impl AudioOccupancy {
 struct AudioRegisters {
     channel1: [u16; 3],
     channel2: [u16; 2],
+    channel4: [u16; 2],
 }
 
 impl AudioRegisters {
@@ -48,6 +51,7 @@ impl AudioRegisters {
         Self {
             channel1: [0; 3],
             channel2: [0; 2],
+            channel4: [0; 2],
         }
     }
 }
@@ -175,6 +179,14 @@ impl AudioDebugger {
                 self.samples.channel2.push_back(sample as i8);
             }
 
+            for sample in gba.bus.apu.channel4.history.drain(..) {
+                if self.samples.channel4.len() == 2048 {
+                    self.samples.channel4.pop_front();
+                }
+
+                self.samples.channel4.push_back(sample as i8);
+            }
+
             self.registers.channel1 = [
                 gba.bus.apu.channel1.soundcnt.from_index(0),
                 gba.bus.apu.channel1.soundcnt.from_index(1),
@@ -184,6 +196,11 @@ impl AudioDebugger {
             self.registers.channel2 = [
                 gba.bus.apu.channel2.soundcnt.from_index(0),
                 gba.bus.apu.channel2.soundcnt.from_index(2),
+            ];
+
+            self.registers.channel4 = [
+                gba.bus.apu.channel4.soundcnt_l,
+                gba.bus.apu.channel4.soundcnt_h,
             ];
 
             self.volume.fifo_a = gba.bus.apu.volume_control(AudioChannel::FifoA);
@@ -332,12 +349,33 @@ impl AudioDebugger {
                     plot_ui.line(channel2_samples);
                 });
 
+            let channel4_samples = Line::new(
+                "Channel 4 Samples",
+                self.samples
+                    .channel4
+                    .iter()
+                    .enumerate()
+                    .map(|(index, &sample)| [index as f64, sample as f64])
+                    .collect::<Vec<[f64; 2]>>(),
+            );
+
+            ui.monospace(format!("Channel 4 Samples"));
+            Plot::new("Channel 4 Samples")
+                .view_aspect(3.0)
+                .include_y(0.0)
+                .include_y(16.0)
+                .show(ui, |plot_ui| {
+                    plot_ui.line(channel4_samples);
+                });
+
             ui.heading("Mute PSG Channels").highlight();
             ui.separator();
             let text = "Silences channel contribution to sound; graphs still show";
             ui.checkbox(&mut self.mute[AudioChannel::Channel1 as usize], "Channel 1")
                 .on_hover_text(text);
             ui.checkbox(&mut self.mute[AudioChannel::Channel2 as usize], "Channel 2")
+                .on_hover_text(text);
+            ui.checkbox(&mut self.mute[AudioChannel::Channel4 as usize], "Channel 4")
                 .on_hover_text(text);
         });
 
@@ -392,6 +430,18 @@ impl AudioDebugger {
                         ui.label(format!("SOUND2CNT_X: {:16b}", self.registers.channel2[1]));
                         ui.end_row();
                     });
+
+                ui.add_space(30.0);
+                egui::Grid::new("Fourth")
+                    .num_columns(1)
+                    .spacing([20.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.label(format!("SOUND4CNT_L: {:16b}", self.registers.channel4[0]));
+                        ui.end_row();
+
+                        ui.label(format!("SOUND4CNT_X: {:16b}", self.registers.channel4[1]));
+                        ui.end_row();
+                    });
             });
         });
 
@@ -412,6 +462,9 @@ impl AudioDebugger {
     }
 
     fn mute_channels(&self, gba: &mut GBA) {
+        gba.bus.apu.channel1.mute = self.mute[0];
+        gba.bus.apu.channel2.mute = self.mute[1];
+        gba.bus.apu.channel4.mute = self.mute[3];
         gba.bus.apu.fifo_a.mute = self.mute[4];
         gba.bus.apu.fifo_b.mute = self.mute[5];
     }

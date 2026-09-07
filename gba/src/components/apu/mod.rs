@@ -7,10 +7,13 @@ mod noise;
 mod pulse;
 mod sound_control;
 
-use crate::components::{apu::pulse::PulseChannel, dma::FifoChannel, utils::BitOps};
+use crate::components::{
+    apu::{noise::NoiseChannel, pulse::PulseChannel},
+    dma::FifoChannel,
+    utils::BitOps,
+};
 use fifo::Fifo;
 use global_control::GlobalControl;
-use shared::audio::LowPassFilter;
 
 const FIR_KERNEL: [f64; 46] = [0.0; 46]; // temp
 
@@ -90,13 +93,12 @@ pub struct APU {
     pub global_control: GlobalControl,
     pub channel1: PulseChannel,
     pub channel2: PulseChannel,
+    pub channel4: NoiseChannel,
     pub fifo_a: Fifo,
     pub fifo_b: Fifo,
     pub sample_buffer: Vec<f32>,
     last_psg_update: u64,
     sequencer: Sequencer,
-    low_pass_left: LowPassFilter,
-    low_pass_right: LowPassFilter,
 }
 
 impl APU {
@@ -105,13 +107,12 @@ impl APU {
             global_control: GlobalControl::new(),
             channel1: PulseChannel::new_channel1(),
             channel2: PulseChannel::new_channel2(),
+            channel4: NoiseChannel::new(),
             fifo_a: Fifo::new(FifoChannel::A),
             fifo_b: Fifo::new(FifoChannel::B),
             sample_buffer: Vec::new(),
             last_psg_update: 0,
             sequencer: Sequencer::new(),
-            low_pass_left: LowPassFilter::new(FIR_KERNEL),
-            low_pass_right: LowPassFilter::new(FIR_KERNEL),
         }
     }
 
@@ -131,6 +132,7 @@ impl APU {
         for _ in 0..elapsed_cycles {
             self.channel1.tick();
             self.channel2.tick();
+            self.channel4.tick();
         }
 
         self.last_psg_update = timestamp;
@@ -143,12 +145,14 @@ impl APU {
         let psg_volume = self.volume_control(AudioChannel::Channel1);
         let psg1 = i16::from(!self.channel1.mute as u8 * self.channel1.get_sample()) * 8;
         let psg2 = i16::from(!self.channel2.mute as u8 * self.channel2.get_sample()) * 8;
+        let psg4 = i16::from(!self.channel4.mute as u8 * self.channel4.get_sample()) * 8;
         let a = ((!self.fifo_a.mute as u8 * self.fifo_a.latched) as i8) as i16;
         let b = ((!self.fifo_b.mute as u8 * self.fifo_b.latched) as i8) as i16;
         let mixed = (((a << 2) as f32) * fifo_a_volume)
             + (((b << 2) as f32) * fifo_b_volume)
             + (psg1 as f32) * psg_volume
-            + (psg2 as f32) * psg_volume;
+            + (psg2 as f32) * psg_volume
+            + (psg4 as f32) * psg_volume;
         let sample = mixed.clamp(-512.0, 511.0) / 512.0;
 
         self.sample_buffer.push(sample);
@@ -164,13 +168,18 @@ impl APU {
             }
 
             if self.channel2.length.tick() {
-                self.channel1.enabled = false;
+                self.channel2.enabled = false;
+            }
+
+            if self.channel4.length.tick() {
+                self.channel4.enabled = false;
             }
         }
 
         if sequencer_step.envelope {
             self.channel1.envelope.tick();
             self.channel2.envelope.tick();
+            self.channel4.envelope.tick();
         }
 
         if sequencer_step.sweep {
