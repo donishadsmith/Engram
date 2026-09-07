@@ -54,15 +54,17 @@ impl NoiseChannel {
     }
 
     pub fn write_nr41(&mut self, value: u8) {
-        self.length.write(value);
+        //self.length.write(value);
     }
 
     pub fn read_nr42(&self) -> u8 {
-        self.envelope.read()
+        //self.envelope.read()\
+
+        0
     }
 
     pub fn write_nr42(&mut self, value: u8) {
-        self.envelope.set(value);
+        //self.envelope.set(value);
     }
 
     pub fn read_nr43(&self) -> u8 {
@@ -76,7 +78,8 @@ impl NoiseChannel {
     }
 
     pub fn read_nr44(&self) -> u8 {
-        self.length.read()
+        //self.length.read()
+        0
     }
 
     pub fn write_nr44(&mut self, value: u8) {
@@ -91,7 +94,7 @@ impl NoiseChannel {
 
             self.frequency_timer =
                 ((DIVISORS[self.clock_divider as usize]) as u32) << self.clock_shift;
-            self.envelope.timer = self.envelope.period;
+            // self.envelope.timer = self.envelope.period;
             self.envelope.current_volume = self.envelope.initial_volume;
             self.lfsr.register = 0x7FFF;
         }
@@ -118,7 +121,8 @@ impl NoiseChannel {
 
     pub fn sample(&self) -> u8 {
         if self.enabled {
-            (!(self.lfsr.register) as u8 & 0x01) * self.envelope.current_volume
+            // (!(self.lfsr.register) as u8 & 0x01) * self.envelope.current_volume
+            0
         } else {
             0
         }

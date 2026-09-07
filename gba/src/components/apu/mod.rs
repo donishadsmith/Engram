@@ -3,6 +3,7 @@
 // https://gbadev.net/gbadoc/audio/introduction.html
 mod fifo;
 mod global_control;
+mod noise;
 mod pulse;
 mod sound_control;
 
