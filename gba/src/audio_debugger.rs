@@ -1,4 +1,6 @@
-use egui::{CentralPanel, SidePanel, TextureHandle, TextureOptions, TopBottomPanel};
+use egui::{
+    CentralPanel, Color32, RichText, SidePanel, TextureHandle, TextureOptions, TopBottomPanel,
+};
 use egui_plot::{HLine, Line, Plot};
 use macroquad::input::{KeyCode, get_keys_pressed};
 use std::collections::VecDeque;
@@ -9,9 +11,19 @@ use crate::components::{
 };
 use shared::render::to_rgba;
 
+const CHANNELS: [AudioChannel; 6] = [
+    AudioChannel::Channel1,
+    AudioChannel::Channel2,
+    AudioChannel::Channel3,
+    AudioChannel::Channel4,
+    AudioChannel::FifoA,
+    AudioChannel::FifoB,
+];
+
 struct AudioSamples {
     channel1: VecDeque<i8>,
     channel2: VecDeque<i8>,
+    channel3: VecDeque<i8>,
     channel4: VecDeque<i8>,
     fifo_a: VecDeque<i8>,
     fifo_b: VecDeque<i8>,
@@ -22,6 +34,7 @@ impl AudioSamples {
         Self {
             channel1: VecDeque::new(),
             channel2: VecDeque::new(),
+            channel3: VecDeque::new(),
             channel4: VecDeque::new(),
             fifo_a: VecDeque::new(),
             fifo_b: VecDeque::new(),
@@ -46,6 +59,7 @@ impl AudioOccupancy {
 struct AudioRegisters {
     channel1: [u16; 3],
     channel2: [u16; 2],
+    channel3: [u16; 3],
     channel4: [u16; 2],
 }
 
@@ -54,6 +68,7 @@ impl AudioRegisters {
         Self {
             channel1: [0; 3],
             channel2: [0; 2],
+            channel3: [0; 3],
             channel4: [0; 2],
         }
     }
@@ -75,6 +90,93 @@ impl VolumeSettings {
     }
 }
 
+struct PanSettings {
+    channel1_left: bool,
+    channel1_right: bool,
+    channel2_left: bool,
+    channel2_right: bool,
+    channel3_left: bool,
+    channel3_right: bool,
+    channel4_left: bool,
+    channel4_right: bool,
+    fifo_a_left: bool,
+    fifo_a_right: bool,
+    fifo_b_left: bool,
+    fifo_b_right: bool,
+}
+
+impl PanSettings {
+    fn new() -> Self {
+        Self {
+            channel1_left: false,
+            channel1_right: false,
+            channel2_left: false,
+            channel2_right: false,
+            channel3_left: false,
+            channel3_right: false,
+            channel4_left: false,
+            channel4_right: false,
+            fifo_a_left: false,
+            fifo_a_right: false,
+            fifo_b_left: false,
+            fifo_b_right: false,
+        }
+    }
+
+    fn update(&mut self, channel_id: AudioChannel, panning: PanDirection, on: bool) {
+        match panning {
+            PanDirection::Left => match channel_id {
+                AudioChannel::Channel1 => self.channel1_left = on,
+                AudioChannel::Channel2 => self.channel2_left = on,
+                AudioChannel::Channel3 => self.channel3_left = on,
+                AudioChannel::Channel4 => self.channel4_left = on,
+                AudioChannel::FifoA => self.fifo_a_left = on,
+                AudioChannel::FifoB => self.fifo_b_left = on,
+            },
+            PanDirection::Right => match channel_id {
+                AudioChannel::Channel1 => self.channel1_right = on,
+                AudioChannel::Channel2 => self.channel2_right = on,
+                AudioChannel::Channel3 => self.channel3_right = on,
+                AudioChannel::Channel4 => self.channel4_right = on,
+                AudioChannel::FifoA => self.fifo_a_right = on,
+                AudioChannel::FifoB => self.fifo_b_right = on,
+            },
+        }
+    }
+
+    fn status(&mut self, channel_id: AudioChannel, panning: PanDirection) -> bool {
+        match panning {
+            PanDirection::Left => match channel_id {
+                AudioChannel::Channel1 => self.channel1_left,
+                AudioChannel::Channel2 => self.channel2_left,
+                AudioChannel::Channel3 => self.channel3_left,
+                AudioChannel::Channel4 => self.channel4_left,
+                AudioChannel::FifoA => self.fifo_a_left,
+                AudioChannel::FifoB => self.fifo_b_left,
+            },
+            PanDirection::Right => match channel_id {
+                AudioChannel::Channel1 => self.channel1_right,
+                AudioChannel::Channel2 => self.channel2_right,
+                AudioChannel::Channel3 => self.channel3_right,
+                AudioChannel::Channel4 => self.channel4_right,
+                AudioChannel::FifoA => self.fifo_a_right,
+                AudioChannel::FifoB => self.fifo_b_right,
+            },
+        }
+    }
+}
+
+fn to_percent(volume: f32) -> String {
+    format!("{}%", (volume * 100.0) as u32)
+}
+
+fn register(ui: &mut egui::Ui, name: &str, value: u16) {
+    ui.horizontal(|ui| {
+        ui.strong(name);
+        ui.monospace(format!("{:016b}", value));
+    });
+}
+
 pub struct AudioDebugger {
     pub visible: bool,
     pub frozen: bool,
@@ -84,6 +186,7 @@ pub struct AudioDebugger {
     texture: Option<TextureHandle>,
     registers: AudioRegisters,
     volume: VolumeSettings,
+    pan_settings: PanSettings,
 }
 
 impl AudioDebugger {
@@ -97,6 +200,7 @@ impl AudioDebugger {
             texture: None,
             registers: AudioRegisters::new(),
             volume: VolumeSettings::new(),
+            pan_settings: PanSettings::new(),
         }
     }
 
@@ -182,6 +286,14 @@ impl AudioDebugger {
                 self.samples.channel2.push_back(sample as i8);
             }
 
+            for sample in gba.bus.apu.channel3.history.drain(..) {
+                if self.samples.channel3.len() == 2048 {
+                    self.samples.channel3.pop_front();
+                }
+
+                self.samples.channel3.push_back(sample as i8);
+            }
+
             for sample in gba.bus.apu.channel4.history.drain(..) {
                 if self.samples.channel4.len() == 2048 {
                     self.samples.channel4.pop_front();
@@ -199,6 +311,12 @@ impl AudioDebugger {
             self.registers.channel2 = [
                 gba.bus.apu.channel2.soundcnt.from_index(0),
                 gba.bus.apu.channel2.soundcnt.from_index(2),
+            ];
+
+            self.registers.channel3 = [
+                gba.bus.apu.channel3.soundcnt.from_index(0),
+                gba.bus.apu.channel3.soundcnt.from_index(1),
+                gba.bus.apu.channel3.soundcnt.from_index(2),
             ];
 
             self.registers.channel4 = [
@@ -247,7 +365,11 @@ impl AudioDebugger {
                     .collect::<Vec<[f64; 2]>>(),
             );
 
-            ui.monospace(format!("FIFO A Samples"));
+            let text = "Silences channel contribution to sound; graphs still show";
+            ui.horizontal(|ui| {
+                ui.strong("FIFO A");
+                ui.checkbox(&mut self.mute[4], "mute").on_hover_text(text);
+            });
             Plot::new("FIFO A Samples")
                 .view_aspect(3.0)
                 .include_y(-128.0)
@@ -256,7 +378,9 @@ impl AudioDebugger {
                     plot_ui.line(fifo_a_samples);
                 });
 
-            ui.monospace(format!("FIFO A Occupancy"));
+            ui.horizontal(|ui| {
+                ui.strong("FIFO A Occupancy");
+            });
             Plot::new("FIFO A Occupancy")
                 .view_aspect(3.0)
                 .include_y(0.0)
@@ -286,7 +410,10 @@ impl AudioDebugger {
                     .collect::<Vec<[f64; 2]>>(),
             );
 
-            ui.monospace(format!("FIFO B Samples"));
+            ui.horizontal(|ui| {
+                ui.strong("FIFO B");
+                ui.checkbox(&mut self.mute[5], "mute").on_hover_text(text);
+            });
             Plot::new("FIFO B Samples")
                 .view_aspect(3.0)
                 .include_y(-128.0)
@@ -295,7 +422,9 @@ impl AudioDebugger {
                     plot_ui.line(fifo_b_samples);
                 });
 
-            ui.monospace(format!("FIFO B Occupancy"));
+            ui.horizontal(|ui| {
+                ui.strong("FIFO B Occupancy");
+            });
             Plot::new("FIFO B Occupancy")
                 .view_aspect(3.0)
                 .include_y(0.0)
@@ -304,14 +433,6 @@ impl AudioDebugger {
                     plot_ui.line(fifo_b_occupancy);
                     plot_ui.hline(HLine::new("FIFO B Occupancy", 16.0));
                 });
-
-            ui.heading("Mute FIFO Channels").highlight();
-            ui.separator();
-            let text = "Silences channel contribution to sound; graphs still show";
-            ui.checkbox(&mut self.mute[AudioChannel::FifoA as usize], "FIFO A")
-                .on_hover_text(text);
-            ui.checkbox(&mut self.mute[AudioChannel::FifoB as usize], "FIFO B")
-                .on_hover_text(text);
         });
 
         let frame = &gba.bus.ppu.frontend;
@@ -336,7 +457,11 @@ impl AudioDebugger {
                     .collect::<Vec<[f64; 2]>>(),
             );
 
-            ui.monospace(format!("Channel 1 Samples"));
+            let text = "Silences channel contribution to sound; graphs still show";
+            ui.horizontal(|ui| {
+                ui.strong("Channel 1");
+                ui.checkbox(&mut self.mute[0], "mute").on_hover_text(text);
+            });
             Plot::new("Channel 1 Samples")
                 .view_aspect(3.0)
                 .include_y(0.0)
@@ -355,13 +480,38 @@ impl AudioDebugger {
                     .collect::<Vec<[f64; 2]>>(),
             );
 
-            ui.monospace(format!("Channel 2 Samples"));
+            ui.horizontal(|ui| {
+                ui.strong("Channel 2");
+                ui.checkbox(&mut self.mute[1], "mute").on_hover_text(text);
+            });
             Plot::new("Channel 2 Samples")
                 .view_aspect(3.0)
                 .include_y(0.0)
                 .include_y(16.0)
                 .show(ui, |plot_ui| {
                     plot_ui.line(channel2_samples);
+                });
+
+            let channel3_samples = Line::new(
+                "Channel 3 Samples",
+                self.samples
+                    .channel3
+                    .iter()
+                    .enumerate()
+                    .map(|(index, &sample)| [index as f64, sample as f64])
+                    .collect::<Vec<[f64; 2]>>(),
+            );
+
+            ui.horizontal(|ui| {
+                ui.strong("Channel 3");
+                ui.checkbox(&mut self.mute[2], "mute").on_hover_text(text);
+            });
+            Plot::new("Channel 3 Samples")
+                .view_aspect(3.0)
+                .include_y(0.0)
+                .include_y(16.0)
+                .show(ui, |plot_ui| {
+                    plot_ui.line(channel3_samples);
                 });
 
             let channel4_samples = Line::new(
@@ -374,7 +524,10 @@ impl AudioDebugger {
                     .collect::<Vec<[f64; 2]>>(),
             );
 
-            ui.monospace(format!("Channel 4 Samples"));
+            ui.horizontal(|ui| {
+                ui.strong("Channel 4");
+                ui.checkbox(&mut self.mute[3], "mute").on_hover_text(text);
+            });
             Plot::new("Channel 4 Samples")
                 .view_aspect(3.0)
                 .include_y(0.0)
@@ -382,174 +535,106 @@ impl AudioDebugger {
                 .show(ui, |plot_ui| {
                     plot_ui.line(channel4_samples);
                 });
-
-            ui.heading("Mute PSG Channels").highlight();
-            ui.separator();
-            let text = "Silences channel contribution to sound; graphs still show";
-            ui.checkbox(&mut self.mute[AudioChannel::Channel1 as usize], "Channel 1")
-                .on_hover_text(text);
-            ui.checkbox(&mut self.mute[AudioChannel::Channel2 as usize], "Channel 2")
-                .on_hover_text(text);
-            ui.checkbox(&mut self.mute[AudioChannel::Channel4 as usize], "Channel 4")
-                .on_hover_text(text);
         });
 
         TopBottomPanel::top("Global Controls").show(egui_ctx, |ui| {
             ui.heading("Global Control Register Settings").highlight();
             ui.separator();
 
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.heading("Panned Left");
-                    ui.add_space(4.0);
+            egui::Grid::new("Global Control Register Settings")
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (text, hover) = if self.frozen {
+                            (
+                                RichText::new("PAUSED").strong().color(Color32::YELLOW),
+                                "Press Space to resume",
+                            )
+                        } else {
+                            (
+                                RichText::new("LIVE").strong().color(Color32::LIGHT_GREEN),
+                                "Press Space to pause",
+                            )
+                        };
 
-                    ui.label(format!(
-                        "Channel 1: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel1, PanDirection::Left)
-                    ));
-                    ui.label(format!(
-                        "Channel 2: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel2, PanDirection::Left)
-                    ));
-                    ui.label(format!(
-                        "Channel 3: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel3, PanDirection::Left)
-                    ));
-                    ui.label(format!(
-                        "Channel 4: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel4, PanDirection::Left)
-                    ));
-                    ui.label(format!(
-                        "FIFO A: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::FifoA, PanDirection::Left)
-                    ));
-                    ui.label(format!(
-                        "FIFO B: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::FifoB, PanDirection::Left)
-                    ));
-                });
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(50.0, ui.spacing().interact_size.y),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.label(text).on_hover_text(hover);
+                            },
+                        );
+                    });
 
-                ui.add_space(30.0);
-                ui.vertical(|ui| {
-                    ui.heading("Panned Right");
-                    ui.add_space(4.0);
+                    for channel_id in [
+                        "Channel 1",
+                        "Channel 2",
+                        "Channel 3",
+                        "Channel 4",
+                        "FIFO A",
+                        "FIFO B",
+                    ] {
+                        ui.strong(channel_id);
+                    }
 
-                    ui.label(format!(
-                        "Channel 1: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel1, PanDirection::Right)
-                    ));
-                    ui.label(format!(
-                        "Channel 2: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel2, PanDirection::Right)
-                    ));
-                    ui.label(format!(
-                        "Channel 3: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel3, PanDirection::Right)
-                    ));
-                    ui.label(format!(
-                        "Channel 4: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::Channel4, PanDirection::Right)
-                    ));
-                    ui.label(format!(
-                        "FIFO A: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::FifoA, PanDirection::Right)
-                    ));
-                    ui.label(format!(
-                        "FIFO B: {}",
-                        gba.bus
-                            .apu
-                            .global_control
-                            .sound_on(AudioChannel::FifoB, PanDirection::Right)
-                    ));
-                });
+                    ui.end_row();
 
-                ui.add_space(30.0);
-                ui.vertical(|ui| {
-                    ui.heading("Volume");
-                    ui.add_space(4.0);
+                    for (direction, string) in
+                        [(PanDirection::Left, "Left"), (PanDirection::Right, "Right")]
+                    {
+                        ui.label(string);
+                        for channel_id in CHANNELS {
+                            let on = if !self.frozen {
+                                self.pan_settings.update(
+                                    channel_id,
+                                    direction,
+                                    gba.bus.apu.global_control.sound_on(channel_id, direction),
+                                );
+                                self.pan_settings.status(channel_id, direction)
+                            } else {
+                                self.pan_settings.status(channel_id, direction)
+                            };
 
-                    ui.label(format!("PSG: {}", self.volume.psg));
-                    ui.label(format!("FIFO A: {}", self.volume.fifo_a));
-                    ui.label(format!("FIFO B: {}", self.volume.fifo_b));
-                });
-            });
+                            ui.label(if on {
+                                RichText::new("on").color(Color32::LIGHT_GREEN)
+                            } else {
+                                RichText::new("off").weak()
+                            });
+                        }
+
+                        ui.end_row();
+                    }
+
+                    ui.label("Volume");
+                    ui.label("");
+                    ui.label("");
+                    ui.label(to_percent(self.volume.psg));
+
+                    ui.label("");
+                    ui.label(to_percent(self.volume.fifo_a));
+                    ui.label(to_percent(self.volume.fifo_b));
+                    ui.end_row();
+                })
         });
 
         TopBottomPanel::bottom("Registers").show(egui_ctx, |ui| {
             ui.heading("PSG Registers").highlight();
             ui.separator();
 
-            ui.horizontal(|ui| {
-                egui::Grid::new("First")
-                    .num_columns(1)
-                    .spacing([20.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label(format!("SOUND1CNT_L: {:16b}", self.registers.channel1[0]));
-                        ui.end_row();
+            ui.columns(4, |cols| {
+                register(&mut cols[0], "SOUND1CNT_L:", self.registers.channel1[0]);
+                register(&mut cols[0], "SOUND1CNT_H:", self.registers.channel1[1]);
+                register(&mut cols[0], "SOUND1CNT_X:", self.registers.channel1[2]);
 
-                        ui.label(format!("SOUND1CNT_L: {:16b}", self.registers.channel1[1]));
-                        ui.end_row();
+                register(&mut cols[1], "SOUND2CNT_L:", self.registers.channel2[0]);
+                register(&mut cols[1], "SOUND2CNT_X:", self.registers.channel2[1]);
 
-                        ui.label(format!("SOUND1CNT_X: {:16b}", self.registers.channel1[2]));
-                        ui.end_row();
-                    });
+                register(&mut cols[2], "SOUND3CNT_L:", self.registers.channel3[0]);
+                register(&mut cols[2], "SOUND3CNT_H:", self.registers.channel3[1]);
+                register(&mut cols[2], "SOUND3CNT_X:", self.registers.channel3[2]);
 
-                ui.add_space(30.0);
-                egui::Grid::new("Second")
-                    .num_columns(1)
-                    .spacing([20.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label(format!("SOUND2CNT_L: {:16b}", self.registers.channel2[0]));
-                        ui.end_row();
-
-                        ui.label(format!("SOUND2CNT_X: {:16b}", self.registers.channel2[1]));
-                        ui.end_row();
-                    });
-
-                ui.add_space(30.0);
-                egui::Grid::new("Fourth")
-                    .num_columns(1)
-                    .spacing([20.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label(format!("SOUND4CNT_L: {:16b}", self.registers.channel4[0]));
-                        ui.end_row();
-
-                        ui.label(format!("SOUND4CNT_X: {:16b}", self.registers.channel4[1]));
-                        ui.end_row();
-                    });
+                register(&mut cols[3], "SOUND4CNT_L:", self.registers.channel4[0]);
+                register(&mut cols[3], "SOUND4CNT_X:", self.registers.channel4[1]);
             });
         });
 
@@ -572,6 +657,7 @@ impl AudioDebugger {
     fn mute_channels(&self, gba: &mut GBA) {
         gba.bus.apu.channel1.mute = self.mute[0];
         gba.bus.apu.channel2.mute = self.mute[1];
+        gba.bus.apu.channel3.mute = self.mute[2];
         gba.bus.apu.channel4.mute = self.mute[3];
         gba.bus.apu.fifo_a.mute = self.mute[4];
         gba.bus.apu.fifo_b.mute = self.mute[5];

@@ -2,7 +2,10 @@
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 
 use crate::components::{
-    apu::sound_control::{Envelope, Length},
+    apu::{
+        global_control::AudioChannel,
+        sound_control::{Envelope, Length},
+    },
     utils::BitOps,
 };
 
@@ -64,7 +67,8 @@ impl NoiseChannel {
     pub fn update_from_register(&mut self, address: u32) {
         match address {
             0x4000078 => {
-                self.length.set_timer(self.soundcnt_l);
+                self.length
+                    .set_timer(self.soundcnt_l, AudioChannel::Channel4);
                 self.envelope.set(self.soundcnt_l);
             }
             0x400007C => {

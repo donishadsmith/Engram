@@ -4,11 +4,14 @@
 // https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 
 use crate::components::{
-    apu::sound_control::{Envelope, Length},
+    apu::{
+        global_control::AudioChannel,
+        sound_control::{Envelope, Length},
+    },
     utils::{BitOps, GroupedRegisters},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum PulseChannelId {
     Channel1,
     Channel2,
@@ -176,7 +179,12 @@ impl PulseChannel {
             0x4000062 | 0x4000068 => {
                 let index = self.channel_id.duty_register_index();
                 let value = self.soundcnt.from_index(index);
-                self.length.set_timer(value);
+                let channel_id = if self.channel_id == PulseChannelId::Channel1 {
+                    AudioChannel::Channel1
+                } else {
+                    AudioChannel::Channel2
+                };
+                self.length.set_timer(value, channel_id);
                 self.duty = DutyCycle::from_register(value);
                 self.envelope.set(value);
                 if value.get_bit_range(11..16) == 0 {

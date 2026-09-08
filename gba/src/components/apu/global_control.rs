@@ -10,6 +10,7 @@ pub enum AudioChannel {
     FifoB = 5,
 }
 
+#[derive(Clone, Copy)]
 pub enum PanDirection {
     Left,
     Right,

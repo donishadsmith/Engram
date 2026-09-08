@@ -3,7 +3,7 @@
 [![Run Tests](https://github.com/donishadsmith/Engram/actions/workflows/test.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/test.yml)
 [![Publish](https://github.com/donishadsmith/Engram/actions/workflows/build.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/build.yml)
 
-A Gameboy Advance (RTC, APU [only fifo, pulse, and noise-based sound], and some other PPU features still needs to be implemented) & Game Boy Color emulator (supports DMG games too) written in Rust.
+A Gameboy Advance (RTC + mosaic and some other relatively minor features still needs to be implemented) & Game Boy Color emulator (supports DMG games too) written in Rust.
 
 <table align="center">
   <tr>
@@ -67,8 +67,8 @@ cargo run --release
 
 `F12` key to toggle audio debugger and `Space` to pause debugger.
 
-<img src="assets/debug.png" width="500">
+<img src="assets/debug.gif" width="500">
 
-## Credit
+## References
 
-I leaned heavily on the prior work of the emulation development community. In particular, [mGBA](https://github.com/mgba-emu/mgba), [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance), [rustboyadvance-ng](https://github.com/michelhe/rustboyadvance-ng), [retroboy](https://github.com/smparsons/retroboy), [Pan Docs](https://gbdev.io/pandocs/), and [GBATEK](https://problemkaputt.de/gbatek.htm) were incredibly helpful. The full list of emulators, documentation, and articles used is in [REFERENCES.md](REFERENCES.md).
+I leaned heavily on the prior work of the emulation development community. In particular, [mGBA](https://github.com/mgba-emu/mgba), [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance), [rustboyadvance-ng](https://github.com/michelhe/rustboyadvance-ng), [retroboy](https://github.com/smparsons/retroboy), [SameBoy](https://github.com/LIJI32/SameBoy), [Pan Docs](https://gbdev.io/pandocs/), and [GBATEK](https://problemkaputt.de/gbatek.htm) were incredibly helpful. The full list of emulators, documentation, and articles used is in [REFERENCES.md](REFERENCES.md).

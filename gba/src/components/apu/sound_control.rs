@@ -1,4 +1,4 @@
-use crate::components::utils::BitOps;
+use crate::components::{apu::global_control::AudioChannel, utils::BitOps};
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -99,7 +99,12 @@ impl Length {
         (self.enabled as u16) << 14
     }
 
-    pub fn set_timer(&mut self, value: u16) {
-        self.timer = 64 - value.get_bit_range(0..6);
+    pub fn set_timer(&mut self, value: u16, channel_id: AudioChannel) {
+        match channel_id {
+            AudioChannel::Channel1 | AudioChannel::Channel2 | AudioChannel::Channel4 => {
+                self.timer = 64 - value.get_bit_range(0..6);
+            }
+            _ => self.timer = 256 - value.get_bit_range(0..8),
+        }
     }
 }

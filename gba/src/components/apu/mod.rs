@@ -4,9 +4,12 @@ pub mod global_control;
 mod noise;
 mod pulse;
 mod sound_control;
+mod wave;
 
 use crate::components::{
-    apu::{global_control::AudioChannel, noise::NoiseChannel, pulse::PulseChannel},
+    apu::{
+        global_control::AudioChannel, noise::NoiseChannel, pulse::PulseChannel, wave::WaveChannel,
+    },
     dma::FifoChannel,
     utils::BitOps,
 };
@@ -44,6 +47,7 @@ pub struct APU {
     pub global_control: GlobalControl,
     pub channel1: PulseChannel,
     pub channel2: PulseChannel,
+    pub channel3: WaveChannel,
     pub channel4: NoiseChannel,
     pub fifo_a: Fifo,
     pub fifo_b: Fifo,
@@ -58,6 +62,7 @@ impl APU {
             global_control: GlobalControl::new(),
             channel1: PulseChannel::new_channel1(),
             channel2: PulseChannel::new_channel2(),
+            channel3: WaveChannel::new(),
             channel4: NoiseChannel::new(),
             fifo_a: Fifo::new(FifoChannel::A),
             fifo_b: Fifo::new(FifoChannel::B),
@@ -83,6 +88,7 @@ impl APU {
         for _ in 0..elapsed_cycles {
             self.channel1.tick();
             self.channel2.tick();
+            self.channel3.tick();
             self.channel4.tick();
         }
 
@@ -101,23 +107,25 @@ impl APU {
         let fifo_b_volume = self.global_control.volume_control(AudioChannel::FifoB);
         let psg_volume = self.global_control.volume_control(AudioChannel::Channel1);
 
-        let psg1 = if self.channel1.mute {
-            0.0
-        } else {
-            f32::from(self.channel1.get_sample()) * 8.0 * psg_volume
-        };
+        let psg1 = f32::from(self.channel1.get_sample())
+            * 8.0
+            * psg_volume
+            * (!self.channel1.mute as u8 as f32);
 
-        let psg2 = if self.channel2.mute {
-            0.0
-        } else {
-            f32::from(self.channel2.get_sample()) * 8.0 * psg_volume
-        };
+        let psg2 = f32::from(self.channel2.get_sample())
+            * 8.0
+            * psg_volume
+            * (!self.channel2.mute as u8 as f32);
 
-        let psg4 = if self.channel4.mute {
-            0.0
-        } else {
-            f32::from(self.channel4.get_sample()) * 8.0 * psg_volume
-        };
+        let psg3 = f32::from(self.channel3.get_sample())
+            * 8.0
+            * psg_volume
+            * (!self.channel3.mute as u8 as f32);
+
+        let psg4 = f32::from(self.channel4.get_sample())
+            * 8.0
+            * psg_volume
+            * (!self.channel4.mute as u8 as f32);
 
         let fifo_a = if self.fifo_a.mute {
             0.0
@@ -143,6 +151,9 @@ impl APU {
                 .panned_left(AudioChannel::Channel2, psg2)
             + self
                 .global_control
+                .panned_left(AudioChannel::Channel3, psg3)
+            + self
+                .global_control
                 .panned_left(AudioChannel::Channel4, psg4);
 
         let mixed_right = self
@@ -157,6 +168,9 @@ impl APU {
             + self
                 .global_control
                 .panned_right(AudioChannel::Channel2, psg2)
+            + self
+                .global_control
+                .panned_right(AudioChannel::Channel3, psg3)
             + self
                 .global_control
                 .panned_right(AudioChannel::Channel4, psg4);
@@ -179,6 +193,10 @@ impl APU {
                 self.channel2.enabled = false;
             }
 
+            if self.channel3.length.tick() {
+                self.channel3.enabled = false;
+            }
+
             if self.channel4.length.tick() {
                 self.channel4.enabled = false;
             }
@@ -198,6 +216,7 @@ impl APU {
     pub fn reset_sound_registers(&mut self) {
         self.channel1 = PulseChannel::new_channel1();
         self.channel2 = PulseChannel::new_channel2();
+        self.channel3 = WaveChannel::new();
         self.channel4 = NoiseChannel::new();
         self.global_control.reset();
         self.fifo_a.reset();
