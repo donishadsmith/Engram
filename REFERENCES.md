@@ -71,6 +71,7 @@ Emulators, documentation, and guides that Engram relied on during development.
 - [Nintendo GBA Manual](https://archive.org/details/NintendoGbaManualV1.1)
 - [CowBite Virtual Hardware Specifications](https://www.cs.rit.edu/~tjh8300/CowBite/CowBiteSpec.htm)
 - [BizHawk GBA memory domains](https://corrupt.wiki/systems/gameboy-advance/bizhawk-memory-domains) and [ADVANsCEne](https://www.advanscene.com/html/dbstart.php)
+- [AGB Programming Manual Version 1.1 by Nintendo](https://archive.org/details/NintendoGbaManualV1.1/page/n59/mode/1up)
 
 ### Guides & Articles
 
