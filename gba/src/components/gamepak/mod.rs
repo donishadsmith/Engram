@@ -2,19 +2,26 @@
 
 mod eeprom;
 mod flash;
+mod gpio;
+mod rtc;
 mod sram;
 
 use eeprom::{EEPROM_4KBIT, Eeprom};
 use flash::Flash;
 use sram::Sram;
 
-use crate::components::{gamepak::flash::FlashSize, utils::BitOps};
+use crate::components::{
+    gamepak::{flash::FlashSize, gpio::Gpio, rtc::Rtc},
+    utils::BitOps,
+};
 use std::{
     fs::{read, write},
     io::Error,
     path::PathBuf,
 };
 
+// https://github.com/visualboyadvance-m/visualboyadvance-m/issues/1187; magic string = SIIRTC_V001; confirmed in rom dump of emerical and megaman 4.5;
+const SEIKO_RTC: &'static [u8; 11] = b"SIIRTC_V001";
 // https://problemkaputt.de/gbatek-gba-cart-backup-ids.htm
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BackupType {
@@ -62,6 +69,14 @@ fn detect_save_type(rom: &[u8]) -> BackupType {
     BackupType::None
 }
 
+fn has_rtc(rom: &[u8]) -> bool {
+    if rom.windows(SEIKO_RTC.len()).any(|x| x == SEIKO_RTC) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 #[derive(PartialEq, Eq)]
 pub enum BackupChip {
     None,
@@ -77,6 +92,8 @@ fn kilobytes(value: usize) -> usize {
 pub struct GamePak {
     pub rom: Vec<u8>,
     sav_path: PathBuf,
+    pub rtc: Option<Rtc>,
+    pub gpio: Gpio,
     pub backup_chip: BackupChip,
 }
 
@@ -86,18 +103,28 @@ impl GamePak {
 
         let sav_path = rom_path.with_extension("sav");
         let mut backup_chip = detect_save_type(&rom).to_enum();
-        Self::read_sav(&sav_path, &mut backup_chip)?;
+
+        let mut rtc = if has_rtc(&rom) {
+            Some(Rtc::new())
+        } else {
+            None
+        };
+        Self::read_sav(&sav_path, &mut backup_chip, &mut rtc)?;
 
         Ok(Self {
             rom,
             sav_path,
+            rtc,
+            gpio: Gpio::new(),
             backup_chip,
         })
     }
 
-    // Eventually incorporate RTC data; https://problemkaputt.de/gbatek-gba-cart-backup-eeprom.htm
-    // maybe an override like mgba for games using rtc: https://github.com/mgba-emu/mgba/blob/master/src/gba/overrides.c
-    pub fn read_sav(sav_path: &PathBuf, backup_chip: &mut BackupChip) -> Result<(), Error> {
+    pub fn read_sav(
+        sav_path: &PathBuf,
+        backup_chip: &mut BackupChip,
+        rtc: &mut Option<Rtc>,
+    ) -> Result<(), Error> {
         if !sav_path.exists() {
             return Ok(());
         }
@@ -111,13 +138,13 @@ impl GamePak {
                 }
 
                 eeprom.size_known = true;
-                copy_sav_data(buffer, &mut eeprom.memory)
+                copy_sav_data(buffer, &mut eeprom.memory, rtc)
             }
             BackupChip::Flash(flash) => {
-                copy_sav_data(buffer, &mut flash.memory);
+                copy_sav_data(buffer, &mut flash.memory, rtc);
             }
             BackupChip::Sram(sram) => {
-                copy_sav_data(buffer, &mut sram.memory);
+                copy_sav_data(buffer, &mut sram.memory, rtc);
             }
             BackupChip::None => {}
         }
@@ -138,21 +165,31 @@ impl GamePak {
 
     #[inline]
     pub fn read_rom_region(&self, address: u32) -> u8 {
-        let index = (address.get_bit_range(0..25)) as usize;
-        self.rom.get(index).copied().unwrap_or(0)
+        if (0x80000C4..=0x80000C8).contains(&address) && self.rtc.is_some() {
+            0
+        } else {
+            let index = (address.get_bit_range(0..25)) as usize;
+            self.rom.get(index).copied().unwrap_or(0)
+        }
     }
 
     pub fn mock(backup_type: BackupType) -> Self {
         Self {
             rom: vec![8u8; kilobytes(32000)],
             sav_path: PathBuf::from("mock.sav"),
+            rtc: None,
+            gpio: Gpio::new(),
             backup_chip: BackupType::to_enum(backup_type),
         }
     }
 }
 
-pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>) {
+pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>, rtc: &mut Option<Rtc>) {
     let n = save_buffer.len().min(memory.len());
 
-    memory[..n].copy_from_slice(&save_buffer[..n]);
+    if let Some(rtc) = rtc.as_mut() {
+        memory[..n].copy_from_slice(&save_buffer[..n]);
+    } else {
+        memory[..n].copy_from_slice(&save_buffer[..n]);
+    }
 }

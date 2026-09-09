@@ -37,6 +37,7 @@ impl GBASession {
         let audio_debugger = AudioDebugger::new();
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
+        //dump::hexdump(&gamepak.rom, dump::DumpWidth::Byte)?;
         let apu_sample_cycles = GBA_CLOCK_SPEED / audio.sample_rate;
         let gba = GBA::boot(gamepak, apu_sample_cycles);
         let screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);

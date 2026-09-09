@@ -420,7 +420,11 @@ impl Bus {
                 self.ppu.oam[index + 1] = bytes[1];
             }
 
-            0x08..=0x0D => {}
+            0x08..=0x0D => {
+                if (0x80000C4..=0x80000C8).contains(&address) {
+                    if let Some(rtc) = self.gamepak.rtc.as_mut() {}
+                }
+            }
             0x0E | 0x0F => self.write_backup_byte(address, bytes[(address & 1) as usize]),
             _ => {}
         }
@@ -533,7 +537,11 @@ impl Bus {
                 self.ppu.oam[index + 3] = bytes[3];
             }
 
-            0x08..=0x0D => {}
+            0x08..=0x0D => {
+                if (0x80000C4..=0x80000C8).contains(&address) {
+                    if let Some(rtc) = self.gamepak.rtc.as_mut() {}
+                }
+            }
             0x0E | 0x0F => self.write_backup_byte(address, bytes[(address & 3) as usize]),
             _ => {}
         }
