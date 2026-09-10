@@ -357,6 +357,7 @@ impl Bus {
                 self.gamepak.read_rom_region(address),
                 self.gamepak.read_rom_region(address + 1),
             ]),
+
             0x0E | 0x0F => {
                 let byte = self.read_backup_byte(address) as u16;
                 (byte << 8) | byte
@@ -421,8 +422,8 @@ impl Bus {
             }
 
             0x08..=0x0D => {
-                if (0x80000C4..=0x80000C8).contains(&address) {
-                    if let Some(rtc) = self.gamepak.rtc.as_mut() {}
+                if self.gamepak.gpio.write_rtc(address) {
+                    self.gamepak.gpio.write_u16(address, value);
                 }
             }
             0x0E | 0x0F => self.write_backup_byte(address, bytes[(address & 1) as usize]),
@@ -538,8 +539,13 @@ impl Bus {
             }
 
             0x08..=0x0D => {
-                if (0x80000C4..=0x80000C8).contains(&address) {
-                    if let Some(rtc) = self.gamepak.rtc.as_mut() {}
+                if self.gamepak.gpio.write_rtc(address) {
+                    self.gamepak
+                        .gpio
+                        .write_u16(address, u16::from_le_bytes([bytes[0], bytes[1]]));
+                    self.gamepak
+                        .gpio
+                        .write_u16(address + 2, u16::from_le_bytes([bytes[2], bytes[3]]));
                 }
             }
             0x0E | 0x0F => self.write_backup_byte(address, bytes[(address & 3) as usize]),

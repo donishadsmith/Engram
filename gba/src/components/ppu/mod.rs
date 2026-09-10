@@ -249,6 +249,7 @@ impl PPU {
     // probably not the cleanest implementation, maybe refactor after ppu produces
     // visuals reasonably close to what commercial roms are supposed to look like
     // still nneds mosaic an the sprite budget
+    // TODO: remember to do add mosaic + sprite budget
     fn render_scanline(&mut self) {
         let bg2_matrix = AffineMatrix::from_registers(
             self.bg2_affine_parameters.from_index(0),

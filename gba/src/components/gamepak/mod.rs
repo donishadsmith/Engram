@@ -23,7 +23,7 @@ use std::{
 // https://github.com/visualboyadvance-m/visualboyadvance-m/issues/1187; magic string = SIIRTC_V001; confirmed in rom dump of emerical and megaman 4.5;
 const SEIKO_RTC: &'static [u8; 11] = b"SIIRTC_V001";
 // https://problemkaputt.de/gbatek-gba-cart-backup-ids.htm
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupType {
     Eeprom,
     Sram,
@@ -89,10 +89,19 @@ fn kilobytes(value: usize) -> usize {
     value * 1024
 }
 
+// Shamelessly use mgba's override idea for boktai for the solar
+// TODO: solar sensor
+// https://github.com/mgba-emu/mgba/blob/master/src/gba/overrides.c#L26
+fn has_solar(rom: &[u8]) -> bool {
+    matches!(
+        rom.get(0xAC..0xB0),
+        Some(b"U3IJ" | b"U3IE" | b"U3IP" | b"U32J" | b"U32E" | b"U32P" | b"U33J")
+    )
+}
+
 pub struct GamePak {
     pub rom: Vec<u8>,
     sav_path: PathBuf,
-    pub rtc: Option<Rtc>,
     pub gpio: Gpio,
     pub backup_chip: BackupChip,
 }
@@ -103,28 +112,23 @@ impl GamePak {
 
         let sav_path = rom_path.with_extension("sav");
         let mut backup_chip = detect_save_type(&rom).to_enum();
-
-        let mut rtc = if has_rtc(&rom) {
+        Self::read_sav(&sav_path, &mut backup_chip)?;
+        let mut gpio = Gpio::new();
+        gpio.rtc = if has_rtc(&rom) {
             Some(Rtc::new())
         } else {
             None
         };
-        Self::read_sav(&sav_path, &mut backup_chip, &mut rtc)?;
 
         Ok(Self {
             rom,
             sav_path,
-            rtc,
-            gpio: Gpio::new(),
+            gpio,
             backup_chip,
         })
     }
 
-    pub fn read_sav(
-        sav_path: &PathBuf,
-        backup_chip: &mut BackupChip,
-        rtc: &mut Option<Rtc>,
-    ) -> Result<(), Error> {
+    pub fn read_sav(sav_path: &PathBuf, backup_chip: &mut BackupChip) -> Result<(), Error> {
         if !sav_path.exists() {
             return Ok(());
         }
@@ -138,13 +142,13 @@ impl GamePak {
                 }
 
                 eeprom.size_known = true;
-                copy_sav_data(buffer, &mut eeprom.memory, rtc)
+                copy_sav_data(buffer, &mut eeprom.memory)
             }
             BackupChip::Flash(flash) => {
-                copy_sav_data(buffer, &mut flash.memory, rtc);
+                copy_sav_data(buffer, &mut flash.memory);
             }
             BackupChip::Sram(sram) => {
-                copy_sav_data(buffer, &mut sram.memory, rtc);
+                copy_sav_data(buffer, &mut sram.memory);
             }
             BackupChip::None => {}
         }
@@ -164,9 +168,9 @@ impl GamePak {
     }
 
     #[inline]
-    pub fn read_rom_region(&self, address: u32) -> u8 {
-        if (0x80000C4..=0x80000C8).contains(&address) && self.rtc.is_some() {
-            0
+    pub fn read_rom_region(&mut self, address: u32) -> u8 {
+        if self.gpio.read_rtc(address) {
+            (self.gpio.read_u16(address) >> (address.get_bit(0) * 8)) as u8
         } else {
             let index = (address.get_bit_range(0..25)) as usize;
             self.rom.get(index).copied().unwrap_or(0)
@@ -177,19 +181,14 @@ impl GamePak {
         Self {
             rom: vec![8u8; kilobytes(32000)],
             sav_path: PathBuf::from("mock.sav"),
-            rtc: None,
             gpio: Gpio::new(),
             backup_chip: BackupType::to_enum(backup_type),
         }
     }
 }
 
-pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>, rtc: &mut Option<Rtc>) {
+pub fn copy_sav_data(save_buffer: Vec<u8>, memory: &mut Vec<u8>) {
     let n = save_buffer.len().min(memory.len());
 
-    if let Some(rtc) = rtc.as_mut() {
-        memory[..n].copy_from_slice(&save_buffer[..n]);
-    } else {
-        memory[..n].copy_from_slice(&save_buffer[..n]);
-    }
+    memory[..n].copy_from_slice(&save_buffer[..n]);
 }
