@@ -324,10 +324,7 @@ impl AddressBus for Bus {
             0xFF70 if self.is_cgb() => (self.svbk_register | 0xF8) & 0x07,
             0xFF80..=0xFFFE => self.hram[(address - 0xFF80) as usize],
             0xFFFF => self.interrupt_enable,
-            _ => {
-                eprintln!("The following address is not readable: {:04x}", address);
-                0xFF
-            }
+            _ => 0xFF,
         }
     }
 
@@ -380,7 +377,7 @@ impl AddressBus for Bus {
             }
             0xFF80..=0xFFFE => self.hram[(address - 0xFF80) as usize] = value,
             0xFFFF => self.interrupt_enable = value,
-            _ => eprintln!("The following address is not writable: {:04x}", address),
+            _ => {}
         }
     }
 

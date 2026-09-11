@@ -1,7 +1,10 @@
 use egui_macroquad;
 use macroquad::prelude::*;
 use rfd::FileDialog;
-use shared::{EmulatorSession, EmulatorState, utils::screenshot};
+use shared::{
+    EmulatorSession, EmulatorState,
+    utils::{GifRecorder, screenshot},
+};
 use std::{io::Error, path::PathBuf};
 
 fn conf() -> Conf {
@@ -17,6 +20,8 @@ fn conf() -> Conf {
 struct Session {
     state: EmulatorState,
     emulator: Option<Box<dyn EmulatorSession>>,
+    rom_path: Option<PathBuf>,
+    gif: GifRecorder,
 }
 
 impl Session {
@@ -24,6 +29,8 @@ impl Session {
         Self {
             state: EmulatorState::Selection,
             emulator: None,
+            rom_path: None,
+            gif: GifRecorder::new(),
         }
     }
 
@@ -47,6 +54,14 @@ impl Session {
             None => Ok(EmulatorState::Selection),
         }
     }
+
+    fn reset(&mut self) -> Result<(), Error> {
+        if let Some(emulator) = &mut self.emulator {
+            emulator.reset(self.rom_path.clone().unwrap())?
+        }
+
+        Ok(())
+    }
 }
 
 fn file_dialog() -> Option<PathBuf> {
@@ -59,6 +74,7 @@ fn file_dialog() -> Option<PathBuf> {
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
+    let mut solar_level: u8 = 0;
 
     loop {
         match session.state {
@@ -71,6 +87,8 @@ async fn main() -> Result<(), Error> {
 
                     return Ok(());
                 };
+
+                session.rom_path = Some(rom_path.clone());
 
                 let ext = rom_path
                     .extension()
@@ -86,7 +104,23 @@ async fn main() -> Result<(), Error> {
                     _ => continue,
                 }
             }
-            EmulatorState::Running => session.state = session.run()?,
+            EmulatorState::Running => {
+                session.state = session.run()?;
+                screenshot();
+                if let Some(emu) = &session.emulator {
+                    let frame = emu.reference_frontend();
+                    session.gif.keybind(frame)?;
+
+                    if emu.frame_ready() {
+                        session.gif.capture(frame);
+                    }
+                }
+            }
+            EmulatorState::Reset => {
+                session.save()?;
+                let _ = session.reset();
+                session.state = EmulatorState::Running;
+            }
             EmulatorState::Quit => {
                 session.save()?;
                 break;
@@ -103,27 +137,66 @@ async fn main() -> Result<(), Error> {
                             ui.close_menu();
                         }
 
-                        if ui.button("Save Game").clicked() {
+                        if ui.button("Save Game  (F1)").clicked() {
                             let _ = session.save();
                             ui.close_menu();
                         }
 
-                        if ui.button("Quit").clicked() {
+                        if ui.button("Quit  (Esc)").clicked() {
                             session.state = EmulatorState::Quit;
                             ui.close_menu();
+                        }
+                    });
+
+                    ui.menu_button("Emulation", |ui| {
+                        if ui.button("Reset").clicked() {
+                            session.state = EmulatorState::Reset;
+                            ui.close_menu();
+                        }
+
+                        if let Some(emu) = &mut session.emulator {
+                            if emu.has_solar() {
+                                ui.menu_button("Solar", |ui| {
+                                    ui.add(
+                                        egui::Slider::new(&mut solar_level, 0..=10)
+                                            .text("Solar sensor level from lowest to highest"),
+                                    );
+                                    emu.solar_level(solar_level);
+                                });
+                            }
                         }
                     });
 
                     if let Some(emu) = &mut session.emulator {
                         if emu.has_debug_ui() {
                             ui.menu_button("Debug", |ui| {
-                                if ui.button("Audio Debugger").clicked() {
+                                if ui.button("Audio Debugger  (F12)").clicked() {
                                     emu.toggle_debug();
                                     ui.close_menu();
                                 }
                             });
                         }
                     }
+
+                    ui.menu_button("Tools", |ui| {
+                        if ui.button("Screenshot  (F2)").clicked() {
+                            get_screen_data().export_png("screenshot.png");
+                            ui.close_menu();
+                        }
+
+                        if let Some(emu) = &session.emulator {
+                            let text = if !session.gif.is_recording() {
+                                "Record GIF  (F7)"
+                            } else {
+                                "Stop GIF  (F7)"
+                            };
+
+                            if ui.button(text).clicked() {
+                                let _ = session.gif.toggle(emu.reference_frontend()).unwrap();
+                                ui.close_menu();
+                            }
+                        }
+                    });
                 });
             });
             if let Some(emu) = &mut session.emulator {
@@ -132,8 +205,6 @@ async fn main() -> Result<(), Error> {
         });
 
         egui_macroquad::draw();
-        screenshot();
-
         next_frame().await;
     }
 

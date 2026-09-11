@@ -4,13 +4,16 @@ pub mod render;
 pub mod utils;
 
 use egui::Context;
-use std::io::Error;
+use std::{io::Error, path::PathBuf};
+
+use crate::render::Frame;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EmulatorState {
     Quit,
     Running,
     Selection,
+    Reset,
 }
 
 pub trait EmulatorSession {
@@ -29,4 +32,16 @@ pub trait EmulatorSession {
     fn toggle_debug(&mut self) {}
 
     fn debug_ui(&mut self, _egui_ctx: &Context) {}
+
+    fn has_solar(&self) -> bool {
+        false
+    }
+
+    fn solar_level(&mut self, _solar_level: u8) {}
+
+    fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error>;
+
+    fn reference_frontend(&self) -> &Frame;
+
+    fn frame_ready(&self) -> bool;
 }

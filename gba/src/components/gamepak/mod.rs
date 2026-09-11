@@ -4,6 +4,7 @@ mod eeprom;
 mod flash;
 mod gpio;
 mod rtc;
+pub mod solar;
 mod sram;
 
 use eeprom::{EEPROM_4KBIT, Eeprom};
@@ -11,7 +12,7 @@ use flash::Flash;
 use sram::Sram;
 
 use crate::components::{
-    gamepak::{flash::FlashSize, gpio::Gpio, rtc::Rtc},
+    gamepak::{flash::FlashSize, gpio::Gpio, rtc::Rtc, solar::SolarSensor},
     utils::BitOps,
 };
 use std::{
@@ -90,7 +91,6 @@ fn kilobytes(value: usize) -> usize {
 }
 
 // Shamelessly use mgba's override idea for boktai for the solar
-// TODO: solar sensor
 // https://github.com/mgba-emu/mgba/blob/master/src/gba/overrides.c#L26
 fn has_solar(rom: &[u8]) -> bool {
     matches!(
@@ -116,6 +116,12 @@ impl GamePak {
         let mut gpio = Gpio::new();
         gpio.rtc = if has_rtc(&rom) {
             Some(Rtc::new())
+        } else {
+            None
+        };
+
+        gpio.solar_sensor = if has_solar(&rom) {
+            Some(SolarSensor::new())
         } else {
             None
         };
@@ -169,7 +175,7 @@ impl GamePak {
 
     #[inline]
     pub fn read_rom_region(&mut self, address: u32) -> u8 {
-        if self.gpio.read_rtc(address) {
+        if self.gpio.read_device(address) {
             (self.gpio.read_u16(address) >> (address.get_bit(0) * 8)) as u8
         } else {
             let index = (address.get_bit_range(0..25)) as usize;

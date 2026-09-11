@@ -3,6 +3,8 @@ pub mod palette;
 pub mod sprites;
 pub mod vram;
 
+use std::mem::swap;
+
 use crate::components::{
     cpu::interrupts::InterruptMode,
     ppu::{
@@ -150,6 +152,7 @@ pub struct PPU {
     pub entered_hblank: bool,
     is_cgb: bool,
     pub frame: Frame,
+    pub frontend: Frame,
 }
 
 impl PPU {
@@ -185,6 +188,11 @@ impl PPU {
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
             },
+            frontend: Frame {
+                pixels: Box::new([0u16; SCREEN_WIDTH * SCREEN_HEIGHT]),
+                width: SCREEN_WIDTH,
+                height: SCREEN_HEIGHT,
+            },
         }
     }
 
@@ -210,6 +218,8 @@ impl PPU {
             if self.ly == 144 {
                 *interrupt_flag |= InterruptMode::VBlank.mask();
                 self.window_line = 0;
+
+                swap(&mut self.frame, &mut self.frontend);
                 self.frame_ready = true;
             }
         }

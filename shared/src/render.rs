@@ -81,3 +81,13 @@ pub fn to_rgba(frame: &Frame) -> Vec<u8> {
 
     rgba
 }
+
+pub fn to_rgb(frame: &Frame) -> Vec<u8> {
+    let mut rgb = Vec::with_capacity(frame.width * frame.height * 3);
+
+    for pixel in &frame.pixels {
+        rgb.extend(rgb555_to_rgb888(*pixel));
+    }
+
+    rgb
+}

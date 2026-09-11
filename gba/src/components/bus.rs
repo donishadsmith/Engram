@@ -422,7 +422,7 @@ impl Bus {
             }
 
             0x08..=0x0D => {
-                if self.gamepak.gpio.write_rtc(address) {
+                if self.gamepak.gpio.write_device(address) {
                     self.gamepak.gpio.write_u16(address, value);
                 }
             }
@@ -539,7 +539,7 @@ impl Bus {
             }
 
             0x08..=0x0D => {
-                if self.gamepak.gpio.write_rtc(address) {
+                if self.gamepak.gpio.write_device(address) {
                     self.gamepak
                         .gpio
                         .write_u16(address, u16::from_le_bytes([bytes[0], bytes[1]]));

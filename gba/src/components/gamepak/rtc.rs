@@ -153,10 +153,14 @@ impl Rtc {
         buffer[1] = to_bcd(timestamp.month() as u8);
         buffer[2] = to_bcd(timestamp.day() as u8);
         buffer[3] = to_bcd(timestamp.weekday().num_days_from_sunday() as u8);
-        if self.military_time() {
-            buffer[4] = to_bcd(timestamp.hour() as u8)
+        let hour = timestamp.hour() as u8;
+        buffer[4] = if self.military_time() {
+            to_bcd(hour)
         } else {
-            buffer[4] = to_bcd((timestamp.hour() as u8) % 12);
+            to_bcd(hour % 12)
+        };
+        if hour >= 12 {
+            buffer[4] |= 0x80;
         }
         buffer[5] = to_bcd(timestamp.minute() as u8);
         buffer[6] = to_bcd(timestamp.second() as u8);

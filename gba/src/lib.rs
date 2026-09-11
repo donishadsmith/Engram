@@ -30,6 +30,7 @@ pub struct GBASession {
     audio_debugger: AudioDebugger,
     gba: GBA,
     screen: Screen,
+    frame_ready: bool,
 }
 
 impl GBASession {
@@ -37,7 +38,6 @@ impl GBASession {
         let audio_debugger = AudioDebugger::new();
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        //dump::hexdump(&gamepak.rom, dump::DumpWidth::Byte)?;
         let apu_sample_cycles = GBA_CLOCK_SPEED / audio.sample_rate;
         let gba = GBA::boot(gamepak, apu_sample_cycles);
         let screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
@@ -47,6 +47,7 @@ impl GBASession {
             audio_debugger,
             gba,
             screen,
+            frame_ready: false,
         })
     }
 }
@@ -76,7 +77,8 @@ impl EmulatorSession for GBASession {
             }
         }
 
-        if self.gba.take_frame() && !self.audio_debugger.visible {
+        self.frame_ready = self.gba.take_frame();
+        if self.frame_ready && !self.audio_debugger.visible {
             self.screen.update(&self.gba.bus.ppu.frontend);
         }
 
@@ -105,5 +107,34 @@ impl EmulatorSession for GBASession {
 
     fn debug_ui(&mut self, egui_ctx: &egui::Context) {
         self.audio_debugger.show_ui(egui_ctx, &mut self.gba);
+    }
+
+    fn has_solar(&self) -> bool {
+        self.gba.bus.gamepak.gpio.solar_sensor.is_some()
+    }
+
+    fn solar_level(&mut self, solar_level: u8) {
+        if let Some(solar_sensor) = self.gba.bus.gamepak.gpio.solar_sensor.as_mut() {
+            solar_sensor.set_level(solar_level);
+        }
+    }
+
+    fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
+        self.audio = AudioOutput::new();
+        let gamepak = GamePak::load(rom_path)?;
+        let apu_sample_cycles = GBA_CLOCK_SPEED / self.audio.sample_rate;
+        self.gba = GBA::boot(gamepak, apu_sample_cycles);
+        self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
+        self.frame_ready = false;
+
+        Ok(())
+    }
+
+    fn reference_frontend(&self) -> &shared::render::Frame {
+        &self.gba.bus.ppu.frontend
+    }
+
+    fn frame_ready(&self) -> bool {
+        self.frame_ready
     }
 }

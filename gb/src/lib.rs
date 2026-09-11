@@ -26,6 +26,7 @@ pub struct GameBoySession {
     gameboy: GameBoy,
     screen: Screen,
     cycles_per_sample: u32,
+    frame_ready: bool,
 }
 
 impl GameBoySession {
@@ -44,6 +45,7 @@ impl GameBoySession {
             gameboy,
             screen,
             cycles_per_sample,
+            frame_ready: false,
         })
     }
 }
@@ -71,16 +73,39 @@ impl EmulatorSession for GameBoySession {
             }
         }
 
-        if self.gameboy.take_frame() {
-            self.screen.update(&self.gameboy.cpu.bus.ppu.frame);
+        self.frame_ready = self.gameboy.take_frame();
+        if self.frame_ready {
+            self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
         }
 
-        self.screen.draw(&self.gameboy.cpu.bus.ppu.frame);
+        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
 
         Ok(EmulatorState::Running)
     }
 
     fn save_game(&mut self) -> Result<(), Error> {
         self.gameboy.save()
+    }
+
+    fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
+        self.audio = AudioOutput::new();
+        let gamepak = GamePak::load(rom_path)?;
+        self.cycles_per_sample = GB_CLOCK_SPEED / self.audio.sample_rate;
+        self.gameboy = GameBoy::boot(gamepak);
+        self.screen = Screen::new(
+            self.gameboy.cpu.bus.ppu.frame.width,
+            self.gameboy.cpu.bus.ppu.frame.height,
+        );
+        self.frame_ready = false;
+
+        Ok(())
+    }
+
+    fn reference_frontend(&self) -> &shared::render::Frame {
+        &self.gameboy.cpu.bus.ppu.frontend
+    }
+
+    fn frame_ready(&self) -> bool {
+        self.frame_ready
     }
 }
