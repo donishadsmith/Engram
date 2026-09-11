@@ -47,7 +47,8 @@ cd Engram
 cargo run --release
 ```
 
-## Controls
+## Default Controls
+The default controls are as follows but can be reconfigured in the menu.
 
 | Keyboard    |    GBA     |     GB/GBC      |
 |-------------|------------|-----------------|
@@ -59,10 +60,10 @@ cargo run --release
 | K           | B          | B               |
 | Enter       | Start      | Start           |
 | Right Shift | Select     | Select          |
-| Esc         | Quit       | Quit            |
 | I           | R          |                 |
 | O           | L          |                 |
 
+## Quick Demo
 <img src="assets/no_need_to_touch_grass.gif" width="500">
 This gif captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif.
 

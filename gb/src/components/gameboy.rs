@@ -24,7 +24,7 @@ impl GameBoy {
         }
     }
 
-    pub fn run(&mut self, cycles_per_sample: u32) {
+    pub fn run(&mut self, apu_sample_cycles: u32) {
         let mut remaining_cycles = T_CYCLES_PER_FRAME_DOUBLE;
 
         while remaining_cycles > 0 {
@@ -61,7 +61,7 @@ impl GameBoy {
             self.cpu
                 .bus
                 .apu
-                .tick(ppu_t_cycles, cycles_per_sample, increase_apu_div_counter);
+                .tick(ppu_t_cycles, apu_sample_cycles, increase_apu_div_counter);
 
             remaining_cycles = remaining_cycles.saturating_sub(cpu_t_cycles);
         }

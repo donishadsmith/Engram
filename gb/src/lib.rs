@@ -10,10 +10,11 @@
 pub mod components;
 
 use crate::components::{gameboy::GameBoy, gamepak::GamePak};
+use macroquad::input::KeyCode;
 use shared::{
-    EmulatorSession, EmulatorState,
+    EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
-    input::{GB_KEYMAP, get_relevant_key_presses},
+    input::get_relevant_key_presses,
     render::Screen,
     utils::{Emulator, quit_emulator, save_progress},
 };
@@ -25,7 +26,7 @@ pub struct GameBoySession {
     audio: AudioOutput,
     gameboy: GameBoy,
     screen: Screen,
-    cycles_per_sample: u32,
+    apu_sample_cycles: u32,
     frame_ready: bool,
 }
 
@@ -33,7 +34,7 @@ impl GameBoySession {
     pub fn new_session(rom_path: PathBuf) -> Result<Self, Error> {
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let cycles_per_sample = GB_CLOCK_SPEED / audio.sample_rate;
+        let apu_sample_cycles = GB_CLOCK_SPEED / audio.sample_rate;
         let gameboy = GameBoy::boot(gamepak);
         let screen = Screen::new(
             gameboy.cpu.bus.ppu.frame.width,
@@ -44,14 +45,18 @@ impl GameBoySession {
             audio,
             gameboy,
             screen,
-            cycles_per_sample,
+            apu_sample_cycles,
             frame_ready: false,
         })
     }
 }
 
 impl EmulatorSession for GameBoySession {
-    fn run(&mut self) -> Result<EmulatorState, Error> {
+    fn run(
+        &mut self,
+        key_bindings: &Vec<KeyCode>,
+        input_blocked: bool,
+    ) -> Result<EmulatorState, Error> {
         if quit_emulator(&self.gameboy)? {
             return Ok(EmulatorState::Quit);
         }
@@ -60,14 +65,14 @@ impl EmulatorSession for GameBoySession {
             let _ = save_progress(&self.gameboy);
         }
 
-        self.gameboy.keypad = get_relevant_key_presses(&GB_KEYMAP)
+        self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
             .as_slice()
             .try_into()
             .unwrap();
 
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
-            self.gameboy.run(self.cycles_per_sample);
+            self.gameboy.run(self.apu_sample_cycles);
             for sample in self.gameboy.cpu.bus.apu.sample_buffer.drain(..) {
                 let _ = self.audio.producer.push(sample);
             }
@@ -90,7 +95,7 @@ impl EmulatorSession for GameBoySession {
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
         self.audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        self.cycles_per_sample = GB_CLOCK_SPEED / self.audio.sample_rate;
+        self.apu_sample_cycles = GB_CLOCK_SPEED / self.audio.sample_rate;
         self.gameboy = GameBoy::boot(gamepak);
         self.screen = Screen::new(
             self.gameboy.cpu.bus.ppu.frame.width,
@@ -107,5 +112,9 @@ impl EmulatorSession for GameBoySession {
 
     fn frame_ready(&self) -> bool {
         self.frame_ready
+    }
+
+    fn id(&self) -> EmulatorId {
+        EmulatorId::Gb
     }
 }

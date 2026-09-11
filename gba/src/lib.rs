@@ -14,10 +14,11 @@ mod dump;
 
 use crate::components::{gamepak::GamePak, gba::GBA};
 use audio_debugger::AudioDebugger;
+use macroquad::input::KeyCode;
 use shared::{
-    EmulatorSession, EmulatorState,
+    EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
-    input::{GBA_KEYMAP, get_relevant_key_presses},
+    input::get_relevant_key_presses,
     render::Screen,
     utils::{Emulator, quit_emulator, save_progress},
 };
@@ -53,7 +54,11 @@ impl GBASession {
 }
 
 impl EmulatorSession for GBASession {
-    fn run(&mut self) -> Result<EmulatorState, Error> {
+    fn run(
+        &mut self,
+        key_bindings: &Vec<KeyCode>,
+        input_blocked: bool,
+    ) -> Result<EmulatorState, Error> {
         if quit_emulator(&self.gba)? {
             return Ok(EmulatorState::Quit);
         }
@@ -62,7 +67,7 @@ impl EmulatorSession for GBASession {
             let _ = save_progress(&self.gba);
         }
 
-        self.gba.keypad = get_relevant_key_presses(&GBA_KEYMAP)
+        self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
             .as_slice()
             .try_into()
             .unwrap();
@@ -136,5 +141,9 @@ impl EmulatorSession for GBASession {
 
     fn frame_ready(&self) -> bool {
         self.frame_ready
+    }
+
+    fn id(&self) -> EmulatorId {
+        EmulatorId::Gba
     }
 }
