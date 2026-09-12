@@ -63,9 +63,8 @@ The default controls are as follows but can be reconfigured in the menu.
 | I           | R          |                 |
 | O           | L          |                 |
 
-## Quick Demo
-<img src="assets/no_need_to_touch_grass.gif" width="500">
-This gif captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif.
+## Demo
+Captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a> and converted to mp4 with <a href="https://github.com/FFmpeg/FFmpeg">FFmpeg</a>.
 
 
 ## References
