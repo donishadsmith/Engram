@@ -64,8 +64,10 @@ The default controls are as follows but can be reconfigured in the menu.
 | O           | L          |                 |
 
 ## Demo
-Captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a> and converted to mp4 with <a href="https://github.com/FFmpeg/FFmpeg">FFmpeg</a>.
 
+https://github.com/user-attachments/assets/81f9a9db-371d-4f27-bf8a-0624273f43a6
+
+Captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a> and converted to mp4 with <a href="https://github.com/FFmpeg/FFmpeg">FFmpeg</a>.
 
 ## References
 
