@@ -1,9 +1,3 @@
-
-
-https://github.com/user-attachments/assets/0cccc700-4311-4e1e-aded-40230454c056
-
-
-
 # Engram
 
 [![Run Tests](https://github.com/donishadsmith/Engram/actions/workflows/test.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/test.yml)
