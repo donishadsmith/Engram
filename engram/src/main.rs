@@ -3,6 +3,7 @@ use macroquad::prelude::*;
 use rfd::FileDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
+    debug::DEBUG_PAGES,
     input::{GBA_LABELS, RESERVED_KEYS},
     utils::{GifRecorder, screenshot},
 };
@@ -29,10 +30,13 @@ struct Session {
     gif: GifRecorder,
     key_bindings: Vec<KeyCode>,
     show_key_bindings: bool,
+    open_gif_settings: bool,
 }
 
 impl Session {
     fn new() -> Self {
+        prevent_quit();
+
         Self {
             state: EmulatorState::Selection,
             emulator: None,
@@ -40,6 +44,7 @@ impl Session {
             gif: GifRecorder::new(),
             key_bindings: Vec::with_capacity(14),
             show_key_bindings: false,
+            open_gif_settings: false,
         }
     }
 
@@ -123,6 +128,12 @@ async fn main() -> Result<(), Error> {
     let mut key_rebinding: Option<usize> = None;
 
     loop {
+        session.save()?;
+
+        if is_quit_requested() {
+            session.state = EmulatorState::Quit;
+        }
+
         match session.state {
             EmulatorState::Selection => {
                 let Some(rom_path) = file_dialog() else {
@@ -157,20 +168,16 @@ async fn main() -> Result<(), Error> {
                 screenshot();
                 if let Some(emu) = &session.emulator {
                     let frame = emu.reference_frontend();
-                    session.gif.keybind(frame)?;
-
                     if emu.frame_ready() {
                         session.gif.capture(frame);
                     }
                 }
             }
             EmulatorState::Reset => {
-                session.save()?;
                 let _ = session.reset();
                 session.state = EmulatorState::Running;
             }
             EmulatorState::Quit => {
-                session.save()?;
                 break;
             }
         }
@@ -185,12 +192,7 @@ async fn main() -> Result<(), Error> {
                             ui.close_menu();
                         }
 
-                        if ui.button("Save Game  (F1)").clicked() {
-                            let _ = session.save();
-                            ui.close_menu();
-                        }
-
-                        if ui.button("Quit  (Esc)").clicked() {
+                        if ui.button("Quit").clicked() {
                             session.state = EmulatorState::Quit;
                             ui.close_menu();
                         }
@@ -277,33 +279,101 @@ async fn main() -> Result<(), Error> {
                     if let Some(emu) = &mut session.emulator {
                         if emu.has_debug_ui() {
                             ui.menu_button("Debug", |ui| {
-                                if ui.button("Audio Debugger  (F12)").clicked() {
-                                    emu.toggle_debug();
-                                    ui.close_menu();
+                                for debug_page in DEBUG_PAGES {
+                                    if ui
+                                        .selectable_label(
+                                            emu.debug_visible(debug_page),
+                                            debug_page.to_str(),
+                                        )
+                                        .clicked()
+                                    {
+                                        emu.toggle_debug(debug_page);
+                                        ui.close_menu();
+                                    }
                                 }
                             });
                         }
                     }
 
                     ui.menu_button("Tools", |ui| {
-                        if ui.button("Screenshot  (F2)").clicked() {
+                        if ui.button("Screenshot  (F7)").clicked() {
                             get_screen_data().export_png("screenshot.png");
                             ui.close_menu();
                         }
 
                         if let Some(emu) = &session.emulator {
-                            let text = if !session.gif.is_recording() {
-                                "Record GIF  (F7)"
-                            } else {
-                                "Stop GIF  (F7)"
-                            };
+                            if ui
+                                .button(if !session.gif.is_recording() {
+                                    "Record GIF  (F12)"
+                                } else {
+                                    "Stop GIF  (F12)"
+                                })
+                                .clicked()
+                            {
+                                if session.gif.is_recording() {
+                                    let _ = session.gif.toggle(emu.reference_frontend()).unwrap();
+                                } else {
+                                    session.open_gif_settings = true;
+                                }
 
-                            if ui.button(text).clicked() {
-                                let _ = session.gif.toggle(emu.reference_frontend()).unwrap();
                                 ui.close_menu();
                             }
                         }
                     });
+
+                    if is_key_pressed(KeyCode::F12) {
+                        if session.gif.is_recording() {
+                            if let Some(emu) = &session.emulator {
+                                let _ = session.gif.toggle(emu.reference_frontend()).unwrap();
+                            }
+                        } else {
+                            session.open_gif_settings = !session.open_gif_settings;
+                        }
+                    }
+
+                    let mut start_recording = false;
+                    egui::Window::new("GIF Settings")
+                        .open(&mut session.open_gif_settings)
+                        .show(egui_ctx, |ui| {
+                            egui::Grid::new("GIF Settings")
+                                .num_columns(1)
+                                .show(ui, |ui| {
+                                    ui.add(
+                                        egui::Slider::new(&mut session.gif.every_n_frame, 1..=10)
+                                            .text("Keep 1 in every n frames."),
+                                    );
+
+                                    ui.end_row();
+
+                                    ui.add(
+                                        egui::Slider::new(&mut session.gif.delay, 2..=50)
+                                            .text("Frame delay (1/100 s)."),
+                                    );
+
+                                    ui.end_row();
+
+                                    if ui.button("Start Recording").clicked() {
+                                        if let Some(emu) = &mut session.emulator {
+                                            let _ = session
+                                                .gif
+                                                .toggle(emu.reference_frontend())
+                                                .unwrap();
+
+                                            start_recording = true;
+                                        }
+                                    }
+                                });
+                        });
+
+                    if start_recording {
+                        session.open_gif_settings = false;
+                    }
+
+                    if session.gif.is_recording() {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(egui::RichText::new("RECORDING").color(egui::Color32::RED));
+                        });
+                    }
                 });
             });
             if let Some(emu) = &mut session.emulator {
@@ -312,6 +382,7 @@ async fn main() -> Result<(), Error> {
         });
 
         egui_macroquad::draw();
+
         next_frame().await;
     }
 

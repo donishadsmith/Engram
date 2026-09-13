@@ -8,19 +8,19 @@
 
 #![windows_subsystem = "windows"]
 
-mod audio_debugger;
 pub mod components;
-mod dump;
+mod debug;
 
 use crate::components::{gamepak::GamePak, gba::GBA};
-use audio_debugger::AudioDebugger;
+use debug::audio::AudioDebugger;
 use macroquad::input::KeyCode;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
+    debug::DebugPage,
     input::get_relevant_key_presses,
     render::Screen,
-    utils::{Emulator, quit_emulator, save_progress},
+    utils::Emulator,
 };
 use std::{io::Error, path::PathBuf};
 
@@ -32,6 +32,7 @@ pub struct GBASession {
     gba: GBA,
     screen: Screen,
     frame_ready: bool,
+    active_debug: Option<DebugPage>,
 }
 
 impl GBASession {
@@ -49,6 +50,7 @@ impl GBASession {
             gba,
             screen,
             frame_ready: false,
+            active_debug: None,
         })
     }
 }
@@ -59,21 +61,10 @@ impl EmulatorSession for GBASession {
         key_bindings: &Vec<KeyCode>,
         input_blocked: bool,
     ) -> Result<EmulatorState, Error> {
-        if quit_emulator(&self.gba)? {
-            return Ok(EmulatorState::Quit);
-        }
-
-        if self.gba.backup_updated() {
-            let _ = save_progress(&self.gba);
-        }
-
         self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
             .as_slice()
             .try_into()
             .unwrap();
-
-        self.audio_debugger.turn_on(&mut self.gba);
-        self.audio_debugger.freeze();
 
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             self.gba.run();
@@ -83,11 +74,11 @@ impl EmulatorSession for GBASession {
         }
 
         self.frame_ready = self.gba.take_frame();
-        if self.frame_ready && !self.audio_debugger.visible {
+        if self.frame_ready && self.active_debug.is_none() {
             self.screen.update(&self.gba.bus.ppu.frontend);
         }
 
-        if !self.audio_debugger.visible {
+        if self.active_debug.is_none() {
             self.screen.draw(&self.gba.bus.ppu.frontend);
         }
 
@@ -102,16 +93,28 @@ impl EmulatorSession for GBASession {
         true
     }
 
-    fn debug_visible(&self) -> bool {
-        self.audio_debugger.visible
+    fn debug_visible(&self, debug_page: DebugPage) -> bool {
+        self.active_debug == Some(debug_page)
     }
 
-    fn toggle_debug(&mut self) {
-        self.audio_debugger.toggle(&mut self.gba);
+    fn toggle_debug(&mut self, debug_page: DebugPage) {
+        match self.active_debug {
+            Some(DebugPage::Audio) => self.audio_debugger.close(&mut self.gba),
+            None => {}
+        }
+
+        self.active_debug = if self.active_debug == Some(debug_page) {
+            None
+        } else {
+            Some(debug_page)
+        };
     }
 
     fn debug_ui(&mut self, egui_ctx: &egui::Context) {
-        self.audio_debugger.show_ui(egui_ctx, &mut self.gba);
+        match self.active_debug {
+            Some(DebugPage::Audio) => self.audio_debugger.show_ui(egui_ctx, &mut self.gba),
+            None => {}
+        }
     }
 
     fn has_solar(&self) -> bool {
@@ -131,6 +134,7 @@ impl EmulatorSession for GBASession {
         self.gba = GBA::boot(gamepak, apu_sample_cycles);
         self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
         self.frame_ready = false;
+        self.active_debug = None;
 
         Ok(())
     }

@@ -2,15 +2,23 @@ use crate::render::to_rgb;
 use chrono::Local;
 use gif::{Encoder, Frame, Repeat};
 use macroquad::prelude::*;
-use std::{fs::File, io::Error};
+use rfd::FileDialog;
+use std::{
+    fs::{File, rename},
+    io::Error,
+    path::PathBuf,
+};
 
 pub trait Emulator {
-    fn save(&self) -> Result<(), Error>;
+    fn save(&mut self) -> Result<(), Error>;
 }
 
 pub struct GifRecorder {
     encoder: Option<Encoder<File>>,
     counter: u8,
+    pub delay: u16,
+    pub every_n_frame: u8,
+    path: Option<PathBuf>,
 }
 
 impl GifRecorder {
@@ -18,6 +26,9 @@ impl GifRecorder {
         Self {
             encoder: None,
             counter: 0,
+            delay: 3,
+            every_n_frame: 5,
+            path: None,
         }
     }
 
@@ -27,7 +38,7 @@ impl GifRecorder {
 
     pub fn toggle(&mut self, frame: &crate::render::Frame) -> Result<bool, Error> {
         let is_recording = if self.is_recording() {
-            self.stop();
+            let _ = self.stop();
 
             false
         } else {
@@ -39,18 +50,13 @@ impl GifRecorder {
         Ok(is_recording)
     }
 
-    pub fn keybind(&mut self, frame: &crate::render::Frame) -> Result<bool, Error> {
-        if is_key_pressed(KeyCode::F7) {
-            Ok(self.toggle(frame)?)
-        } else {
-            Ok(self.is_recording())
-        }
-    }
-
     pub fn start(&mut self, frame: &crate::render::Frame) -> Result<(), Error> {
-        let file = format!("recording_{}.gif", Local::now().format("%Y%m%d_%H%M%S"));
+        let path = PathBuf::from(format!(
+            "recording_{}.gif",
+            Local::now().format("%Y%m%d_%H%M%S")
+        ));
         let mut encoder = Encoder::new(
-            File::create(file)?,
+            File::create(&path)?,
             frame.width as u16,
             frame.height as u16,
             &[],
@@ -60,12 +66,25 @@ impl GifRecorder {
         self.encoder = Some(encoder);
 
         self.counter = 0;
+        self.path = Some(path);
 
         Ok(())
     }
 
-    pub fn stop(&mut self) {
+    pub fn stop(&mut self) -> Result<(), Error> {
         self.encoder.take();
+
+        if let Some(source_path) = self.path.take() {
+            let destination_path = FileDialog::new()
+                .set_file_name(source_path.file_name().unwrap().to_string_lossy())
+                .save_file();
+
+            if let Some(destination_path) = destination_path {
+                rename(&source_path, &destination_path)?;
+            }
+        }
+
+        Ok(())
     }
 
     pub fn capture(&mut self, frame: &crate::render::Frame) {
@@ -73,8 +92,8 @@ impl GifRecorder {
             return;
         };
 
-        self.counter = (self.counter + 1) % 6;
-        if self.counter == 0 {
+        self.counter = (self.counter + 1) % self.every_n_frame;
+        if self.counter != 0 {
             return;
         }
 
@@ -85,34 +104,16 @@ impl GifRecorder {
             10,
         );
 
-        gif_frame.delay = 2;
+        gif_frame.delay = self.delay;
 
         let _ = encoder.write_frame(&gif_frame);
     }
 }
 
 pub fn screenshot() {
-    if is_key_pressed(KeyCode::F2) {
+    if is_key_pressed(KeyCode::F7) {
         get_screen_data().export_png("screenshot.png");
     }
-}
-
-pub fn quit_emulator<E: Emulator>(emulator: &E) -> Result<bool, Error> {
-    if is_key_pressed(KeyCode::Escape) {
-        save_progress(emulator)?;
-
-        return Ok(true);
-    }
-
-    return Ok(false);
-}
-
-pub fn save_progress<E: Emulator>(emulator: &E) -> Result<(), Error> {
-    if is_key_pressed(KeyCode::F1) {
-        emulator.save()?;
-    }
-
-    Ok(())
 }
 
 pub fn error_message(message: String) -> std::io::Error {

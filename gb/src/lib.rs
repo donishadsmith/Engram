@@ -16,7 +16,7 @@ use shared::{
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     input::get_relevant_key_presses,
     render::Screen,
-    utils::{Emulator, quit_emulator, save_progress},
+    utils::Emulator,
 };
 use std::{io::Error, path::PathBuf};
 
@@ -57,14 +57,6 @@ impl EmulatorSession for GameBoySession {
         key_bindings: &Vec<KeyCode>,
         input_blocked: bool,
     ) -> Result<EmulatorState, Error> {
-        if quit_emulator(&self.gameboy)? {
-            return Ok(EmulatorState::Quit);
-        }
-
-        if self.gameboy.ram_changed() {
-            let _ = save_progress(&self.gameboy);
-        }
-
         self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
             .as_slice()
             .try_into()

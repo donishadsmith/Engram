@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod debug;
 pub mod input;
 pub mod render;
 pub mod utils;
@@ -7,7 +8,7 @@ use egui::Context;
 use macroquad::input::KeyCode;
 use std::{io::Error, path::PathBuf};
 
-use crate::{input::GBA_KEYMAP, render::Frame};
+use crate::{debug::DebugPage, input::GBA_KEYMAP, render::Frame};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EmulatorId {
@@ -36,11 +37,11 @@ pub trait EmulatorSession {
         false
     }
 
-    fn debug_visible(&self) -> bool {
+    fn debug_visible(&self, _debug_page: DebugPage) -> bool {
         false
     }
 
-    fn toggle_debug(&mut self) {}
+    fn toggle_debug(&mut self, _debug_page: DebugPage) {}
 
     fn debug_ui(&mut self, _egui_ctx: &Context) {}
 

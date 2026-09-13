@@ -162,7 +162,25 @@ impl GamePak {
         Ok(())
     }
 
-    pub fn write_sav(&self) -> Result<(), Error> {
+    pub fn backup_updated(&mut self) -> bool {
+        let updated = match &mut self.backup_chip {
+            BackupChip::Eeprom(eeprom) => &mut eeprom.updated,
+            BackupChip::Sram(sram) => &mut sram.updated,
+            BackupChip::Flash(flash) => &mut flash.updated,
+            BackupChip::None => &mut false,
+        };
+
+        let was_updated = *updated;
+        *updated = false;
+
+        was_updated
+    }
+
+    pub fn write_sav(&mut self) -> Result<(), Error> {
+        if !self.backup_updated() {
+            return Ok(());
+        }
+
         match &self.backup_chip {
             BackupChip::Eeprom(eeprom) => write(&self.sav_path, &eeprom.memory)?,
             BackupChip::Sram(sram) => write(&self.sav_path, &sram.memory)?,

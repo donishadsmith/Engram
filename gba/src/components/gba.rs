@@ -3,11 +3,12 @@ use crate::components::{
     bus::Bus,
     cpu::{Arm7tdmi, HaltState},
     dma::Trigger,
-    gamepak::{BackupChip, GamePak},
+    gamepak::GamePak,
     scheduler::Event,
     utils::BitOps,
 };
 use shared::utils::Emulator;
+use std::{io::Error, mem::take};
 
 pub struct GBA {
     pub bus: Bus,
@@ -126,22 +127,8 @@ impl GBA {
         }
     }
 
-    pub fn backup_updated(&mut self) -> bool {
-        let updated = match &mut self.bus.gamepak.backup_chip {
-            BackupChip::Eeprom(eeprom) => &mut eeprom.updated,
-            BackupChip::Sram(sram) => &mut sram.updated,
-            BackupChip::Flash(flash) => &mut flash.updated,
-            BackupChip::None => &mut false,
-        };
-
-        let was_updated = *updated;
-        *updated = false;
-
-        was_updated
-    }
-
     pub fn take_frame(&mut self) -> bool {
-        std::mem::take(&mut self.bus.ppu.frame_ready)
+        take(&mut self.bus.ppu.frame_ready)
     }
 
     pub fn trigger_dma(&mut self, trigger: Option<Trigger>) {
@@ -154,7 +141,7 @@ impl GBA {
 }
 
 impl Emulator for GBA {
-    fn save(&self) -> Result<(), std::io::Error> {
+    fn save(&mut self) -> Result<(), Error> {
         self.bus.gamepak.write_sav()?;
 
         Ok(())

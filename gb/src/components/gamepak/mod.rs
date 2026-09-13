@@ -273,8 +273,19 @@ impl GamePak {
         Ok((ram, rtc_save_state))
     }
 
-    pub fn write_sav(&self) -> Result<(), std::io::Error> {
+    pub fn ram_changed(&mut self) -> bool {
+        let updated_ram = self.mbc.ram_changed().clone();
+        *self.mbc.ram_changed() = false;
+
+        updated_ram
+    }
+
+    pub fn write_sav(&mut self) -> Result<(), std::io::Error> {
         if !self.header.has_battery || self.mbc.get_ram().is_empty() {
+            return Ok(());
+        }
+
+        if !self.ram_changed() {
             return Ok(());
         }
 

@@ -2,7 +2,6 @@ use egui::{
     CentralPanel, Color32, RichText, SidePanel, TextureHandle, TextureOptions, TopBottomPanel,
 };
 use egui_plot::{HLine, Line, Plot};
-use macroquad::input::{KeyCode, get_keys_pressed};
 use std::collections::VecDeque;
 
 use crate::components::{
@@ -178,7 +177,6 @@ fn register(ui: &mut egui::Ui, name: &str, value: u16) {
 }
 
 pub struct AudioDebugger {
-    pub visible: bool,
     pub frozen: bool,
     samples: AudioSamples,
     occupancy: AudioOccupancy,
@@ -192,7 +190,6 @@ pub struct AudioDebugger {
 impl AudioDebugger {
     pub fn new() -> Self {
         Self {
-            visible: false,
             frozen: false,
             samples: AudioSamples::new(),
             occupancy: AudioOccupancy::new(),
@@ -204,37 +201,20 @@ impl AudioDebugger {
         }
     }
 
-    pub fn toggle(&mut self, gba: &mut GBA) {
-        if self.visible {
-            self.frozen = false;
-            self.mute = [false; 6];
-            self.mute_channels(gba);
-            self.visible = false;
-        } else {
-            self.visible = true;
-        }
-    }
-
-    pub fn turn_on(&mut self, gba: &mut GBA) {
-        if get_keys_pressed().contains(&KeyCode::F12) {
-            self.toggle(gba);
-        }
+    pub fn close(&mut self, gba: &mut GBA) {
+        self.frozen = false;
+        self.mute = [false; 6];
+        self.mute_channels(gba);
     }
 
     pub fn freeze(&mut self) {
-        if get_keys_pressed().contains(&KeyCode::Space) {
-            self.frozen = match self.frozen {
-                true => false,
-                false => true,
-            }
+        self.frozen = match self.frozen {
+            true => false,
+            false => true,
         }
     }
 
     pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
-        if !self.visible {
-            return;
-        }
-
         if !self.frozen {
             for (sample, occupancy) in gba
                 .bus
@@ -442,6 +422,7 @@ impl AudioDebugger {
             egui_ctx.load_texture("GBA", image.clone(), TextureOptions::NEAREST)
         });
         texture.set(image, TextureOptions::NEAREST);
+        let texture_id = texture.id();
 
         SidePanel::left("PSG").show(egui_ctx, |ui| {
             ui.heading("PSG Channels").highlight();
@@ -548,12 +529,12 @@ impl AudioDebugger {
                         let (text, hover) = if self.frozen {
                             (
                                 RichText::new("PAUSED").strong().color(Color32::YELLOW),
-                                "Press Space to resume",
+                                "Click to resume",
                             )
                         } else {
                             (
                                 RichText::new("LIVE").strong().color(Color32::LIGHT_GREEN),
-                                "Press Space to pause",
+                                "Click to pause",
                             )
                         };
 
@@ -561,7 +542,14 @@ impl AudioDebugger {
                             egui::vec2(50.0, ui.spacing().interact_size.y),
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
-                                ui.label(text).on_hover_text(hover);
+                                if ui
+                                    .add(egui::Label::new(text.clone()).sense(egui::Sense::click()))
+                                    .on_hover_text(hover)
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    .clicked()
+                                {
+                                    self.freeze();
+                                }
                             },
                         );
                     });
@@ -647,7 +635,7 @@ impl AudioDebugger {
 
             let size = egui::vec2(frame.width as f32 * scale, frame.height as f32 * scale);
             ui.centered_and_justified(|ui| {
-                ui.image((texture.id(), size));
+                ui.image((texture_id, size));
             });
         });
 

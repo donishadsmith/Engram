@@ -1,14 +1,7 @@
 use macroquad::input::{KeyCode, get_keys_down};
 use std::collections::HashSet;
 
-pub const RESERVED_KEYS: [KeyCode; 6] = [
-    KeyCode::Escape,
-    KeyCode::Space,
-    KeyCode::F1,
-    KeyCode::F2,
-    KeyCode::F7,
-    KeyCode::F12,
-];
+pub const RESERVED_KEYS: [KeyCode; 2] = [KeyCode::F7, KeyCode::F12];
 
 pub const GBA_LABELS: [&str; 10] = [
     "Up", "Left", "Down", "Right", "A", "B", "Start", "Select", "R", "L",

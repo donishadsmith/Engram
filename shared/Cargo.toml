@@ -1,6 +1,6 @@
 [package]
 name = "shared"
-version = "0.1.1"
+version = "0.1.4"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
@@ -12,3 +12,4 @@ egui = "0.31.1"
 rtrb = "0.4.0"
 gif = "0.14.2"
 chrono = "0.4.45"
+rfd = "0.17.2"

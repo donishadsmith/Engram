@@ -599,7 +599,7 @@ impl PPU {
                     + pixel_inside_tile.y * 4
                     + pixel_inside_tile.x / 2];
                 let nibble = if pixel_inside_tile.x % 2 == 0 {
-                    byte & 0x0F
+                    byte.get_bit_range(0..4)
                 } else {
                     byte >> 4
                 };
