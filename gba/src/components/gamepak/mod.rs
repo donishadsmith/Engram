@@ -11,15 +11,14 @@ use eeprom::{EEPROM_4KBIT, Eeprom};
 use flash::Flash;
 use sram::Sram;
 
-use crate::components::{
-    gamepak::{flash::FlashSize, gpio::Gpio, rtc::Rtc, solar::SolarSensor},
-    utils::BitOps,
-};
+use crate::components::gamepak::{flash::FlashSize, gpio::Gpio, rtc::Rtc, solar::SolarSensor};
 use std::{
     fs::{read, write},
     io::Error,
     path::PathBuf,
 };
+
+use shared::traits::BitOps;
 
 // https://github.com/visualboyadvance-m/visualboyadvance-m/issues/1187; magic string = SIIRTC_V001; confirmed in rom dump of emerical and megaman 4.5;
 const SEIKO_RTC: &'static [u8; 11] = b"SIIRTC_V001";

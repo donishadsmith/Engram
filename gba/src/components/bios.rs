@@ -7,8 +7,8 @@
 use crate::components::{
     bus::{AccessType, Bus},
     cpu::{Arm7tdmi, HaltState, Registers},
-    utils::BitOps,
 };
+use shared::traits::BitOps;
 use std::f32::consts::PI;
 
 const ARCTAN_COEFFICIENTS: [i32; 7] = [0x390, 0x91C, 0xFB6, 0x16AA, 0x2081, 0x3651, 0xA2F9];

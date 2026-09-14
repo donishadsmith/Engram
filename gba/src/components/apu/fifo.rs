@@ -1,7 +1,5 @@
-use crate::components::{
-    dma::{FifoChannel, Trigger},
-    utils::BitOps,
-};
+use crate::components::dma::{FifoChannel, Trigger};
+use shared::traits::BitOps;
 use std::collections::VecDeque;
 
 pub struct Fifo {

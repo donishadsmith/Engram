@@ -3,7 +3,7 @@
 // https://problemkaputt.de/gbatek-gba-cart-real-time-clock-rtc.htm
 use chrono::{Datelike, Local, Timelike};
 
-use crate::components::utils::BitOps;
+use shared::traits::BitOps;
 
 // code is lowkey a bit jank but at least emerald no longer reports a dry battery, maybe refactor this later
 #[derive(Clone, Copy, PartialEq, Eq)]

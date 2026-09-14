@@ -1,14 +1,12 @@
-use crate::components::{
-    cpu::{
-        Condition,
-        arm::decode::{
-            AddressingMode, ArmInstruction, BitSize, DataOp, DecodedArm, HalfwordOffset, Operand2,
-            SdtOffset, ShiftAmount, ShiftType, ShiftedRegister, ThumbBranchType, TransferAction,
-            TransferKind,
-        },
+use crate::components::cpu::{
+    Condition,
+    arm::decode::{
+        AddressingMode, ArmInstruction, BitSize, DataOp, DecodedArm, HalfwordOffset, Operand2,
+        SdtOffset, ShiftAmount, ShiftType, ShiftedRegister, ThumbBranchType, TransferAction,
+        TransferKind,
     },
-    utils::BitOps,
 };
+use shared::traits::BitOps;
 
 fn thumb_dp(opcode: DataOp, rn: u8, rd: u8, set_flags: bool, operand2: Operand2) -> ArmInstruction {
     ArmInstruction::DataProcessing {

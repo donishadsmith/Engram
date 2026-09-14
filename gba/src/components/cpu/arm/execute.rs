@@ -14,8 +14,9 @@ use crate::components::{
     bios::multiply_stall,
     bus::{AccessType, Bus},
     cpu::{ProcessorMode, ProcessorState, Registers, SideEffect},
-    utils::{BitOps, ShiftOps},
+    utils::ShiftOps,
 };
+use shared::traits::BitOps;
 
 fn branch(registers: &mut Registers, link: bool, offset: i32) -> SideEffect {
     if link {

@@ -1,13 +1,11 @@
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 
-use crate::components::{
-    apu::{
-        global_control::AudioChannel,
-        sound_control::{Envelope, Length},
-    },
-    utils::BitOps,
+use crate::components::apu::{
+    global_control::AudioChannel,
+    sound_control::{Envelope, Length},
 };
+use shared::traits::BitOps;
 
 struct LFSR {
     width: u8,

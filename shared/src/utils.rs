@@ -5,7 +5,7 @@ use macroquad::prelude::*;
 use rfd::FileDialog;
 use std::{
     fs::{File, rename},
-    io::Error,
+    io::{Error, ErrorKind},
     path::PathBuf,
 };
 
@@ -111,11 +111,11 @@ impl GifRecorder {
 }
 
 pub fn screenshot() {
-    if is_key_pressed(KeyCode::F7) {
-        get_screen_data().export_png("screenshot.png");
-    }
+    get_screen_data().export_png(
+        &format!("screenshot_{}.png", Local::now().format("%Y%m%d_%H%M%S")).to_string(),
+    );
 }
 
-pub fn error_message(message: String) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::InvalidData, message)
+pub fn error_message(message: String) -> Error {
+    Error::new(ErrorKind::InvalidData, message)
 }

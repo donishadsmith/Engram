@@ -1,4 +1,5 @@
-use crate::components::{apu::global_control::AudioChannel, utils::BitOps};
+use crate::components::apu::global_control::AudioChannel;
+use shared::traits::BitOps;
 
 #[derive(Clone, Copy)]
 #[repr(u8)]

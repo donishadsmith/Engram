@@ -1,14 +1,16 @@
 pub mod audio;
+pub mod config;
 pub mod debug;
-pub mod input;
+pub mod keybind;
 pub mod render;
+pub mod traits;
 pub mod utils;
 
 use egui::Context;
 use macroquad::input::KeyCode;
 use std::{io::Error, path::PathBuf};
 
-use crate::{debug::DebugPage, input::GBA_KEYMAP, render::Frame};
+use crate::{debug::DebugPage, render::Frame};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EmulatorId {
@@ -22,6 +24,7 @@ pub enum EmulatorState {
     Running,
     Selection,
     Reset,
+    Launch,
 }
 
 pub trait EmulatorSession {
@@ -58,10 +61,4 @@ pub trait EmulatorSession {
     fn frame_ready(&self) -> bool;
 
     fn id(&self) -> EmulatorId;
-
-    fn default_keys(&self) -> &[KeyCode] {
-        match self.id() {
-            EmulatorId::Gb | EmulatorId::Gba => &GBA_KEYMAP,
-        }
-    }
 }

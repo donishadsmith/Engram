@@ -1,6 +1,6 @@
 // https://problemkaputt.de/gbatek-gba-keypad-input.htm
 
-use crate::components::utils::BitOps;
+use shared::traits::BitOps;
 
 #[derive(Clone, Copy)]
 enum KeypadButton {
@@ -77,11 +77,9 @@ impl Keypad {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{
-        bus::AccessType,
-        gamepak::BackupType,
-        utils::{BitOps, create_bus},
-    };
+    use crate::components::{bus::AccessType, gamepak::BackupType, utils::create_bus};
+
+    use shared::traits::BitOps;
 
     const BOOL_ARR1: [bool; 10] = [
         true, false, true, false, false, false, false, false, false, false,

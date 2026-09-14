@@ -1,5 +1,4 @@
-use crate::components::utils::{BitOps, get_halfword_shift, get_word_mask};
-
+use shared::traits::{BitOps, get_halfword_shift, get_word_mask};
 // https://problemkaputt.de/gbatek-gba-dma-transfers.htm
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FifoChannel {

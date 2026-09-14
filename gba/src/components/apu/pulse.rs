@@ -3,13 +3,11 @@
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 
-use crate::components::{
-    apu::{
-        global_control::AudioChannel,
-        sound_control::{Envelope, Length},
-    },
-    utils::{BitOps, GroupedRegisters},
+use crate::components::apu::{
+    global_control::AudioChannel,
+    sound_control::{Envelope, Length},
 };
+use shared::traits::{BitOps, GroupedRegisters};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PulseChannelId {

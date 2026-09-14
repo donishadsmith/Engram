@@ -2,13 +2,10 @@ mod affine;
 mod special_effects;
 mod sprites;
 
-use crate::components::{
-    dma::Trigger,
-    ppu::special_effects::apply_effects,
-    utils::{BitOps, GroupedRegisters, zero_arr},
-};
+use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 use affine::{AffineMatrix, AffineState};
 use shared::render::Frame;
+use shared::traits::{BitOps, GroupedRegisters, zero_arr};
 use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
 use std::{
     array::from_fn,

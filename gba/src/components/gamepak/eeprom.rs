@@ -1,4 +1,4 @@
-use crate::components::utils::BitOps;
+use shared::traits::BitOps;
 
 // https://github.com/ioncodes/ayyboy-advance/blob/master/gba-core/src/cartridge/eeprom.rs
 // https://densinh.github.io/DenSinH/emulation/2021/02/01/gba-eeprom.html

@@ -13,3 +13,6 @@ rtrb = "0.4.0"
 gif = "0.14.2"
 chrono = "0.4.45"
 rfd = "0.17.2"
+dirs = "7.0.0"
+toml = "1.1.6"
+serde = { version = "1.0.229", features = ["derive"] }

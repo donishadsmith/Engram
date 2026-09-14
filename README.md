@@ -64,7 +64,6 @@ The default controls are as follows but can be reconfigured in the menu.
 | O           | L          |                 |
 
 ## Demo
-https://github.com/user-attachments/assets/1eefa878-7702-4047-98b6-917dcba3d336
 
 Captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a> and converted to mp4 with <a href="https://github.com/FFmpeg/FFmpeg">FFmpeg</a>.
 ## References

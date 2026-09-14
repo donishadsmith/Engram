@@ -8,7 +8,7 @@
 // https://dillonbeliveau.com/2020/06/05/GBA-FLASH.html <- amazing resource!!!
 
 // pokemon uses this
-use crate::components::utils::BitOps;
+use shared::traits::BitOps;
 
 const MACRONIX_64K_ID: u16 = 0x1CC2;
 const MACRONIX_128K_ID: u16 = 0x09C2;

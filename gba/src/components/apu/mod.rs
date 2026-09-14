@@ -11,10 +11,10 @@ use crate::components::{
         global_control::AudioChannel, noise::NoiseChannel, pulse::PulseChannel, wave::WaveChannel,
     },
     dma::FifoChannel,
-    utils::BitOps,
 };
 use fifo::Fifo;
 use global_control::GlobalControl;
+use shared::traits::BitOps;
 
 struct SequencerStep {
     length: bool,

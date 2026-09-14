@@ -5,9 +5,8 @@ use crate::components::{
     dma::Trigger,
     gamepak::GamePak,
     scheduler::Event,
-    utils::BitOps,
 };
-use shared::utils::Emulator;
+use shared::{traits::BitOps, utils::Emulator};
 use std::{io::Error, mem::take};
 
 pub struct GBA {

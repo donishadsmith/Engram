@@ -4,7 +4,7 @@ use rfd::FileDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     debug::DEBUG_PAGES,
-    input::{GBA_LABELS, RESERVED_KEYS},
+    keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
     utils::{GifRecorder, screenshot},
 };
 use std::{io::Error, path::PathBuf};
@@ -19,17 +19,14 @@ fn conf() -> Conf {
     }
 }
 
-fn keycode_to_string(key: KeyCode) -> String {
-    format!("{:?}", key)
-}
-
 struct Session {
     state: EmulatorState,
     emulator: Option<Box<dyn EmulatorSession>>,
     rom_path: Option<PathBuf>,
     gif: GifRecorder,
-    key_bindings: Vec<KeyCode>,
+    key_bindings: KeyBindings,
     show_key_bindings: bool,
+    show_hotkeys: bool,
     open_gif_settings: bool,
 }
 
@@ -38,45 +35,25 @@ impl Session {
         prevent_quit();
 
         Self {
-            state: EmulatorState::Selection,
+            state: EmulatorState::Launch,
             emulator: None,
             rom_path: None,
             gif: GifRecorder::new(),
-            key_bindings: Vec::with_capacity(14),
+            key_bindings: KeyBindings::new().initialize_keys(),
             show_key_bindings: false,
+            show_hotkeys: false,
             open_gif_settings: false,
         }
     }
 
     fn set_emulator<T: EmulatorSession + 'static>(&mut self, emu: T) {
-        let old_id = match &self.emulator {
-            Some(emu) => Some(emu.id()),
-            None => None,
-        };
-
         self.emulator = Some(Box::new(emu));
-        let new_id = match &self.emulator {
-            Some(emu) => Some(emu.id()),
-            None => None,
-        };
-
-        // attempt to make this more agostic to future emu additions but make bindings persist across systems with
-        // essentially the same keys or a reset
-        if old_id.is_some() {
-            if !(matches!(old_id, Some(EmulatorId::Gb) | Some(EmulatorId::Gba))
-                && matches!(new_id, Some(EmulatorId::Gb) | Some(EmulatorId::Gba)))
-            {
-                self.key_bindings = Vec::with_capacity(14);
-            }
-        }
-
         self.state = EmulatorState::Running;
     }
 
     fn save(&mut self) -> Result<(), Error> {
-        match &mut self.emulator {
-            Some(emulator) => emulator.save_game()?,
-            None => {}
+        if let Some(emulator) = &mut self.emulator {
+            emulator.save_game()?;
         }
 
         Ok(())
@@ -84,7 +61,16 @@ impl Session {
 
     fn run(&mut self) -> Result<EmulatorState, Error> {
         match &mut self.emulator {
-            Some(emu) => emu.run(&self.key_bindings, self.show_key_bindings),
+            Some(emu) => {
+                let key_id = match emu.id() {
+                    EmulatorId::Gb | EmulatorId::Gba => KeyId::Gba,
+                };
+
+                emu.run(
+                    &self.key_bindings.keys(key_id),
+                    self.show_key_bindings || self.show_hotkeys,
+                )
+            }
             None => Ok(EmulatorState::Selection),
         }
     }
@@ -96,29 +82,59 @@ impl Session {
 
         Ok(())
     }
+}
 
-    fn restore_key_bindings(&mut self) {
-        let Some(emu) = &self.emulator else {
-            return;
-        };
-
-        self.key_bindings = emu.default_keys().to_vec();
-    }
-
-    fn set_new_key_bindings(&mut self) {
-        if self.key_bindings.len() != 0 {
-            return;
-        }
-
-        self.restore_key_bindings();
+impl Drop for Session {
+    fn drop(&mut self) {
+        let _ = self.key_bindings.save_keys();
+        let _ = self.save();
     }
 }
 
 fn file_dialog() -> Option<PathBuf> {
     FileDialog::new()
         .set_title("Select a ROM file")
-        .add_filter("GameBoy/GBA ROMs", &["gb", "gbc", "gba"])
+        .add_filter("ROMs", &["gb", "gbc", "gba"])
         .pick_file()
+}
+
+fn bindings_grid(
+    ui: &mut egui::Ui,
+    grid_id: &str,
+    key_bindings: &KeyBindings,
+    key_id: KeyId,
+    key_rebinding: &mut Option<usize>,
+    target_key_id: &mut Option<KeyId>,
+    restore_default_bindings: &mut bool,
+) {
+    egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+        for (index, (label, key)) in key_bindings
+            .labels(key_id)
+            .iter()
+            .zip(key_bindings.keys(key_id))
+            .enumerate()
+        {
+            ui.label(*label);
+
+            let text = if *key_rebinding == Some(index) && *target_key_id == Some(key_id) {
+                "".to_string()
+            } else {
+                keycode_to_string(key)
+            };
+
+            if ui.button(text).clicked() {
+                *key_rebinding = Some(index);
+                *target_key_id = Some(key_id);
+            }
+
+            ui.end_row();
+        }
+
+        if ui.button("Restore Defaults").clicked() {
+            *target_key_id = Some(key_id);
+            *restore_default_bindings = true;
+        }
+    });
 }
 
 #[macroquad::main(conf)]
@@ -126,6 +142,8 @@ async fn main() -> Result<(), Error> {
     let mut session = Session::new();
     let mut solar_level: u8 = 0;
     let mut key_rebinding: Option<usize> = None;
+    let mut target_key_id: Option<KeyId> = None;
+    let mut restore_default_bindings = false;
 
     loop {
         session.save()?;
@@ -160,12 +178,9 @@ async fn main() -> Result<(), Error> {
                     "gba" => session.set_emulator(engram_gba::GBASession::new_session(rom_path)?),
                     _ => continue,
                 }
-
-                session.set_new_key_bindings();
             }
             EmulatorState::Running => {
                 session.state = session.run()?;
-                screenshot();
                 if let Some(emu) = &session.emulator {
                     let frame = emu.reference_frontend();
                     if emu.frame_ready() {
@@ -178,7 +193,13 @@ async fn main() -> Result<(), Error> {
                 session.state = EmulatorState::Running;
             }
             EmulatorState::Quit => {
+                session.gif.stop()?;
+                session.key_bindings.save_keys()?;
                 break;
+            }
+            EmulatorState::Launch => {
+                // just so file dialog doesnt occur on launch, since it blocks execution
+                // TODO: figure out what i wanna put here, leave blank, render an image for this state, or something else?
             }
         }
 
@@ -187,7 +208,7 @@ async fn main() -> Result<(), Error> {
             egui::TopBottomPanel::top("Menu Bar").show(egui_ctx, |ui| {
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
-                        if ui.button("Open ROM").clicked() {
+                        if ui.button("Load ROM").clicked() {
                             session.state = EmulatorState::Selection;
                             ui.close_menu();
                         }
@@ -198,13 +219,13 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
-                    ui.menu_button("Emulation", |ui| {
-                        if ui.button("Reset").clicked() {
-                            session.state = EmulatorState::Reset;
-                            ui.close_menu();
-                        }
+                    if let Some(emu) = &mut session.emulator {
+                        ui.menu_button("Emulation", |ui| {
+                            if ui.button("Reset").clicked() {
+                                session.state = EmulatorState::Reset;
+                                ui.close_menu();
+                            }
 
-                        if let Some(emu) = &mut session.emulator {
                             if emu.has_solar() {
                                 ui.menu_button("Solar", |ui| {
                                     ui.add(
@@ -214,66 +235,94 @@ async fn main() -> Result<(), Error> {
                                     emu.solar_level(solar_level);
                                 });
                             }
-                        }
 
-                        if ui.button("Key Bindings").clicked() {
-                            session.show_key_bindings = true;
+                            if ui.button("Key Bindings").clicked() {
+                                session.show_key_bindings = true;
+                                ui.close_menu();
+                            }
+                        });
+                    }
+
+                    ui.menu_button("Settings", |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new("Configure Hotkeys")
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            )
+                            .clicked()
+                        {
+                            session.show_hotkeys = true;
                             ui.close_menu();
                         }
                     });
 
-                    if let Some(emu) = &mut session.emulator {
-                        if matches!(emu.id(), EmulatorId::Gb | EmulatorId::Gba) {
-                            egui::Window::new("Key Bindings")
-                                .open(&mut session.show_key_bindings)
-                                .show(egui_ctx, |ui| {
-                                    egui::Grid::new("Key Bindings")
-                                        .num_columns(2)
-                                        .show(ui, |ui| {
-                                            let labels: &[&str] = match emu.id() {
-                                                EmulatorId::Gb => &GBA_LABELS[..8],
-                                                EmulatorId::Gba => &GBA_LABELS,
-                                            };
+                    if let Some(emu) = &session.emulator {
+                        let key_id = match emu.id() {
+                            EmulatorId::Gb | EmulatorId::Gba => KeyId::Gba,
+                        };
 
-                                            for (index, (label, key)) in labels
-                                                .iter()
-                                                .zip(session.key_bindings.iter())
-                                                .enumerate()
-                                            {
-                                                ui.label(*label);
-                                                let text = if key_rebinding == Some(index) {
-                                                    "".to_string()
-                                                } else {
-                                                    keycode_to_string(*key)
-                                                };
-
-                                                if ui.button(text).clicked() {
-                                                    key_rebinding = Some(index);
-                                                }
-
-                                                ui.end_row();
-                                            }
-                                        });
-                                });
-                        } else {
-                            session.show_key_bindings = false;
-                        }
+                        egui::Window::new("Controller Bindings")
+                            .open(&mut session.show_key_bindings)
+                            .show(egui_ctx, |ui| {
+                                bindings_grid(
+                                    ui,
+                                    "Controller Bindings",
+                                    &session.key_bindings,
+                                    key_id,
+                                    &mut key_rebinding,
+                                    &mut target_key_id,
+                                    &mut restore_default_bindings,
+                                );
+                            });
+                    } else {
+                        session.show_key_bindings = false;
                     }
 
-                    if let Some(index) = key_rebinding {
+                    egui::Window::new("Hotkey Bindings")
+                        .open(&mut session.show_hotkeys)
+                        .show(egui_ctx, |ui| {
+                            bindings_grid(
+                                ui,
+                                "Hotkey Bindings",
+                                &session.key_bindings,
+                                KeyId::Hotkeys,
+                                &mut key_rebinding,
+                                &mut target_key_id,
+                                &mut restore_default_bindings,
+                            );
+                        });
+
+                    if restore_default_bindings {
+                        if let Some(key_id) = target_key_id {
+                            let emu_id = session
+                                .emulator
+                                .as_ref()
+                                .map(|emu| emu.id())
+                                .unwrap_or(EmulatorId::Gba);
+                            session.key_bindings.restore_defaults(key_id, emu_id);
+                        }
+
+                        restore_default_bindings = false;
+                        target_key_id = None;
+                        key_rebinding = None;
+                    }
+
+                    if let (Some(index), Some(key_id)) = (key_rebinding, target_key_id) {
                         if let Some(key) = get_last_key_pressed() {
-                            if session.key_bindings[index] == key
-                                || !(RESERVED_KEYS.contains(&key)
-                                    || session.key_bindings.contains(&key))
-                            {
-                                session.key_bindings[index] = key;
+                            let same_key = session.key_bindings.keys(key_id)[index] == key;
+                            let taken = session.key_bindings.keys(key_id.reserved()).contains(&key);
+
+                            if same_key || !taken {
+                                session.key_bindings.rebind(key_id, index, key);
                                 key_rebinding = None;
+                                target_key_id = None;
                             }
                         }
                     }
 
-                    if !session.show_key_bindings {
+                    if !session.show_key_bindings && !session.show_hotkeys {
                         key_rebinding = None;
+                        target_key_id = None;
                     }
 
                     if let Some(emu) = &mut session.emulator {
@@ -296,38 +345,69 @@ async fn main() -> Result<(), Error> {
                     }
 
                     ui.menu_button("Tools", |ui| {
-                        if ui.button("Screenshot  (F7)").clicked() {
-                            get_screen_data().export_png("screenshot.png");
+                        let text = &format!(
+                            "Screenshot ({})",
+                            keycode_to_string(
+                                session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot)
+                            )
+                        )
+                        .to_string();
+                        if ui
+                            .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
+                            .clicked()
+                        {
+                            screenshot();
                             ui.close_menu();
                         }
 
-                        if let Some(emu) = &session.emulator {
-                            if ui
-                                .button(if !session.gif.is_recording() {
-                                    "Record GIF  (F12)"
-                                } else {
-                                    "Stop GIF  (F12)"
-                                })
-                                .clicked()
-                            {
-                                if session.gif.is_recording() {
-                                    let _ = session.gif.toggle(emu.reference_frontend()).unwrap();
-                                } else {
-                                    session.open_gif_settings = true;
-                                }
+                        let text = if session.gif.is_recording() {
+                            &format!(
+                                "Stop GIF ({})",
+                                keycode_to_string(
+                                    session.key_bindings.get_hotkey_bind(Hotkeys::Gif)
+                                )
+                            )
+                            .to_string()
+                        } else {
+                            &format!(
+                                "Record GIF ({})",
+                                keycode_to_string(
+                                    session.key_bindings.get_hotkey_bind(Hotkeys::Gif)
+                                )
+                            )
+                            .to_string()
+                        };
 
-                                ui.close_menu();
+                        if ui
+                            .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
+                            .clicked()
+                        {
+                            if session.gif.is_recording() {
+                                if let Some(emu) = &session.emulator {
+                                    let _ = session.gif.toggle(emu.reference_frontend());
+                                }
+                            } else {
+                                session.open_gif_settings = true;
                             }
+
+                            ui.close_menu();
                         }
                     });
 
-                    if is_key_pressed(KeyCode::F12) {
-                        if session.gif.is_recording() {
-                            if let Some(emu) = &session.emulator {
-                                let _ = session.gif.toggle(emu.reference_frontend()).unwrap();
+                    if !session.show_hotkeys {
+                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
+                        {
+                            screenshot();
+                        }
+
+                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
+                            if session.gif.is_recording() {
+                                if let Some(emu) = &session.emulator {
+                                    let _ = session.gif.toggle(emu.reference_frontend());
+                                }
+                            } else {
+                                session.open_gif_settings = !session.open_gif_settings;
                             }
-                        } else {
-                            session.open_gif_settings = !session.open_gif_settings;
                         }
                     }
 
@@ -346,19 +426,14 @@ async fn main() -> Result<(), Error> {
                                     ui.end_row();
 
                                     ui.add(
-                                        egui::Slider::new(&mut session.gif.delay, 2..=50)
+                                        egui::Slider::new(&mut session.gif.delay, 2..=20)
                                             .text("Frame delay (1/100 s)."),
                                     );
 
                                     ui.end_row();
 
-                                    if ui.button("Start Recording").clicked() {
-                                        if let Some(emu) = &mut session.emulator {
-                                            let _ = session
-                                                .gif
-                                                .toggle(emu.reference_frontend())
-                                                .unwrap();
-
+                                    if session.emulator.is_some() {
+                                        if ui.button("Start Recording").clicked() {
                                             start_recording = true;
                                         }
                                     }
@@ -366,6 +441,10 @@ async fn main() -> Result<(), Error> {
                         });
 
                     if start_recording {
+                        if let Some(emu) = &session.emulator {
+                            let _ = session.gif.toggle(emu.reference_frontend());
+                        }
+
                         session.open_gif_settings = false;
                     }
 
@@ -376,6 +455,7 @@ async fn main() -> Result<(), Error> {
                     }
                 });
             });
+
             if let Some(emu) = &mut session.emulator {
                 emu.debug_ui(egui_ctx);
             }

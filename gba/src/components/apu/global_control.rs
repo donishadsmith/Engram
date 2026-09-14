@@ -1,4 +1,5 @@
-use crate::components::{dma::FifoChannel, utils::BitOps};
+use crate::components::dma::FifoChannel;
+use shared::traits::BitOps;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AudioChannel {

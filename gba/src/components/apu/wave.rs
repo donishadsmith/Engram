@@ -1,7 +1,5 @@
-use crate::components::{
-    apu::{global_control::AudioChannel, sound_control::Length},
-    utils::{BitOps, GroupedRegisters},
-};
+use crate::components::apu::{global_control::AudioChannel, sound_control::Length};
+use shared::traits::{BitOps, GroupedRegisters};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CoarseVolume {

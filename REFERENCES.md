@@ -2,7 +2,7 @@
 
 Emulators, documentation, and guides that Engram relied on during development.
 
-## Emulators and projects
+## Emulators & Projects
 
 - [mGBA](https://github.com/mgba-emu/mgba)
 - [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance)
@@ -18,7 +18,7 @@ Emulators, documentation, and guides that Engram relied on during development.
 - [gb](https://github.com/krocki/gb)
 - [emu-gameboy](https://github.com/geaz/emu-gameboy)
 
-## Boot ROMs and BIOS
+## Boot ROMs & BIOS
 
 - [Bootix](https://github.com/Hacktix/Bootix)
 - [gba_bios](https://github.com/camthesaxman/gba_bios)
@@ -32,7 +32,7 @@ Emulators, documentation, and guides that Engram relied on during development.
 - [Blargg's Game Boy test ROMs](https://github.com/retrio/gb-test-roms)
 - [gba-tests](https://github.com/jsmolka/gba-tests)
 
-## GB/GBC
+## Game Boy & Game Boy Color
 
 ### Reference Documentation
 

@@ -1,7 +1,5 @@
-use crate::components::{
-    scheduler::{Event, EventScheduler},
-    utils::BitOps,
-};
+use crate::components::scheduler::{Event, EventScheduler};
+use shared::traits::BitOps;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum IncrementTimerMode {

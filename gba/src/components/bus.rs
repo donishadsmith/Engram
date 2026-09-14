@@ -31,8 +31,9 @@ use crate::components::{
     scheduler::EventScheduler,
     serial::Serial,
     timer::Timers,
-    utils::{BitOps, zero_arr},
 };
+
+use shared::traits::{BitOps, zero_arr};
 
 const WAIT_STATE_NONSEQUENTIAL: [u8; 4] = [4, 3, 2, 8];
 const WAIT_STATE0_SEQUENTIAL: [u8; 2] = [2, 1];

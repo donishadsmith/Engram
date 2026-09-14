@@ -1,4 +1,4 @@
-use crate::components::utils::BitOps;
+use shared::traits::BitOps;
 use std::ops::AddAssign;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

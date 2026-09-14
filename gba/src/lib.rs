@@ -18,7 +18,7 @@ use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     debug::DebugPage,
-    input::get_relevant_key_presses,
+    keybind::get_relevant_key_presses,
     render::Screen,
     utils::Emulator,
 };

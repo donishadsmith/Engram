@@ -7,8 +7,9 @@ use thumb::decode::*;
 use crate::components::{
     bios::handle_swi,
     bus::{AccessType, Bus},
-    utils::BitOps,
 };
+use shared::traits::BitOps;
+
 /*
 The ARM University Program, ARM Architecture Fundamentals: https://www.youtube.com/watch?v=7LqPJGnBPMM
 

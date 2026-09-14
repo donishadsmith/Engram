@@ -1,4 +1,5 @@
-use crate::components::{cpu::Condition, utils::BitOps};
+use crate::components::cpu::Condition;
+use shared::traits::BitOps;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DataOp {

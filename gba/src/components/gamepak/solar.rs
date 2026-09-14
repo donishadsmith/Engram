@@ -1,5 +1,5 @@
 // https://problemkaputt.de/gbatek-gba-cart-solar-sensor.htm
-use crate::components::utils::BitOps;
+use shared::traits::BitOps;
 
 // Shamelessly take mgba's GBA_LUX_LEVELS array
 // https://github.com/mgba-emu/mgba/blob/master/src/gba/cart/gpio.c#L17
