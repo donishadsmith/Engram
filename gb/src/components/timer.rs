@@ -1,6 +1,7 @@
 // Very clear instructions: https://github.com/Ashiepaws/GBEDG/blob/master/timers/index.md
 
 use crate::components::cpu::interrupts::InterruptMode;
+use shared::traits::BitOps;
 
 pub struct Timer {
     div: u16,
@@ -21,26 +22,26 @@ impl Timer {
         }
     }
 
-    fn target_div_bit(&self) -> u16 {
-        match self.tac & 0x03 {
-            0b00 => 1 << 9,
-            0b01 => 1 << 3,
-            0b10 => 1 << 5,
-            _ => 1 << 7,
+    fn target_div_bit(&self) -> usize {
+        match self.tac.get_bit_range(0..2) {
+            0b00 => 9,
+            0b01 => 3,
+            0b10 => 5,
+            _ => 7,
         }
     }
 
     pub fn tick(&mut self, t_cycles: u32, interrupt_flag: &mut u8, double_speed: bool) {
-        let timer_enabled = self.tac & 0x04 != 0;
+        let timer_enabled = self.tac.is_set(2);
         let target_bit = self.target_div_bit();
+        let apu_bit = if double_speed { 13 } else { 12 };
 
         for _ in 0..t_cycles {
             let previous_div = self.div;
             self.div = self.div.wrapping_add(1);
 
-            // Falling edge occurs if the timer enabled, the previous div and target bit is 1
-            // and current div and target bit is 0
-            if timer_enabled && (previous_div & target_bit != 0) && (self.div & target_bit == 0) {
+            // Tick on falling edge of the div bit when the timer is enabled
+            if timer_enabled && previous_div.is_set(target_bit) && self.div.is_clear(target_bit) {
                 let (result, overflowed) = self.tima.overflowing_add(1);
 
                 if overflowed {
@@ -52,9 +53,8 @@ impl Timer {
                 }
             }
 
-            let mask = if double_speed { 0x20 } else { 0x10 };
             self.increase_div_apu_counter =
-                ((previous_div >> 8) & mask != 0) && ((self.div >> 8) & mask == 0);
+                previous_div.is_set(apu_bit) && self.div.is_clear(apu_bit);
         }
     }
 
@@ -73,7 +73,7 @@ impl Timer {
             0xFF04 => self.div = 0,
             0xFF05 => self.tima = value,
             0xFF06 => self.tma = value,
-            0xFF07 => self.tac = value & 0x07,
+            0xFF07 => self.tac = value.get_bit_range(0..3),
             _ => {}
         }
     }

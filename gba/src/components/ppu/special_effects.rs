@@ -21,9 +21,9 @@ impl SpecialEffects {
 }
 
 fn from_rgb555(rgb555: u16) -> (u16, u16, u16) {
-    let r = rgb555 & 0x1F;
-    let g = (rgb555 >> 5) & 0x1F;
-    let b = (rgb555 >> 10) & 0x1F;
+    let r = rgb555.get_bit_range(0..5);
+    let g = rgb555.get_bit_range(5..10);
+    let b = rgb555.get_bit_range(10..15);
 
     (r, g, b)
 }

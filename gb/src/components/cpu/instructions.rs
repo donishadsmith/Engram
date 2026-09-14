@@ -1,3 +1,5 @@
+use shared::traits::BitOps;
+
 use crate::components::{
     bus::AddressBus,
     cpu::{
@@ -23,11 +25,11 @@ enum BitDirection {
 
 // https://archive.gbdev.io/salvage/decoding_gbz80_opcodes/Decoding%20Gamboy%20Z80%20Opcodes.html
 fn opcode_decoder(opcode: u8) -> (u8, u8, u8, u8, u8) {
-    let x = (opcode >> 6) & 0x03; // category; the opcode's 1st octal digit (i.e. bits 7-6)
-    let y = (opcode >> 3) & 0x07; // destination register; the opcode's 2nd octal digit (i.e. bits 5-3)
-    let z = opcode & 0x07; // source register; the opcode's 3rd octal digit (i.e. bits 2-0)
-    let p = y >> 1; // 16 bit register pair; y rightshifted one position (i.e. bits 5-4)
-    let q = y & 0x01; // boolean toggle; y modulo 2 (i.e. bit 3)
+    let x = opcode.get_bit_range(6..8); // category; the opcode's 1st octal digit (i.e. bits 7-6)
+    let y = opcode.get_bit_range(3..6); // destination register; the opcode's 2nd octal digit (i.e. bits 5-3)
+    let z = opcode.get_bit_range(0..3); // source register; the opcode's 3rd octal digit (i.e. bits 2-0)
+    let p = opcode.get_bit_range(4..6); // 16 bit register pair; y rightshifted one position (i.e. bits 5-4)
+    let q = opcode.get_bit(3); // boolean toggle; y modulo 2 (i.e. bit 3)
 
     (x, y, z, p, q)
 }
@@ -781,10 +783,9 @@ where
     }
 
     fn set_bit(&mut self, y: u8, z: u8) {
-        let value = self.get_value_for_cb_op(z);
-        let result = value | (1 << y);
-
-        self.write_value_for_cb_op(z, result);
+        let mut value = self.get_value_for_cb_op(z);
+        value.set_bit(y as usize);
+        self.write_value_for_cb_op(z, value);
     }
 
     fn select_8bit_register(&self, z: u8) -> Option<Register8Bits> {

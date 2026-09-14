@@ -1,6 +1,7 @@
 // https://gbdev.io/pandocs/Joypad_Input.html
 
 use crate::components::cpu::interrupts::InterruptMode;
+use shared::traits::BitOps;
 
 const BUTTONS: [JoypadButton; 8] = [
     JoypadButton::DPad(DPadButton::Up),
@@ -64,11 +65,11 @@ impl Joypad {
     pub fn read(&self) -> u8 {
         let mut matrix = 0xC0 | (self.select & 0x30) | 0x0F;
 
-        if self.select & 0x10 == 0 {
+        if self.select.is_clear(4) {
             matrix &= 0xF0 | self.dpad;
         }
 
-        if self.select & 0x20 == 0 {
+        if self.select.is_clear(5) {
             matrix &= 0xF0 | self.buttons;
         }
 
@@ -78,8 +79,8 @@ impl Joypad {
     pub fn poll(&mut self, pressed_key: [bool; 8], interrupt_flag: &mut u8) {
         for (index, &button) in BUTTONS.iter().enumerate() {
             let selected = match button {
-                JoypadButton::DPad(_) => self.select & 0x10 == 0,
-                JoypadButton::Action(_) => self.select & 0x20 == 0,
+                JoypadButton::DPad(_) => self.select.is_clear(4),
+                JoypadButton::Action(_) => self.select.is_clear(5),
             };
 
             let group = match button {
@@ -87,14 +88,14 @@ impl Joypad {
                 JoypadButton::Action(_) => &mut self.buttons,
             };
 
-            let bit = 1 << button.bit();
+            let bit = button.bit() as usize;
             if pressed_key[index] {
-                if *group & bit != 0 && selected {
+                if group.is_set(bit) && selected {
                     *interrupt_flag |= InterruptMode::Joypad.mask();
                 }
-                *group &= !bit;
+                group.clear_bit(bit);
             } else {
-                *group |= bit;
+                group.set_bit(bit);
             }
         }
     }

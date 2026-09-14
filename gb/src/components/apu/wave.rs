@@ -1,4 +1,5 @@
 use crate::components::apu::sound_control::Length;
+use shared::traits::BitOps;
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -11,7 +12,7 @@ enum CoarseVolume {
 
 impl CoarseVolume {
     fn from_register(value: u8) -> CoarseVolume {
-        match (value & 0x60) >> 5 {
+        match value.get_bit_range(5..7) {
             0b00 => CoarseVolume::Mute,
             0b01 => CoarseVolume::Full,
             0b10 => CoarseVolume::Half,
@@ -56,7 +57,7 @@ impl WaveChannel {
     }
 
     pub fn write_nr30(&mut self, value: u8) {
-        self.dac_enabled = (value & 0x80) != 0;
+        self.dac_enabled = value.is_set(7);
         if !self.dac_enabled {
             self.enabled = false;
         }
@@ -95,10 +96,11 @@ impl WaveChannel {
     }
 
     pub fn write_nr34(&mut self, value: u8) {
-        self.frequency_period = (self.frequency_period & 0x00FF) | (((value & 0x07) as u16) << 8);
-        self.length.enabled = (value & 0x40) != 0;
+        self.frequency_period =
+            self.frequency_period.get_bit_range(0..8) | ((value.get_bit_range(0..3) as u16) << 8);
+        self.length.enabled = value.is_set(6);
 
-        if (value >> 7) & 0x01 == 1 {
+        if value.is_set(7) {
             self.enabled = self.dac_enabled;
 
             if self.length.timer == 0 {
@@ -117,7 +119,7 @@ impl WaveChannel {
 
         if self.frequency_timer == 0 {
             self.frequency_timer = (2048 - self.frequency_period) * 2;
-            self.position = (self.position + 1) & 0x1F;
+            self.position = (self.position + 1).get_bit_range(0..5);
         }
     }
 
@@ -127,10 +129,10 @@ impl WaveChannel {
         }
 
         let byte = self.ram[(self.position / 2) as usize];
-        let nibble = if self.position % 2 == 0 {
-            byte >> 4
+        let nibble = if self.position.is_clear(0) {
+            byte.get_bit_range(4..8)
         } else {
-            byte & 0x0F
+            byte.get_bit_range(0..4)
         };
 
         nibble >> self.volume.to_shift()

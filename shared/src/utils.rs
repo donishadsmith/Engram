@@ -2,9 +2,8 @@ use crate::render::to_rgb;
 use chrono::Local;
 use gif::{Encoder, Frame, Repeat};
 use macroquad::prelude::*;
-use rfd::FileDialog;
 use std::{
-    fs::{File, rename},
+    fs::File,
     io::{Error, ErrorKind},
     path::PathBuf,
 };
@@ -36,13 +35,17 @@ impl GifRecorder {
         self.encoder.is_some()
     }
 
-    pub fn toggle(&mut self, frame: &crate::render::Frame) -> Result<bool, Error> {
+    pub fn toggle(
+        &mut self,
+        frame: &crate::render::Frame,
+        image_dir: PathBuf,
+    ) -> Result<bool, Error> {
         let is_recording = if self.is_recording() {
             let _ = self.stop();
 
             false
         } else {
-            self.start(frame)?;
+            self.start(frame, image_dir)?;
 
             true
         };
@@ -50,11 +53,8 @@ impl GifRecorder {
         Ok(is_recording)
     }
 
-    pub fn start(&mut self, frame: &crate::render::Frame) -> Result<(), Error> {
-        let path = PathBuf::from(format!(
-            "recording_{}.gif",
-            Local::now().format("%Y%m%d_%H%M%S")
-        ));
+    pub fn start(&mut self, frame: &crate::render::Frame, image_dir: PathBuf) -> Result<(), Error> {
+        let path = image_dir.join(format!("clip_{}.gif", Local::now().format("%Y%m%d_%H%M%S")));
         let mut encoder = Encoder::new(
             File::create(&path)?,
             frame.width as u16,
@@ -71,20 +71,8 @@ impl GifRecorder {
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<(), Error> {
+    pub fn stop(&mut self) {
         self.encoder.take();
-
-        if let Some(source_path) = self.path.take() {
-            let destination_path = FileDialog::new()
-                .set_file_name(source_path.file_name().unwrap().to_string_lossy())
-                .save_file();
-
-            if let Some(destination_path) = destination_path {
-                rename(&source_path, &destination_path)?;
-            }
-        }
-
-        Ok(())
     }
 
     pub fn capture(&mut self, frame: &crate::render::Frame) {
@@ -110,10 +98,16 @@ impl GifRecorder {
     }
 }
 
-pub fn screenshot() {
-    get_screen_data().export_png(
-        &format!("screenshot_{}.png", Local::now().format("%Y%m%d_%H%M%S")).to_string(),
-    );
+pub fn screenshot(image_dir: PathBuf) {
+    let image_path = image_dir.join(format!(
+        "screenshot_{}.png",
+        Local::now().format("%Y%m%d_%H%M%S")
+    ));
+
+    match &image_path.to_str() {
+        Some(image) => get_screen_data().export_png(&image),
+        None => {}
+    }
 }
 
 pub fn error_message(message: String) -> Error {

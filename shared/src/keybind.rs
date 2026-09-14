@@ -4,10 +4,7 @@ use std::{
     io::Error,
 };
 
-use crate::{
-    EmulatorId,
-    config::{Config, load_config, save_config},
-};
+use crate::{EmulatorId, config::Config};
 
 // taken straight from miniquad and used regex because no way could i type this all out
 // https://github.com/not-fl3/miniquad/blob/master/src/native/wasm/keycodes.rs
@@ -130,6 +127,11 @@ pub const BINDABLE_KEYS: [KeyCode; 117] = [
     KeyCode::RightSuper,
     KeyCode::Menu,
 ];
+
+pub struct SaveKeys {
+    pub gbakeys: BTreeMap<String, String>,
+    pub hotkeys: BTreeMap<String, String>,
+}
 
 #[derive(Clone, Copy)]
 pub struct Bindings {
@@ -268,9 +270,7 @@ impl KeyBindings {
         }
     }
 
-    pub fn load_keys(&mut self) {
-        let config = load_config();
-
+    pub fn load_keys(mut self, config: &Config) -> Self {
         self.gba = DEFAULT_GBA_KEYS
             .iter()
             .map(|b| Bindings {
@@ -296,15 +296,11 @@ impl KeyBindings {
                     .unwrap_or(b.key),
             })
             .collect();
-    }
-
-    pub fn initialize_keys(mut self) -> Self {
-        self.load_keys();
 
         self
     }
 
-    pub fn save_keys(&self) -> Result<(), Error> {
+    pub fn save_keys(&self) -> Result<SaveKeys, Error> {
         let gbakeys: BTreeMap<String, String> = self
             .gba
             .clone()
@@ -329,11 +325,7 @@ impl KeyBindings {
             })
             .collect();
 
-        let config = Config { gbakeys, hotkeys };
-
-        save_config(&config)?;
-
-        Ok(())
+        Ok(SaveKeys { gbakeys, hotkeys })
     }
 
     pub fn rebind(&mut self, key_id: KeyId, index: usize, key: KeyCode) {

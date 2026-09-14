@@ -1,3 +1,5 @@
+use shared::traits::BitOps;
+
 pub struct VRam {
     pub bank: u8,
     pub bank_size: u16,
@@ -31,7 +33,7 @@ impl VRam {
     }
 
     pub fn bank_swap(&mut self, value: u8) {
-        self.bank = value & 0x01;
+        self.bank = value.get_bit(0);
     }
 
     pub fn read_banked(&self, bank: usize, address: u16) -> u8 {

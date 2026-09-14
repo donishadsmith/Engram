@@ -174,15 +174,17 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
             } else {
                 if instruction.is_set(10) {
                     // format 5
-                    let rd = (instruction.get_bit(7) << 3) | instruction.get_bit_range(0..3) as u8; // rd/hd
-                    let rs = (instruction.get_bit(6) << 3) | instruction.get_bit_range(3..6) as u8; // rs/hs
+                    let rd =
+                        ((instruction.get_bit(7) << 3) | instruction.get_bit_range(0..3)) as u8; // rd/hd
+                    let rs =
+                        ((instruction.get_bit(6) << 3) | instruction.get_bit_range(3..6)) as u8; // rs/hs
 
                     let opcode = instruction.get_bit_range(8..10) as u8;
 
                     if opcode == 0b11 {
                         return DecodedArm {
                             condition,
-                            instruction: ArmInstruction::BranchExchange { rn: rs },
+                            instruction: ArmInstruction::BranchExchange { rn: rs as u8 },
                         };
                     } else {
                         let instruction = match opcode {

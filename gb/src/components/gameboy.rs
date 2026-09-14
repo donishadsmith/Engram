@@ -1,6 +1,6 @@
 use crate::components::{bus::Bus, cpu::CPU, gamepak::GamePak};
 use shared::utils::Emulator;
-use std::io::Error;
+use std::{io::Error, mem::take};
 
 const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
@@ -115,7 +115,7 @@ impl GameBoy {
     }
 
     pub fn take_frame(&mut self) -> bool {
-        std::mem::take(&mut self.cpu.bus.ppu.frame_ready)
+        take(&mut self.cpu.bus.ppu.frame_ready)
     }
 }
 

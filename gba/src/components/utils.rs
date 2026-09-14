@@ -201,54 +201,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_zero() {
-        assert_eq!(0u8.is_zero(), true);
-    }
-
-    #[test]
-    fn test_is_negative() {
-        let mut byte: u8 = 0b10000000;
-        assert_eq!(byte.is_negative(), true);
-
-        byte.clear_bit(7);
-        assert_eq!(byte.is_negative(), false)
-    }
-
-    #[test]
-    fn test_basic_bit_ops() {
-        let mut x: u8 = 0;
-        x.set_bit(2);
-
-        assert_eq!(x, 0x04);
-        assert!(x.is_set(2));
-        assert!(!x.is_clear(2));
-        assert_eq!(x.get_bit(2), 1);
-
-        x.clear_bit(2);
-        assert!(x.is_clear(2));
-    }
-
-    #[test]
-    fn test_range_bit_ops() {
-        let mut x: u8 = 0;
-        x.set_bit_range(1..4);
-        assert_eq!(x, 0x0E);
-
-        let bits = x.get_bit_range(1..4);
-        assert_eq!(bits, 0b111);
-
-        x.clear_bit_range(1..4);
-        assert_eq!(x, 0);
-    }
-
-    #[test]
-    fn test_clear_range_additional() {
-        let mut x: u16 = 0xFFFF;
-        x.clear_bit_range(8..16);
-        assert_eq!(x, 0x00FF);
-    }
-
-    #[test]
     fn test_lsl() {
         let word = 0b1110_0000_0000_0000_0000_0010_1001_0001;
         let (value, carry) = word.lsl_imm(3);

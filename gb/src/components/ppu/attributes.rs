@@ -1,3 +1,5 @@
+use shared::traits::BitOps;
+
 pub struct ColorBackgroundAttributes {
     pub priority: bool,
     pub y_flip: bool,
@@ -9,11 +11,11 @@ pub struct ColorBackgroundAttributes {
 impl ColorBackgroundAttributes {
     pub fn from_byte(byte: u8) -> Self {
         Self {
-            priority: (byte >> 7) & 0x01 == 1,
-            y_flip: byte & 0x40 != 0,
-            x_flip: byte & 0x20 != 0,
-            bank: ((byte & 0x08) >> 3) as usize,
-            color_palette: byte & 0x07,
+            priority: byte.is_set(7),
+            y_flip: byte.is_set(6),
+            x_flip: byte.is_set(5),
+            bank: byte.get_bit(3) as usize,
+            color_palette: byte.get_bit_range(0..3),
         }
     }
 }

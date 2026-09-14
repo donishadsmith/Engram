@@ -1,6 +1,4 @@
-use egui::{
-    CentralPanel, Color32, RichText, SidePanel, TextureHandle, TextureOptions, TopBottomPanel,
-};
+use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
 use std::collections::VecDeque;
 
@@ -8,7 +6,7 @@ use crate::components::{
     apu::global_control::{AudioChannel, PanDirection},
     gba::GBA,
 };
-use shared::render::to_rgba;
+use shared::debug::create_game_screen;
 
 const CHANNELS: [AudioChannel; 6] = [
     AudioChannel::Channel1,
@@ -415,15 +413,6 @@ impl AudioDebugger {
                 });
         });
 
-        let frame = &gba.bus.ppu.frontend;
-        let image =
-            egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &to_rgba(&frame));
-        let texture = self.texture.get_or_insert_with(|| {
-            egui_ctx.load_texture("GBA", image.clone(), TextureOptions::NEAREST)
-        });
-        texture.set(image, TextureOptions::NEAREST);
-        let texture_id = texture.id();
-
         SidePanel::left("PSG").show(egui_ctx, |ui| {
             ui.heading("PSG Channels").highlight();
             ui.separator();
@@ -626,18 +615,7 @@ impl AudioDebugger {
             });
         });
 
-        CentralPanel::default().show(egui_ctx, |ui| {
-            let size = ui.available_size();
-            let scale = (size.x / frame.width as f32)
-                .min(size.y / frame.height as f32)
-                .floor()
-                .max(1.0);
-
-            let size = egui::vec2(frame.width as f32 * scale, frame.height as f32 * scale);
-            ui.centered_and_justified(|ui| {
-                ui.image((texture_id, size));
-            });
-        });
+        create_game_screen(&mut self.texture, egui_ctx, &gba.bus.ppu.frontend);
 
         self.mute_channels(gba);
     }

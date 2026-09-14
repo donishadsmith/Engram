@@ -1,11 +1,13 @@
+use shared::traits::BitOps;
+
 pub trait ByteOps8 {
-    fn set_bit(&self, mask: u8, flag: bool) -> u8;
+    fn with_mask(&self, mask: u8, flag: bool) -> u8;
 
     fn i16(&self) -> i16;
 }
 
 impl ByteOps8 for u8 {
-    fn set_bit(&self, mask: u8, flag: bool) -> u8 {
+    fn with_mask(&self, mask: u8, flag: bool) -> u8 {
         if flag { self | mask } else { self & !mask }
     }
 
@@ -27,7 +29,7 @@ impl ByteOps16 for u16 {
     }
 
     fn low_byte(&self) -> u8 {
-        (self & 0xFF) as u8
+        self.get_bit_range(0..8) as u8
     }
 }
 

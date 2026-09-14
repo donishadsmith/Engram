@@ -811,7 +811,7 @@ fn halfword_data_transfer(
                    LDRSH Rd,[odd]  -->  LDRSB Rd,[odd]         ;sign-expand BYTE value
                 */
                 TransferKind::UnsignedHalfword => {
-                    let misaligned_bit = start_address.get_bit(0) as u32;
+                    let misaligned_bit = start_address.get_bit(0);
                     let word = bus.read_u16(start_address, AccessType::Nonsequential) as u32;
 
                     word.rotate_right(8 * misaligned_bit)

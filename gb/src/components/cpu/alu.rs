@@ -86,7 +86,7 @@ pub fn half_carry_add(a: u8, b: u8, carry: bool) -> bool {
 }
 
 pub fn half_carry_sub(a: u8, b: u8, carry: bool) -> bool {
-    (a & 0x0F) < (b & 0x0f) + carry as u8
+    (a & 0x0F) < (b & 0x0F) + carry as u8
 }
 
 impl ArithmeticOperation {

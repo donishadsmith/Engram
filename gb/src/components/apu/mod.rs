@@ -4,7 +4,7 @@ pub mod pulse;
 pub mod sound_control;
 pub mod wave;
 
-use shared::audio::LowPassFilter;
+use shared::{audio::LowPassFilter, traits::BitOps};
 use {
     crate::components::apu::noise::NoiseChannel, fir::FIR_KERNEL, pulse::PulseChannel,
     wave::WaveChannel,
@@ -53,7 +53,7 @@ impl GlobalControl {
     }
 
     fn audio_on(&self) -> bool {
-        (self.nr52 & 0x80) != 0
+        self.nr52.is_set(7)
     }
 
     fn panned_left(&self, channel: AudioChannel) -> bool {
@@ -64,7 +64,7 @@ impl GlobalControl {
             AudioChannel::Channel4 => 7,
         };
 
-        (self.nr51 >> bit) & 1 != 0
+        self.nr51.is_set(bit)
     }
 
     fn panned_right(&self, channel: AudioChannel) -> bool {
@@ -75,13 +75,13 @@ impl GlobalControl {
             AudioChannel::Channel4 => 3,
         };
 
-        (self.nr51 >> bit) & 1 != 0
+        self.nr51.is_set(bit)
     }
 
     // Just gonna ignore VIN for now
     fn volume(&self) -> StereoVolume {
-        let left = (self.nr50 >> 4) & 0x07;
-        let right = self.nr50 & 0x07;
+        let left = self.nr50.get_bit_range(4..7);
+        let right = self.nr50.get_bit_range(0..3);
 
         StereoVolume {
             left: if left == 0 { 1 } else { left },
@@ -108,10 +108,10 @@ impl FrameSequencer {
 
     fn tick(&mut self) -> FrameSequencerStep {
         let step = self.step;
-        self.step = (self.step + 1) & 0x07;
+        self.step = (self.step + 1).get_bit_range(0..3);
 
         FrameSequencerStep {
-            length: step & 0x01 == 0,
+            length: step.is_clear(0),
             sweep: step == 0x02 || step == 0x06,
             envelope: step == 0x07,
         }

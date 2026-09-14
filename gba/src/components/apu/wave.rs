@@ -127,7 +127,7 @@ impl WaveChannel {
             0x4000070 => self.soundcnt.from_index(0),
             0x04000072 => {
                 let value = self.soundcnt.from_index(1);
-                value.get_bit_range(13..15) << 13 | ((value.get_bit(15) as u16) << 15)
+                value.get_bit_range(13..15) << 13 | (value.get_bit(15) << 15)
             }
             0x4000074 => (self.length.enabled as u16) << 14,
             _ => 0,

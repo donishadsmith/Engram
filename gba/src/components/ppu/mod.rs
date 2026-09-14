@@ -390,7 +390,7 @@ impl PPU {
             let mask = window_mask[pixel];
 
             for bg in bg_lines {
-                if !bg.on || mask & (1 << bg.id) == 0 {
+                if !bg.on || mask.is_clear(bg.id) {
                     continue;
                 }
 
@@ -414,7 +414,7 @@ impl PPU {
                 }
             }
 
-            if mask & (1 << 4) != 0 {
+            if mask.is_set(4) {
                 if let Some(sprite_pixel) = &sprite_line[pixel] {
                     let candidate = Pixel {
                         id: LayerId::Sprite,
@@ -432,8 +432,7 @@ impl PPU {
                 }
             }
 
-            self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = if mask & (1 << 5) != 0
-            {
+            self.frame.pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = if mask.is_set(5) {
                 apply_effects(first, second, &self.color_special_effects)
             } else {
                 first.color

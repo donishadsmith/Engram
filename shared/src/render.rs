@@ -1,5 +1,7 @@
 use macroquad::prelude::*;
 
+use crate::traits::BitOps;
+
 const RGBA_BYTES_PER_PIXEL: usize = 4;
 
 pub struct Frame {
@@ -63,11 +65,10 @@ impl Screen {
 
 pub fn rgb555_to_rgb888(rgb555: u16) -> [u8; 3] {
     let expand = |v: u16| -> u8 { ((v << 3) | (v >> 2)) as u8 };
-
     [
-        expand(rgb555 & 0x1F),
-        expand((rgb555 >> 5) & 0x1F),
-        expand((rgb555 >> 10) & 0x1F),
+        expand(rgb555.get_bit_range(0..5)),
+        expand(rgb555.get_bit_range(5..10)),
+        expand(rgb555.get_bit_range(10..15)),
     ]
 }
 

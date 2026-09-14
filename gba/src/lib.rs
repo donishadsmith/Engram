@@ -11,7 +11,10 @@
 pub mod components;
 mod debug;
 
-use crate::components::{gamepak::GamePak, gba::GBA};
+use crate::{
+    components::{gamepak::GamePak, gba::GBA},
+    debug::ppu::PpuDebugger,
+};
 use debug::audio::AudioDebugger;
 use macroquad::input::KeyCode;
 use shared::{
@@ -29,6 +32,7 @@ const GBA_CLOCK_SPEED: u32 = 16777216;
 pub struct GBASession {
     audio: AudioOutput,
     audio_debugger: AudioDebugger,
+    ppu_debugger: PpuDebugger,
     gba: GBA,
     screen: Screen,
     frame_ready: bool,
@@ -38,6 +42,7 @@ pub struct GBASession {
 impl GBASession {
     pub fn new_session(rom_path: PathBuf) -> Result<Self, Error> {
         let audio_debugger = AudioDebugger::new();
+        let ppu_debugger = PpuDebugger::new();
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
         let apu_sample_cycles = GBA_CLOCK_SPEED / audio.sample_rate;
@@ -47,6 +52,7 @@ impl GBASession {
         Ok(Self {
             audio,
             audio_debugger,
+            ppu_debugger,
             gba,
             screen,
             frame_ready: false,
@@ -100,6 +106,7 @@ impl EmulatorSession for GBASession {
     fn toggle_debug(&mut self, debug_page: DebugPage) {
         match self.active_debug {
             Some(DebugPage::Audio) => self.audio_debugger.close(&mut self.gba),
+            Some(DebugPage::Video) => self.ppu_debugger.close(),
             None => {}
         }
 
@@ -113,6 +120,7 @@ impl EmulatorSession for GBASession {
     fn debug_ui(&mut self, egui_ctx: &egui::Context) {
         match self.active_debug {
             Some(DebugPage::Audio) => self.audio_debugger.show_ui(egui_ctx, &mut self.gba),
+            Some(DebugPage::Video) => self.ppu_debugger.show_ui(egui_ctx, &self.gba),
             None => {}
         }
     }
@@ -149,5 +157,12 @@ impl EmulatorSession for GBASession {
 
     fn id(&self) -> EmulatorId {
         EmulatorId::Gba
+    }
+
+    fn debug_page_available(&self, debug_page: DebugPage) -> bool {
+        match debug_page {
+            DebugPage::Audio | DebugPage::Video => true,
+            //_ => false,
+        }
     }
 }

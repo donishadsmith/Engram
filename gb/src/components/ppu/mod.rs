@@ -15,7 +15,7 @@ use crate::components::{
     },
     utils::ByteOps8,
 };
-use shared::render::Frame;
+use shared::{render::Frame, traits::BitOps};
 /*
     https://github.com/Ashiepaws/GBEDG/blob/master/ppu/index.md
     https://blog.tigris.fr/2019/09/15/writing-an-emulator-the-first-pixel/
@@ -78,14 +78,14 @@ struct LCDC {
 impl LCDC {
     fn from_byte(byte: u8) -> Self {
         Self {
-            enable_lcd: (byte & 0x80) != 0,
-            window_tile_map_select: byte & 0x40,
-            enable_window: (byte & 0x20) != 0,
-            tile_data_select: (byte & 0x10).min(1),
-            bg_tile_map_select: (byte & 0x08).min(1),
-            sprite_size: if (byte & 0x04) != 0 { 16 } else { 8 },
-            enable_sprite: (byte & 0x02) != 0,
-            enable_bg_and_window: (byte & 0x01) != 0,
+            enable_lcd: byte.is_set(7),
+            window_tile_map_select: byte.get_bit(6),
+            enable_window: byte.is_set(5),
+            tile_data_select: byte.get_bit(4),
+            bg_tile_map_select: byte.get_bit(3),
+            sprite_size: if byte.is_set(2) { 16 } else { 8 },
+            enable_sprite: byte.is_set(1),
+            enable_bg_and_window: byte.is_set(0),
         }
     }
 
@@ -311,7 +311,7 @@ impl PPU {
             self.frame.pixels[self.ly as usize * SCREEN_WIDTH + pixel] = if self.is_cgb {
                 cram_color(&self.bg_palette_ram, attributes.color_palette, color_index)
             } else {
-                let shade = (self.bgp >> (color_index * 2)) & 0x03;
+                let shade = (self.bgp >> (color_index * 2)).get_bit_range(0..2);
                 DMG_SHADES[shade as usize]
             };
         }
@@ -371,7 +371,7 @@ impl PPU {
                     } else {
                         let dmg_palette =
                             self.monochrome_object_palette(sprite_attribute.palette_number);
-                        let shade = (dmg_palette >> (color_index * 2)) & 0x03;
+                        let shade = (dmg_palette >> (color_index * 2)).get_bit_range(0..2);
                         DMG_SHADES[shade as usize]
                     };
 
@@ -401,7 +401,7 @@ impl PPU {
             .take(10)
             .collect();
 
-        if !self.is_cgb || (self.opri & 0x01) != 0 {
+        if !self.is_cgb || self.opri.is_set(0) {
             sprite_attributes.sort_by(|a, b| {
                 b.position_x
                     .cmp(&a.position_x)
@@ -430,13 +430,12 @@ impl PPU {
     ) -> u8 {
         let tile_data_low = self.vram.read_banked(bank, current_tile_address);
         let tile_data_high = self.vram.read_banked(bank, current_tile_address + 1);
-        let color_index = if enable {
-            ((tile_data_high >> bit) & 0x01) << 1 | ((tile_data_low >> bit) & 0x01)
+
+        if enable {
+            (tile_data_high.get_bit(bit as usize) << 1) | tile_data_low.get_bit(bit as usize)
         } else {
             0
-        };
-
-        color_index
+        }
     }
 
     pub fn current_mode(&self) -> PPUMode {
@@ -469,10 +468,10 @@ impl PPU {
     // Future reference: https://alfaexploit.com/en/posts/gameboy_dev04/
     fn update_stat_interrupt_line(&mut self, interrupt_flag: &mut u8) {
         let mode: PPUMode = self.current_mode();
-        let interrupt_line = mode == PPUMode::HBlank && (self.stat & 0x08) != 0
-            || (mode == PPUMode::VBlank && (self.stat & 0x10) != 0)
-            || (mode == PPUMode::OAMSearch && (self.stat & 0x20) != 0)
-            || (self.ly == self.lyc && (self.stat & 0x40) != 0);
+        let interrupt_line = mode == PPUMode::HBlank && self.stat.is_set(3)
+            || (mode == PPUMode::VBlank && self.stat.is_set(4))
+            || (mode == PPUMode::OAMSearch && self.stat.is_set(5))
+            || (self.ly == self.lyc && self.stat.is_set(6));
 
         if interrupt_line && !self.stat_interrupt_line {
             *interrupt_flag |= InterruptMode::Stat.mask();
@@ -482,9 +481,9 @@ impl PPU {
     }
 
     fn write_lcdc(&mut self, value: u8) {
-        let lcd_was_on = self.lcdc & 0x80 != 0;
+        let lcd_was_on = self.lcdc.is_set(7);
         self.lcdc = value;
-        if lcd_was_on && self.lcdc & 0x80 == 0 {
+        if lcd_was_on && self.lcdc.is_clear(7) {
             self.ly = 0;
             self.dots = 0;
             self.window_line = 0;
@@ -495,8 +494,8 @@ impl PPU {
 
     fn read_color_palette_index(&self, palette: ColorPaletteRegisterType) -> u8 {
         match palette {
-            ColorPaletteRegisterType::Background => self.bgpi & 0x3F,
-            ColorPaletteRegisterType::Object => self.obpi & 0x3F,
+            ColorPaletteRegisterType::Background => self.bgpi.get_bit_range(0..6),
+            ColorPaletteRegisterType::Object => self.obpi.get_bit_range(0..6),
         }
     }
 
@@ -541,8 +540,8 @@ impl PPU {
             ColorPaletteRegisterType::Object => &mut self.obpi,
         };
 
-        if *selected_palette & 0x80 != 0 {
-            let incremented_address = ((*selected_palette & 0x3F) + 1) % 64;
+        if selected_palette.is_set(7) {
+            let incremented_address = (selected_palette.get_bit_range(0..6) + 1) % 64;
             *selected_palette = *selected_palette & 0x80 | incremented_address;
         }
     }
@@ -551,7 +550,7 @@ impl PPU {
         match address {
             0xFF40 => self.lcdc,
             0xFF41 => {
-                let lcd_on = self.lcdc & 0x80 != 0;
+                let lcd_on = self.lcdc.is_set(7);
                 let mode = if lcd_on { self.current_mode() as u8 } else { 0 };
                 let equal = ((self.ly == self.lyc) as u8) << 2;
                 0x80 | self.stat | equal | mode
@@ -576,7 +575,7 @@ impl PPU {
                 self.read_color_palette_register(ColorPaletteRegisterType::Object)
             }
             0xFF6B if self.is_cgb => self.read_color_palette_data(ColorPaletteRegisterType::Object),
-            0xFF6C if self.is_cgb => self.opri & 0x01,
+            0xFF6C if self.is_cgb => self.opri.get_bit(0),
             _ => 0xFF,
         }
     }

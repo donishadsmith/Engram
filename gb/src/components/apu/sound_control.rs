@@ -1,3 +1,5 @@
+use shared::traits::BitOps;
+
 #[derive(Clone, Copy)]
 #[repr(u8)]
 pub enum EnvelopeDirection {
@@ -7,10 +9,10 @@ pub enum EnvelopeDirection {
 
 impl EnvelopeDirection {
     pub fn from_register(value: u8) -> EnvelopeDirection {
-        match (value >> 3) & 0x01 {
-            0 => EnvelopeDirection::Decrement,
-            1 => EnvelopeDirection::Increment,
-            _ => unreachable!(),
+        if value.is_set(3) {
+            EnvelopeDirection::Increment
+        } else {
+            EnvelopeDirection::Decrement
         }
     }
 
@@ -47,9 +49,9 @@ impl Envelope {
     }
 
     pub fn set(&mut self, value: u8) {
-        self.initial_volume = value >> 4;
+        self.initial_volume = value.get_bit_range(4..8);
         self.direction = EnvelopeDirection::from_register(value);
-        self.period = value & 0x07;
+        self.period = value.get_bit_range(0..3);
     }
 
     pub fn dac_enabled(&self) -> bool {
@@ -103,6 +105,6 @@ impl Length {
     }
 
     pub fn write(&mut self, value: u8) {
-        self.timer = 64 - (value & 0x3F) as u16;
+        self.timer = 64 - value.get_bit_range(0..6) as u16;
     }
 }

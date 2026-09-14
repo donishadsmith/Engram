@@ -1,6 +1,8 @@
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 
+use shared::traits::BitOps;
+
 use crate::components::apu::sound_control::{Envelope, Length};
 
 struct LFSR {
@@ -17,10 +19,11 @@ impl LFSR {
     }
 
     fn step(&mut self) {
-        let feedback = (self.register ^ (self.register >> 1)) & 1;
-        self.register = (self.register & !(1 << 15)) | (feedback << 15);
+        let feedback = (self.register ^ (self.register >> 1)).get_bit_range(0..1);
+
+        self.register.set_bit_range_value(15..16, feedback);
         if self.width == 1 {
-            self.register = (self.register & !(1 << 7)) | (feedback << 7);
+            self.register.set_bit_range_value(7..8, feedback);
         }
 
         self.register >>= 1;
@@ -71,9 +74,9 @@ impl NoiseChannel {
     }
 
     pub fn write_nr43(&mut self, value: u8) {
-        self.clock_shift = (value & 0xF0) >> 4;
-        self.lfsr.width = (value & 0x08) >> 3;
-        self.clock_divider = value & 0x07;
+        self.clock_shift = value.get_bit_range(4..8);
+        self.lfsr.width = value.get_bit(3);
+        self.clock_divider = value.get_bit_range(0..3);
     }
 
     pub fn read_nr44(&self) -> u8 {
@@ -81,9 +84,9 @@ impl NoiseChannel {
     }
 
     pub fn write_nr44(&mut self, value: u8) {
-        self.length.enabled = (value & 0x40) != 0;
+        self.length.enabled = value.is_set(6);
 
-        if (value >> 7) & 0x01 == 1 {
+        if value.is_set(7) {
             self.enabled = self.envelope.dac_enabled();
 
             if self.length.timer == 0 {
@@ -91,7 +94,7 @@ impl NoiseChannel {
             }
 
             self.frequency_timer =
-                ((DIVISORS[self.clock_divider as usize]) as u32) << self.clock_shift;
+                (DIVISORS[self.clock_divider as usize] as u32) << self.clock_shift;
             self.envelope.timer = self.envelope.period;
             self.envelope.current_volume = self.envelope.initial_volume;
             self.lfsr.register = 0x7FFF;
@@ -106,6 +109,7 @@ impl NoiseChannel {
         if self.frequency_timer == 0 {
             self.frequency_timer =
                 (DIVISORS[self.clock_divider as usize] as u32) << self.clock_shift;
+
             if self.clock_shift < 14 {
                 self.lfsr.step();
             }
@@ -114,7 +118,7 @@ impl NoiseChannel {
 
     pub fn sample(&self) -> u8 {
         if self.enabled {
-            (!(self.lfsr.register) as u8 & 0x01) * self.envelope.current_volume
+            (self.lfsr.register.is_clear(0) as u8) * self.envelope.current_volume
         } else {
             0
         }

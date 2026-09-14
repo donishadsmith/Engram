@@ -5,6 +5,7 @@
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence?utm_source
 
 use crate::components::apu::sound_control::{Envelope, Length};
+use shared::traits::BitOps;
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -17,7 +18,7 @@ enum DutyCycle {
 
 impl DutyCycle {
     fn from_register(value: u8) -> DutyCycle {
-        match value >> 6 {
+        match value.get_bit_range(6..8) {
             0b00 => DutyCycle::Duty12,
             0b01 => DutyCycle::Duty25,
             0b10 => DutyCycle::Duty50,
@@ -47,10 +48,10 @@ enum SweepDirection {
 
 impl SweepDirection {
     fn from_register(value: u8) -> SweepDirection {
-        match (value >> 3) & 0x01 {
-            0 => SweepDirection::Addition,
-            1 => SweepDirection::Subtraction,
-            _ => unreachable!(),
+        if value.is_set(3) {
+            SweepDirection::Subtraction
+        } else {
+            SweepDirection::Addition
         }
     }
 }
@@ -143,7 +144,7 @@ impl PulseChannel {
     pub fn write_nrx2(&mut self, value: u8) {
         self.envelope.set(value);
 
-        if value & 0xF8 == 0 {
+        if value.get_bit_range(3..8) == 0 {
             self.enabled = false;
         }
     }
@@ -161,10 +162,11 @@ impl PulseChannel {
     }
 
     pub fn write_nrx4(&mut self, value: u8) {
-        self.frequency_period = (self.frequency_period & 0x00FF) | (((value & 0x07) as u16) << 8);
-        self.length.enabled = (value & 0x40) != 0;
+        self.frequency_period =
+            self.frequency_period.get_bit_range(0..8) | ((value.get_bit_range(0..3) as u16) << 8);
+        self.length.enabled = value.is_set(6);
 
-        if (value >> 7) & 0x01 == 1 {
+        if value.is_set(7) {
             self.enabled = self.envelope.dac_enabled();
 
             if self.length.timer == 0 {
@@ -196,9 +198,9 @@ impl PulseChannel {
     // Same here
     pub fn write_nr10(&mut self, value: u8) {
         let sweep = self.sweep.as_mut().unwrap();
-        sweep.pace = (value >> 4) & 0x07;
+        sweep.pace = value.get_bit_range(4..7);
         sweep.direction = SweepDirection::from_register(value);
-        sweep.shift = value & 0x07;
+        sweep.shift = value.get_bit_range(0..3);
     }
 
     pub fn tick(&mut self) {
@@ -208,7 +210,7 @@ impl PulseChannel {
 
         if self.frequency_timer == 0 {
             self.frequency_timer = (2048 - self.frequency_period) * 4;
-            self.duty_position = (self.duty_position + 1) & 0x07;
+            self.duty_position = (self.duty_position + 1).get_bit_range(0..3);
         }
     }
 

@@ -1,3 +1,5 @@
+use shared::traits::BitOps;
+
 pub struct SpriteAttribute {
     pub bank: usize,
     pub oam_index: usize,
@@ -14,7 +16,7 @@ impl SpriteAttribute {
     pub fn from_oam(oam_index: usize, bytes: &[u8], is_cgb: bool) -> Self {
         Self {
             bank: if is_cgb {
-                ((bytes[3] & 0x08) >> 3) as usize
+                bytes[3].get_bit(3) as usize
             } else {
                 0
             },
@@ -22,13 +24,13 @@ impl SpriteAttribute {
             position_y: bytes[0] as i16 - 16,
             position_x: bytes[1] as i16 - 8,
             tile_index: bytes[2],
-            priority: (bytes[3] & 0x80) == 0,
-            flip_y: (bytes[3] & 0x40) != 0,
-            flip_x: (bytes[3] & 0x20) != 0,
+            priority: bytes[3].is_clear(7),
+            flip_y: bytes[3].is_set(6),
+            flip_x: bytes[3].is_set(5),
             palette_number: if !is_cgb {
-                bytes[3] & 0x10
+                bytes[3].get_bit(4)
             } else {
-                bytes[3] & 0x07
+                bytes[3].get_bit_range(0..3)
             },
         }
     }

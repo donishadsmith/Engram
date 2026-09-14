@@ -1000,7 +1000,7 @@ fn huff_uncomp(registers: &Registers, bus: &mut Bus) {
         bitstream += 4;
 
         for bit in (0..32).rev() {
-            if let Some(symbol) = tree.step(bus, word.get_bit(bit) as u32) {
+            if let Some(symbol) = tree.step(bus, word.get_bit(bit)) {
                 if buffer.push(
                     symbol.get_bit_range(0..data_size as usize) as u32,
                     data_size as u8,

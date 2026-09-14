@@ -77,19 +77,19 @@ pub struct FlagDelta {
 impl FlagDelta {
     pub fn apply(self, mut f: u8) -> u8 {
         if self.z != FlagType::Unmodified {
-            f = f.set_bit(StatusFlag::Z.u8(), self.z == FlagType::Set);
+            f = f.with_mask(StatusFlag::Z.u8(), self.z == FlagType::Set);
         }
 
         if self.n != FlagType::Unmodified {
-            f = f.set_bit(StatusFlag::N.u8(), self.n == FlagType::Set);
+            f = f.with_mask(StatusFlag::N.u8(), self.n == FlagType::Set);
         }
 
         if self.h != FlagType::Unmodified {
-            f = f.set_bit(StatusFlag::H.u8(), self.h == FlagType::Set);
+            f = f.with_mask(StatusFlag::H.u8(), self.h == FlagType::Set);
         }
 
         if self.c != FlagType::Unmodified {
-            f = f.set_bit(StatusFlag::C.u8(), self.c == FlagType::Set);
+            f = f.with_mask(StatusFlag::C.u8(), self.c == FlagType::Set);
         }
 
         f & 0xF0

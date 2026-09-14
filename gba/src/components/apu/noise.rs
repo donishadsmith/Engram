@@ -8,7 +8,7 @@ use crate::components::apu::{
 use shared::traits::BitOps;
 
 struct LFSR {
-    width: u8,
+    width: u16,
     register: u16,
 }
 
@@ -21,7 +21,7 @@ impl LFSR {
     }
 
     fn step(&mut self) {
-        let feedback = (self.register ^ (self.register >> 1)).get_bit(0) as u16;
+        let feedback = (self.register ^ (self.register >> 1)).get_bit(0);
         self.register.set_bit_range_value(15..16, feedback);
         if self.width == 1 {
             self.register.set_bit_range_value(7..8, feedback);

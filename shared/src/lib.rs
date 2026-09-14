@@ -48,6 +48,10 @@ pub trait EmulatorSession {
 
     fn debug_ui(&mut self, _egui_ctx: &Context) {}
 
+    fn debug_page_available(&self, _debug_page: DebugPage) -> bool {
+        false
+    }
+
     fn has_solar(&self) -> bool {
         false
     }

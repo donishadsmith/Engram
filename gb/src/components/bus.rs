@@ -14,6 +14,9 @@ MemoryMap
 - 160 bytes of oam - sprites
 */
 
+use shared::traits::BitOps;
+use std::mem::take;
+
 use crate::components::{
     apu::APU,
     bootloader::{CGB_BOOT, DMG_BOOTIX},
@@ -147,7 +150,7 @@ impl Bus {
     }
 
     fn get_wram_index(&self, address: u16) -> usize {
-        // Echo Ram is a mirror of work ram 0xC000–0xDDFF
+        // Echo Ram is a mirror of work ram 0xC000-0xDDFF
         let adjusted_address = if (0xE000..=0xFDFF).contains(&address) {
             address - (0xFDFF - 0xDDFF)
         } else {
@@ -186,7 +189,7 @@ impl Bus {
             0x8000..=0x9FFF => self.ppu.vram.read(address),
             0xC000..=0xFFFF => {
                 self.wram[self.get_wram_index(if address >= 0xE000 {
-                    0xC000 + (address & 0x1FFF)
+                    0xC000 + address.get_bit_range(0..13)
                 } else {
                     address
                 })]
@@ -226,7 +229,7 @@ impl Bus {
         let source_address = ((self.hdma_registers[0] as u16) << 8) | self.hdma_registers[1] as u16;
         let offset =
             (((self.hdma_registers[2] as u16) << 8) | self.hdma_registers[3] as u16) as usize;
-        let blocks_remaining = ((value & 0x7F) as usize) + 1;
+        let blocks_remaining = (value.get_bit_range(0..7) as usize) + 1;
 
         self.vram_dma = VRAMDMAState {
             in_progress: true,
@@ -258,7 +261,7 @@ impl Bus {
     }
 
     pub fn hblank_dma_step(&mut self) {
-        let entered = std::mem::take(&mut self.ppu.entered_hblank);
+        let entered = take(&mut self.ppu.entered_hblank);
         if !self.vram_dma.in_progress || self.vram_dma.mode == 0 || !entered {
             return;
         }
@@ -316,12 +319,12 @@ impl AddressBus for Bus {
             0xFF51..=0xFF54 if self.is_cgb() => 0xFF,
             0xFF55 if self.is_cgb() => {
                 if self.vram_dma.in_progress {
-                    (self.vram_dma.blocks_remaining as u8 - 1) & 0x7F
+                    (self.vram_dma.blocks_remaining as u8 - 1).get_bit_range(0..7)
                 } else {
                     0xFF
                 }
             }
-            0xFF70 if self.is_cgb() => (self.svbk_register | 0xF8) & 0x07,
+            0xFF70 if self.is_cgb() => (self.svbk_register | 0xF8).get_bit_range(0..3),
             0xFF80..=0xFFFE => self.hram[(address - 0xFF80) as usize],
             0xFFFF => self.interrupt_enable,
             _ => 0xFF,
@@ -350,7 +353,7 @@ impl AddressBus for Bus {
             }
             0xFF04..=0xFF07 => self.timer.write_register(address, value),
             0xFE00..=0xFE9F => self.ppu.oam[(address - 0xFE00) as usize] = value,
-            0xFF0F => self.interrupt_flag = value & 0x1F,
+            0xFF0F => self.interrupt_flag = value.get_bit_range(0..5),
             0xFF10..=0xFF26 => self.apu.write_register(address, value),
             0xFF30..=0xFF3F => self.apu.write_wram(address, value),
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF68..=0xFF6C => {
@@ -359,17 +362,17 @@ impl AddressBus for Bus {
             }
             0xFF46 => self.oam_dma_transfer(value),
             0xFF4D if self.is_cgb() => {
-                self.key_register = (self.key_register & 0x80) | (value & 0x01);
+                self.key_register = (self.key_register & 0x80) | value.get_bit(0);
             }
             0xFF4F if self.is_cgb() => self.ppu.vram.bank_swap(value),
             0xFF50 => {
-                if (value & 0x01) != 0 {
+                if value.is_set(0) {
                     self.boot_status = BootStatus::Complete;
                 }
             }
             0xFF51 if self.is_cgb() => self.hdma_registers[0] = value,
             0xFF52 if self.is_cgb() => self.hdma_registers[1] = value & 0xF0,
-            0xFF53 if self.is_cgb() => self.hdma_registers[2] = value & 0x1F,
+            0xFF53 if self.is_cgb() => self.hdma_registers[2] = value.get_bit_range(0..5),
             0xFF54 if self.is_cgb() => self.hdma_registers[3] = value & 0xF0,
             0xFF55 if self.is_cgb() => self.initiate_vram_dma_transfer(value),
             0xFF70 if self.is_cgb() => {
@@ -382,13 +385,13 @@ impl AddressBus for Bus {
     }
 
     fn pending_interrupt(&self) -> u8 {
-        (self.read(0xFF0F) & self.read(0xFFFF)) & 0x1F
+        (self.read(0xFF0F) & self.read(0xFFFF)).get_bit_range(0..5)
     }
 
     fn perform_speed_switch(&mut self) -> bool {
-        if self.is_cgb() && self.key_register & 0x01 != 0 {
+        if self.is_cgb() && self.key_register.is_set(0) {
             self.key_register ^= 0x80;
-            self.key_register &= !0x01;
+            self.key_register.clear_bit(0);
             true
         } else {
             false

@@ -3,11 +3,12 @@ use macroquad::prelude::*;
 use rfd::FileDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
+    config::{Config, load_config, save_config},
     debug::DEBUG_PAGES,
     keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
     utils::{GifRecorder, screenshot},
 };
-use std::{io::Error, path::PathBuf};
+use std::{fs::create_dir_all, io::Error, path::PathBuf};
 
 fn conf() -> Conf {
     Conf {
@@ -24,6 +25,8 @@ struct Session {
     emulator: Option<Box<dyn EmulatorSession>>,
     rom_path: Option<PathBuf>,
     gif: GifRecorder,
+    image_dir: PathBuf,
+    set_image_dir: bool,
     key_bindings: KeyBindings,
     show_key_bindings: bool,
     show_hotkeys: bool,
@@ -34,15 +37,19 @@ impl Session {
     fn new() -> Self {
         prevent_quit();
 
+        let config = load_config();
+
         Self {
             state: EmulatorState::Launch,
             emulator: None,
             rom_path: None,
             gif: GifRecorder::new(),
-            key_bindings: KeyBindings::new().initialize_keys(),
+            key_bindings: KeyBindings::new().load_keys(&config),
+            image_dir: PathBuf::from(config.image_dir.unwrap()),
             show_key_bindings: false,
             show_hotkeys: false,
             open_gif_settings: false,
+            set_image_dir: false,
         }
     }
 
@@ -82,12 +89,42 @@ impl Session {
 
         Ok(())
     }
+
+    fn save_configs(&self) -> Result<(), Error> {
+        let save_keys = self.key_bindings.save_keys()?;
+
+        let config = Config {
+            gbakeys: save_keys.gbakeys,
+            hotkeys: save_keys.hotkeys,
+            image_dir: Some(
+                self.image_dir
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
+            ),
+        };
+
+        save_config(&config)
+    }
+
+    // TODO: do better
+    fn create_image_path(&self) -> Result<(), Error> {
+        create_dir_all(self.image_dir.parent().unwrap())?;
+
+        Ok(())
+    }
+
+    fn get_image_path(&self) -> PathBuf {
+        let _ = self.create_image_path();
+        self.image_dir.clone()
+    }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let _ = self.key_bindings.save_keys();
         let _ = self.save();
+        let _ = self.save_configs();
     }
 }
 
@@ -193,8 +230,8 @@ async fn main() -> Result<(), Error> {
                 session.state = EmulatorState::Running;
             }
             EmulatorState::Quit => {
-                session.gif.stop()?;
-                session.key_bindings.save_keys()?;
+                session.gif.stop();
+                session.save_configs()?;
                 break;
             }
             EmulatorState::Launch => {
@@ -329,6 +366,10 @@ async fn main() -> Result<(), Error> {
                         if emu.has_debug_ui() {
                             ui.menu_button("Debug", |ui| {
                                 for debug_page in DEBUG_PAGES {
+                                    if !emu.debug_page_available(debug_page) {
+                                        continue;
+                                    }
+
                                     if ui
                                         .selectable_label(
                                             emu.debug_visible(debug_page),
@@ -356,7 +397,7 @@ async fn main() -> Result<(), Error> {
                             .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
                             .clicked()
                         {
-                            screenshot();
+                            screenshot(session.get_image_path());
                             ui.close_menu();
                         }
 
@@ -384,7 +425,9 @@ async fn main() -> Result<(), Error> {
                         {
                             if session.gif.is_recording() {
                                 if let Some(emu) = &session.emulator {
-                                    let _ = session.gif.toggle(emu.reference_frontend());
+                                    let _ = session
+                                        .gif
+                                        .toggle(emu.reference_frontend(), session.get_image_path());
                                 }
                             } else {
                                 session.open_gif_settings = true;
@@ -392,18 +435,54 @@ async fn main() -> Result<(), Error> {
 
                             ui.close_menu();
                         }
+
+                        if ui
+                            .add(
+                                egui::Button::new("Choose Save Location")
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            )
+                            .clicked()
+                        {
+                            session.set_image_dir = true;
+                            ui.close_menu();
+                        }
                     });
+
+                    if session.set_image_dir {
+                        egui::Window::new("Choose File Location")
+                            .open(&mut session.set_image_dir)
+                            .show(egui_ctx, |ui| {
+                                egui::Grid::new("Choose File Location").num_columns(1).show(
+                                    ui,
+                                    |ui| {
+                                        if ui.button("Set Location").clicked() {
+                                            if let Some(path) = rfd::FileDialog::new()
+                                                .set_directory(&session.image_dir)
+                                                .pick_folder()
+                                            {
+                                                session.image_dir = path;
+                                            }
+                                        }
+
+                                        ui.monospace(session.image_dir.display().to_string())
+                                            .on_hover_text("GIFs and screenshots are saved here.")
+                                    },
+                                );
+                            });
+                    }
 
                     if !session.show_hotkeys {
                         if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                         {
-                            screenshot();
+                            screenshot(session.get_image_path());
                         }
 
                         if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
                             if session.gif.is_recording() {
                                 if let Some(emu) = &session.emulator {
-                                    let _ = session.gif.toggle(emu.reference_frontend());
+                                    let _ = session
+                                        .gif
+                                        .toggle(emu.reference_frontend(), session.get_image_path());
                                 }
                             } else {
                                 session.open_gif_settings = !session.open_gif_settings;
@@ -442,7 +521,9 @@ async fn main() -> Result<(), Error> {
 
                     if start_recording {
                         if let Some(emu) = &session.emulator {
-                            let _ = session.gif.toggle(emu.reference_frontend());
+                            let _ = session
+                                .gif
+                                .toggle(emu.reference_frontend(), session.get_image_path());
                         }
 
                         session.open_gif_settings = false;

@@ -2,6 +2,7 @@
 pub mod prelude {
     use crate::components::gamepak::MBCType;
     use chrono::Utc;
+    use shared::traits::BitOps;
 
     pub trait MBC {
         fn read(&self, address: u16) -> u8;
@@ -146,13 +147,13 @@ pub mod prelude {
 
         fn write(&mut self, address: u16, value: u8) {
             match address {
-                0x0000..=0x1FFF => self.ram_enabled = (value & 0x0F) == 0x0A,
+                0x0000..=0x1FFF => self.ram_enabled = value.get_bit_range(0..4) == 0x0A,
                 0x2000..=0x3FFF => {
-                    let bits = value & 0x1F;
+                    let bits = value.get_bit_range(0..5);
                     self.register_5bit = if bits == 0 { 1 } else { bits };
                 }
-                0x4000..=0x5FFF => self.register_2bit = value & 0x03,
-                0x6000..=0x7FFF => self.mode = (value & 0x01) != 0,
+                0x4000..=0x5FFF => self.register_2bit = value.get_bit_range(0..2),
+                0x6000..=0x7FFF => self.mode = value.is_set(0),
                 0xA000..=0xBFFF => {
                     if !self.ram.is_empty() && self.ram_enabled {
                         let index = self.ram_index(address);
@@ -219,7 +220,7 @@ pub mod prelude {
                     if !self.ram_enabled {
                         return 0xFF;
                     }
-                    self.ram[(address & 0x1FF) as usize] | 0xF0
+                    self.ram[address.get_bit_range(0..9) as usize] | 0xF0
                 }
                 _ => 0xFF,
             }
@@ -228,18 +229,17 @@ pub mod prelude {
         fn write(&mut self, address: u16, value: u8) {
             match address {
                 0x0000..=0x3FFF => {
-                    let bit = address & 0x0100;
-                    if bit == 0 {
-                        self.ram_enabled = (value & 0x0F) == 0x0A;
+                    if address.is_clear(8) {
+                        self.ram_enabled = value.get_bit_range(0..4) == 0x0A;
                     } else {
-                        self.rom_bank = (value & 0x0F) as usize;
+                        self.rom_bank = value.get_bit_range(0..4) as usize;
                     }
                 }
                 0xA000..=0xBFFF => {
                     if self.ram.is_empty() || !self.ram_enabled {
                         return;
                     }
-                    self.ram[(address & 0x1FF) as usize] = value & 0x0F;
+                    self.ram[address.get_bit_range(0..9) as usize] = value.get_bit_range(0..4);
                     self.ram_updated = true;
                 }
                 _ => {}
@@ -382,7 +382,7 @@ pub mod prelude {
         }
 
         fn is_halted(&self) -> bool {
-            (self.dh & 0x40) != 0
+            self.dh.is_set(6)
         }
 
         fn read(&self) -> u8 {
@@ -410,17 +410,17 @@ pub mod prelude {
         }
 
         fn days(&self) -> u16 {
-            ((self.dh & 0x01) as u16) << 8 | self.dl as u16
+            ((self.dh.get_bit(0) as u16) << 8) | self.dl as u16
         }
 
         fn set_days(&mut self, total_days: i64) {
             if total_days > 511 {
-                self.dh |= 0x80;
+                self.dh.set_bit(7);
             }
 
             let days = (total_days % 512) as u16;
-            self.dl = (days & 0xFF) as u8;
-            self.dh = (self.dh & 0xFE) | ((days >> 8) & 0x01) as u8;
+            self.dl = days as u8;
+            self.dh.set_bit_range_value(0..1, days.get_bit(8) as u8);
         }
 
         fn latch(&mut self) {
@@ -541,16 +541,16 @@ pub mod prelude {
         fn write(&mut self, address: u16, value: u8) {
             match address {
                 0x0000..=0x1FFF => {
-                    let enabled = (value & 0x0F) == 0x0A;
+                    let enabled = value.get_bit_range(0..4) == 0x0A;
                     self.ram_enabled = enabled;
                     self.timer_enabled = enabled;
                 }
                 0x2000..=0x3FFF => {
-                    let bits = value & 0x7F;
+                    let bits = value.get_bit_range(0..7);
                     self.register_7bit = if bits == 0 { 1 } else { bits };
                 }
                 0x4000..=0x5FFF => {
-                    self.current_bank_value = value & 0x7F;
+                    self.current_bank_value = value.get_bit_range(0..7);
                     if self.current_bank_value <= 7 {
                         self.ram_bank = self.current_bank_value as usize;
                     } else {
@@ -663,14 +663,14 @@ pub mod prelude {
 
         fn write(&mut self, address: u16, value: u8) {
             match address {
-                0x0000..=0x1FFF => self.ram_enabled = (value & 0x0F) == 0x0A,
+                0x0000..=0x1FFF => self.ram_enabled = value.get_bit_range(0..4) == 0x0A,
                 0x2000..=0x2FFF => self.register_8bit = value,
-                0x3000..=0x3FFF => self.register_1bit = value & 0x01,
+                0x3000..=0x3FFF => self.register_1bit = value.get_bit(0),
                 0x4000..=0x5FFF => {
                     self.ram_bank = if self.has_rumble {
-                        (value & 0x07) as usize
+                        value.get_bit_range(0..3) as usize
                     } else {
-                        (value & 0x0F) as usize
+                        value.get_bit_range(0..4) as usize
                     }
                 }
                 0xA000..=0xBFFF => {
@@ -709,7 +709,7 @@ pub mod prelude {
 
     impl HuC1Mode {
         fn select(value: u8) -> HuC1Mode {
-            if value & 0x0F == 0x0E {
+            if value.get_bit_range(0..4) == 0x0E {
                 HuC1Mode::IR
             } else {
                 HuC1Mode::RAM
@@ -768,8 +768,8 @@ pub mod prelude {
         fn write(&mut self, address: u16, value: u8) {
             match address {
                 0x0000..=0x1FFF => self.mode = HuC1Mode::select(value),
-                0x2000..=0x3FFF => self.rom_bank = (value & 0x3F) as usize,
-                0x4000..=0x5FFF => self.ram_bank = (value & 0x03) as usize,
+                0x2000..=0x3FFF => self.rom_bank = value.get_bit_range(0..6) as usize,
+                0x4000..=0x5FFF => self.ram_bank = value.get_bit_range(0..2) as usize,
                 0x6000..=0x7FFF => {}
                 0xA000..=0xBFFF => match self.mode {
                     HuC1Mode::RAM => {
