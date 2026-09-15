@@ -4,7 +4,7 @@ mod sprites;
 
 use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 use affine::{AffineMatrix, AffineState};
-use shared::render::Frame;
+use shared::render::{Frame, PixelFormat};
 use shared::traits::{BitOps, GroupedRegisters, zero_arr};
 use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
 use std::{
@@ -141,9 +141,12 @@ pub struct PPU {
     pub color_special_effects: GroupedRegisters<u16>,
     pub mosaic: u16,
     pub vcount: u8,
-    pub frontend: Frame,
+    pub frontend: Frame, // so many frames
     pub frame: Frame,
+    pub debug_frontend: [Frame; 4],
+    pub debug_frame: [Frame; 4],
     pub frame_ready: bool,
+    pub debug_frame_ready: bool,
 }
 
 impl PPU {
@@ -170,13 +173,28 @@ impl PPU {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
+                pixel_format: PixelFormat::Rgb555,
             },
             frame: Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
+                pixel_format: PixelFormat::Rgb555,
             },
+            debug_frontend: from_fn(|_| Frame {
+                pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
+                width: SCREEN_WIDTH,
+                height: SCREEN_HEIGHT,
+                pixel_format: PixelFormat::Rgb555,
+            }),
+            debug_frame: from_fn(|_| Frame {
+                pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
+                width: SCREEN_WIDTH,
+                height: SCREEN_HEIGHT,
+                pixel_format: PixelFormat::Rgb555,
+            }),
             frame_ready: false,
+            debug_frame_ready: false,
         }
     }
 
@@ -391,14 +409,20 @@ impl PPU {
 
             for bg in bg_lines {
                 if !bg.on || mask.is_clear(bg.id) {
+                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
                     continue;
                 }
 
                 let Some(index) = bg.palette_indices[pixel] else {
+                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
                     continue;
                 };
                 let layer_id = LayerId::from_background(bg.id);
                 let color = self.fetch_color(index, layer_id);
+
+                self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
+                    color as u32;
+
                 let candidate = Pixel {
                     id: layer_id,
                     priority: bg.priority,
@@ -436,7 +460,7 @@ impl PPU {
                 apply_effects(first, second, &self.color_special_effects)
             } else {
                 first.color
-            };
+            } as u32;
         }
     }
 
@@ -878,7 +902,9 @@ impl PPU {
 
         if self.vcount == 160 {
             self.frame_ready = true;
+            self.debug_frame_ready = true;
             swap(&mut self.frame, &mut self.frontend);
+            swap(&mut self.debug_frame, &mut self.debug_frontend);
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
             scanline_event.vblank = true;

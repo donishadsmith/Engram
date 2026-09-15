@@ -120,7 +120,7 @@ impl EmulatorSession for GBASession {
     fn debug_ui(&mut self, egui_ctx: &egui::Context) {
         match self.active_debug {
             Some(DebugPage::Audio) => self.audio_debugger.show_ui(egui_ctx, &mut self.gba),
-            Some(DebugPage::Video) => self.ppu_debugger.show_ui(egui_ctx, &self.gba),
+            Some(DebugPage::Video) => self.ppu_debugger.show_ui(egui_ctx, &mut self.gba),
             None => {}
         }
     }

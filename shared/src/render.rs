@@ -4,10 +4,17 @@ use crate::traits::BitOps;
 
 const RGBA_BYTES_PER_PIXEL: usize = 4;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PixelFormat {
+    Rgb555,
+    Rgb888,
+}
+
 pub struct Frame {
-    pub pixels: Box<[u16]>,
+    pub pixels: Box<[u32]>,
     pub width: usize,
     pub height: usize,
+    pub pixel_format: PixelFormat,
 }
 
 pub struct Screen {
@@ -35,7 +42,7 @@ impl Screen {
             .iter()
             .zip(self.image.bytes.chunks_exact_mut(RGBA_BYTES_PER_PIXEL))
         {
-            let [r, g, b] = rgb555_to_rgb888(*pixel);
+            let [r, g, b] = rgb555_to_rgb888(*pixel as u16);
             out.copy_from_slice(&[r, g, b, 255]);
         }
 
@@ -75,7 +82,7 @@ pub fn rgb555_to_rgb888(rgb555: u16) -> [u8; 3] {
 pub fn to_rgba(frame: &Frame) -> Vec<u8> {
     let mut rgba: Vec<u8> = Vec::with_capacity(frame.height * frame.width * RGBA_BYTES_PER_PIXEL);
     for pixel in &frame.pixels {
-        let rgb888 = rgb555_to_rgb888(*pixel);
+        let rgb888 = rgb555_to_rgb888(*pixel as u16);
         rgba.extend(rgb888);
         rgba.push(255);
     }
@@ -87,7 +94,7 @@ pub fn to_rgb(frame: &Frame) -> Vec<u8> {
     let mut rgb = Vec::with_capacity(frame.width * frame.height * 3);
 
     for pixel in &frame.pixels {
-        rgb.extend(rgb555_to_rgb888(*pixel));
+        rgb.extend(rgb555_to_rgb888(*pixel as u16));
     }
 
     rgb

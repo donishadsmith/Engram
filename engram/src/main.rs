@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local, TimeDelta};
 use egui_macroquad;
 use macroquad::prelude::*;
 use rfd::FileDialog;
@@ -8,7 +9,7 @@ use shared::{
     keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
     utils::{GifRecorder, screenshot},
 };
-use std::{fs::create_dir_all, io::Error, path::PathBuf};
+use std::{collections::VecDeque, fs::create_dir_all, io::Error, path::PathBuf};
 
 fn conf() -> Conf {
     Conf {
@@ -31,6 +32,8 @@ struct Session {
     show_key_bindings: bool,
     show_hotkeys: bool,
     open_gif_settings: bool,
+    start_time: Option<DateTime<Local>>,
+    message_queue: VecDeque<&'static str>,
 }
 
 impl Session {
@@ -50,6 +53,8 @@ impl Session {
             show_hotkeys: false,
             open_gif_settings: false,
             set_image_dir: false,
+            start_time: None,
+            message_queue: VecDeque::new(),
         }
     }
 
@@ -118,6 +123,39 @@ impl Session {
     fn get_image_path(&self) -> PathBuf {
         let _ = self.create_image_path();
         self.image_dir.clone()
+    }
+
+    // unless i can think of a better way only the messages will be a queue
+    // unfortunately time will always be the same, technically can extend, to avoid wierd flash messages
+    // do fifo, lowkey assumes things were actually saved
+    fn display_message(&mut self) -> bool {
+        if let Some(time) = &self.start_time {
+            if (Local::now() - *time) >= TimeDelta::seconds(3) {
+                self.start_time = None;
+                self.message_queue.pop_front();
+
+                if !self.message_queue.is_empty() {
+                    self.start_time = Some(Local::now());
+
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn get_message(&self) -> Option<&'static str> {
+        self.message_queue.front().map(|&s| s)
+    }
+
+    fn add_message(&mut self, message: &'static str) {
+        self.message_queue.push_back(message);
+        self.start_time = Some(Local::now());
     }
 }
 
@@ -398,6 +436,7 @@ async fn main() -> Result<(), Error> {
                             .clicked()
                         {
                             screenshot(session.get_image_path());
+                            session.add_message("Screenshot saved");
                             ui.close_menu();
                         }
 
@@ -428,6 +467,8 @@ async fn main() -> Result<(), Error> {
                                     let _ = session
                                         .gif
                                         .toggle(emu.reference_frontend(), session.get_image_path());
+
+                                    session.add_message("GIF saved");
                                 }
                             } else {
                                 session.open_gif_settings = true;
@@ -465,7 +506,7 @@ async fn main() -> Result<(), Error> {
                                         }
 
                                         ui.monospace(session.image_dir.display().to_string())
-                                            .on_hover_text("GIFs and screenshots are saved here.")
+                                            .on_hover_text("GIFs and screenshots are saved here")
                                     },
                                 );
                             });
@@ -474,6 +515,7 @@ async fn main() -> Result<(), Error> {
                     if !session.show_hotkeys {
                         if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                         {
+                            session.add_message("Screenshot saved");
                             screenshot(session.get_image_path());
                         }
 
@@ -483,6 +525,7 @@ async fn main() -> Result<(), Error> {
                                     let _ = session
                                         .gif
                                         .toggle(emu.reference_frontend(), session.get_image_path());
+                                    session.add_message("GIF saved");
                                 }
                             } else {
                                 session.open_gif_settings = !session.open_gif_settings;
@@ -529,9 +572,16 @@ async fn main() -> Result<(), Error> {
                         session.open_gif_settings = false;
                     }
 
-                    if session.gif.is_recording() {
+                    if session.gif.is_recording() && !session.display_message() {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.label(egui::RichText::new("RECORDING").color(egui::Color32::RED));
+                        });
+                    }
+
+                    if session.display_message() {
+                        let message = session.get_message().unwrap();
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(egui::RichText::new(message).color(egui::Color32::WHITE));
                         });
                     }
                 });

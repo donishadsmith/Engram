@@ -11,3 +11,4 @@ rfd = "0.17.2"
 shared.workspace = true
 engram_gb.workspace = true
 engram_gba.workspace = true
+chrono = "0.4.45"

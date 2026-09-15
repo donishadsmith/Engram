@@ -15,7 +15,10 @@ use crate::components::{
     },
     utils::ByteOps8,
 };
-use shared::{render::Frame, traits::BitOps};
+use shared::{
+    render::{Frame, PixelFormat},
+    traits::BitOps,
+};
 /*
     https://github.com/Ashiepaws/GBEDG/blob/master/ppu/index.md
     https://blog.tigris.fr/2019/09/15/writing-an-emulator-the-first-pixel/
@@ -184,14 +187,16 @@ impl PPU {
             entered_hblank: false,
             is_cgb,
             frame: Frame {
-                pixels: Box::new([0u16; SCREEN_WIDTH * SCREEN_HEIGHT]),
+                pixels: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
+                pixel_format: PixelFormat::Rgb555,
             },
             frontend: Frame {
-                pixels: Box::new([0u16; SCREEN_WIDTH * SCREEN_HEIGHT]),
+                pixels: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
+                pixel_format: PixelFormat::Rgb555,
             },
         }
     }
@@ -313,7 +318,7 @@ impl PPU {
             } else {
                 let shade = (self.bgp >> (color_index * 2)).get_bit_range(0..2);
                 DMG_SHADES[shade as usize]
-            };
+            } as u32;
         }
 
         if window_rendered {
@@ -380,7 +385,8 @@ impl PPU {
                         && (!sprite_attribute.priority || bg_priority[x as usize]);
 
                     if !bg_priority {
-                        self.frame.pixels[self.ly as usize * SCREEN_WIDTH + x as usize] = color;
+                        self.frame.pixels[self.ly as usize * SCREEN_WIDTH + x as usize] =
+                            color as u32;
                     }
                 }
             }

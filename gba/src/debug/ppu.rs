@@ -1,6 +1,13 @@
 use crate::components::gba::GBA;
 use egui::{Color32, RichText, Sense, TextureHandle, TopBottomPanel, Window, vec2};
-use shared::{debug::create_game_screen, render::rgb555_to_rgb888};
+use shared::{
+    debug::{compute_size, create_game_screen, get_texture_id},
+    render::{Frame, PixelFormat, rgb555_to_rgb888},
+};
+use std::{
+    array::from_fn,
+    mem::{swap, take},
+};
 
 #[derive(Clone, Copy, PartialEq)]
 enum PaletteType {
@@ -39,6 +46,8 @@ pub struct PpuDebugger {
     palette: [u8; 0x400],
     palette_tab: PaletteType,
     show_palettes: bool,
+    background_frames: [Frame; 4],
+    background_textures: Vec<Option<TextureHandle>>,
 }
 
 impl PpuDebugger {
@@ -49,6 +58,13 @@ impl PpuDebugger {
             palette: [0; 0x400],
             show_palettes: true,
             palette_tab: PaletteType::Background,
+            background_frames: from_fn(|_| Frame {
+                pixels: Box::new([0; 240 * 160]),
+                width: 240,
+                height: 160,
+                pixel_format: PixelFormat::Rgb555,
+            }),
+            background_textures: vec![None; 4],
         }
     }
 
@@ -57,20 +73,21 @@ impl PpuDebugger {
         self.show_palettes = true;
     }
 
-    pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &GBA) {
+    pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
         if !self.frozen {
             self.palette = *gba.bus.ppu.palette_ram.clone();
+
+            if take(&mut gba.bus.ppu.debug_frame_ready) {
+                swap(&mut gba.bus.ppu.debug_frontend, &mut self.background_frames);
+            }
         }
 
         let background_palettes = self.get_pallete(PaletteType::Background);
         let sprite_palettes = self.get_pallete(PaletteType::Sprite);
 
         // TODO: figure out the organization for this
-        TopBottomPanel::top("Registers").show(egui_ctx, |ui| {
-            ui.heading("Registers").highlight();
-            ui.separator();
-
-            egui::Grid::new("Registers").show(ui, |ui| {
+        TopBottomPanel::top("Header").show(egui_ctx, |ui| {
+            egui::Grid::new("Header").show(ui, |ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let (text, hover) = if self.frozen {
                         (
@@ -89,7 +106,7 @@ impl PpuDebugger {
                         egui::Layout::left_to_right(egui::Align::Center),
                         |ui| {
                             if ui
-                                .add(egui::Label::new(text.clone()).sense(egui::Sense::click()))
+                                .add(egui::Label::new(text).sense(egui::Sense::click()))
                                 .on_hover_text(hover)
                                 .on_hover_cursor(egui::CursorIcon::PointingHand)
                                 .clicked()
@@ -105,7 +122,9 @@ impl PpuDebugger {
         });
 
         Window::new("Palettes")
+            .default_open(false)
             .open(&mut self.show_palettes)
+            .collapsible(true)
             .default_size([260.0, 250.0])
             .resizable(false)
             .show(egui_ctx, |ui| {
@@ -128,7 +147,38 @@ impl PpuDebugger {
                 }
             });
 
-        create_game_screen(&mut self.texture, egui_ctx, &gba.bus.ppu.frontend);
+        Window::new("Background")
+            .collapsible(true)
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(0.0, 10.0))
+            .default_size([260.0, 250.0])
+            .resizable(false)
+            .show(egui_ctx, |ui| {
+                let size_vec = egui::vec2(260.0, 250.0);
+                ui.separator();
+
+                for index in 0..4 {
+                    let title = format!("Background {}", index);
+                    ui.label(&title);
+
+                    let size = compute_size(size_vec, &self.background_frames[index]);
+                    let texture_id = get_texture_id(
+                        &mut self.background_textures[index],
+                        egui_ctx,
+                        &self.background_frames[index],
+                        title,
+                    );
+
+                    ui.image((texture_id, size));
+                    ui.separator();
+                }
+            });
+
+        create_game_screen(
+            &mut self.texture,
+            egui_ctx,
+            &gba.bus.ppu.frontend,
+            "Game Screen".to_string(),
+        );
     }
 
     fn get_pallete(&self, palette_type: PaletteType) -> Vec<Color32> {

@@ -88,7 +88,7 @@ pub const BINDABLE_KEYS: [KeyCode; 117] = [
     KeyCode::F10,
     KeyCode::F11,
     KeyCode::F12,
-    KeyCode::F13,
+    KeyCode::F13, // wait do keyboards with f keys greater than 12 actually exist
     KeyCode::F14,
     KeyCode::F15,
     KeyCode::F16,
@@ -271,59 +271,40 @@ impl KeyBindings {
     }
 
     pub fn load_keys(mut self, config: &Config) -> Self {
-        self.gba = DEFAULT_GBA_KEYS
-            .iter()
-            .map(|b| Bindings {
-                label: b.label,
-                key: config
-                    .gbakeys
-                    .get(b.label)
-                    .and_then(|s| string_to_keycode(s))
-                    .unwrap_or(b.key),
-            })
-            .collect();
+        let collect_keys = |default_array: &[Bindings], treemap: &BTreeMap<String, String>| {
+            default_array
+                .iter()
+                .map(|b| Bindings {
+                    label: b.label,
+                    key: treemap
+                        .get(b.label)
+                        .and_then(|s| string_to_keycode(s))
+                        .unwrap_or(b.key),
+                })
+                .collect::<Vec<Bindings>>()
+        };
 
+        self.gba = collect_keys(&DEFAULT_GBA_KEYS, &config.gbakeys);
         self.gb = self.gba.clone()[..8].to_vec();
-
-        self.hotkeys = DEFAULT_HOT_KEYS
-            .iter()
-            .map(|b| Bindings {
-                label: b.label,
-                key: config
-                    .hotkeys
-                    .get(b.label)
-                    .and_then(|s| string_to_keycode(s))
-                    .unwrap_or(b.key),
-            })
-            .collect();
+        self.hotkeys = collect_keys(&DEFAULT_HOT_KEYS, &config.hotkeys);
 
         self
     }
 
     pub fn save_keys(&self) -> Result<SaveKeys, Error> {
-        let gbakeys: BTreeMap<String, String> = self
-            .gba
-            .clone()
-            .into_iter()
-            .map(|b| {
-                (
-                    String::from(b.label),
-                    String::from(keycode_to_string(b.key)),
-                )
-            })
-            .collect();
+        let collect_keys = |vec: &Vec<Bindings>| {
+            vec.into_iter()
+                .map(|b| {
+                    (
+                        String::from(b.label),
+                        String::from(keycode_to_string(b.key)),
+                    )
+                })
+                .collect::<BTreeMap<String, String>>()
+        };
 
-        let hotkeys: BTreeMap<String, String> = self
-            .hotkeys
-            .clone()
-            .into_iter()
-            .map(|b| {
-                (
-                    String::from(b.label),
-                    String::from(keycode_to_string(b.key)),
-                )
-            })
-            .collect();
+        let gbakeys = collect_keys(&self.gba);
+        let hotkeys = collect_keys(&self.hotkeys);
 
         Ok(SaveKeys { gbakeys, hotkeys })
     }

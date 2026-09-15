@@ -615,7 +615,12 @@ impl AudioDebugger {
             });
         });
 
-        create_game_screen(&mut self.texture, egui_ctx, &gba.bus.ppu.frontend);
+        create_game_screen(
+            &mut self.texture,
+            egui_ctx,
+            &gba.bus.ppu.frontend,
+            "Game Screen".to_string(),
+        );
 
         self.mute_channels(gba);
     }
