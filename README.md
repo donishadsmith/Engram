@@ -38,6 +38,18 @@ A Gameboy Advance & Game Boy Color emulator (supports DMG games too) written in 
 
 <p align="center"><i>Gifs captured with built-in gif recorder.</i></p>
 
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/audio.png" width="500">
+      <br>GBA Audio Debugger
+    </td>
+    <td align="center">
+      <img src="assets/video.png" width="500">
+      <br>GBA Video Debugger
+  </tr>
+</table>
+
 ## Usage
 In a terminal:
 
@@ -64,7 +76,6 @@ The default controls are as follows but can be reconfigured in the menu.
 | O           | L          |                 |
 
 ## Demo
-https://github.com/user-attachments/assets/c2ea0420-f84f-410f-8992-bdd027fba46f
 
 Captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a> and converted to mp4 with <a href="https://github.com/FFmpeg/FFmpeg">FFmpeg</a>.
 
