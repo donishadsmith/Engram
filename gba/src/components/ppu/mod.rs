@@ -1,7 +1,8 @@
 mod affine;
 mod special_effects;
-mod sprites;
+pub mod sprites;
 
+use crate::components::ppu::sprites::DisplayMode;
 use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 use affine::{AffineMatrix, AffineState};
 use shared::render::{Frame, PixelFormat};
@@ -113,7 +114,7 @@ pub struct Pixel {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Bpp {
+pub enum Bpp {
     FourBpp,
     EigthBpp,
 }
@@ -147,6 +148,10 @@ pub struct PPU {
     pub debug_frame: [Frame; 4],
     pub frame_ready: bool,
     pub debug_frame_ready: bool,
+    pub sprites_data: Vec<SpriteAttributes>,
+    pub sprites_ready: bool,
+    pub transparant_sprite_background: bool,
+    pub transparant_background: bool,
 }
 
 impl PPU {
@@ -195,6 +200,10 @@ impl PPU {
             }),
             frame_ready: false,
             debug_frame_ready: false,
+            sprites_data: Vec::with_capacity(128),
+            sprites_ready: false,
+            transparant_sprite_background: true,
+            transparant_background: false,
         }
     }
 
@@ -418,15 +427,14 @@ impl PPU {
                     continue;
                 };
                 let layer_id = LayerId::from_background(bg.id);
-                let color = self.fetch_color(index, layer_id);
 
                 self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
-                    color as u32;
+                    self.fetch_color(index, layer_id, self.transparant_background);
 
                 let candidate = Pixel {
                     id: layer_id,
                     priority: bg.priority,
-                    color,
+                    color: self.fetch_color(index, layer_id, false) as u16,
                     semitransparent: false,
                 };
 
@@ -443,7 +451,11 @@ impl PPU {
                     let candidate = Pixel {
                         id: LayerId::Sprite,
                         priority: sprite_pixel.priority,
-                        color: self.fetch_color(sprite_pixel.palette_index + 256, LayerId::Sprite),
+                        color: self.fetch_color(
+                            sprite_pixel.palette_index + 256,
+                            LayerId::Sprite,
+                            false,
+                        ) as u16,
                         semitransparent: sprite_pixel.semi_transparent,
                     };
 
@@ -704,14 +716,23 @@ impl PPU {
         window_mask
     }
 
-    fn fetch_color(&self, palette_index: usize, layer_id: LayerId) -> u16 {
+    fn fetch_color(
+        &self,
+        palette_index: usize,
+        layer_id: LayerId,
+        make_background_transparent: bool,
+    ) -> u32 {
+        if (palette_index == 0 || palette_index == 256) && make_background_transparent {
+            return 1 << 31;
+        }
+
         if self.direct_color(layer_id) {
-            u16::from_le_bytes([self.vram[palette_index], self.vram[palette_index + 1]])
+            u16::from_le_bytes([self.vram[palette_index], self.vram[palette_index + 1]]) as u32
         } else {
             u16::from_le_bytes([
                 self.palette_ram[palette_index * 2],
                 self.palette_ram[palette_index * 2 + 1],
-            ])
+            ]) as u32
         }
     }
 
@@ -768,7 +789,7 @@ impl PPU {
         let mut obj_window = [false; 240];
 
         for sprite_id in 0..128 {
-            let sprite = SpriteAttributes::from_bytes(sprite_id, &self.oam);
+            let sprite = SpriteAttributes::from_bytes(sprite_id, &self.oam, DisplayMode::Game);
 
             if self.current_mode() >= 3 && sprite.tile < 512 {
                 continue;
@@ -796,20 +817,7 @@ impl PPU {
 
                         (texture_x, texture_y)
                     }
-                    None => {
-                        let texture_x = if sprite.horizontal_flip {
-                            sprite.dimension.width - 1 - col
-                        } else {
-                            col
-                        };
-                        let texture_y = if sprite.vertical_flip {
-                            sprite.dimension.height - 1 - row
-                        } else {
-                            row
-                        };
-
-                        (texture_x, texture_y)
-                    }
+                    None => self.get_non_affine_sprite_textures(&sprite, col, row),
                 };
 
                 if texture_x < 0
@@ -820,37 +828,8 @@ impl PPU {
                     continue;
                 }
 
-                let tile = Coordinate {
-                    x: texture_x as usize / 8,
-                    y: texture_y as usize / 8,
-                };
-                let pixel_inside_tile = Coordinate {
-                    x: texture_x as usize % 8,
-                    y: texture_y as usize % 8,
-                };
-
-                let tiles_wide = sprite.dimension.width as usize / 8;
-                let step = if sprite.bpp == Bpp::EigthBpp { 2 } else { 1 };
-
-                let tile_number = if self.dispcnt.is_set(6) {
-                    sprite.tile + (tile.y * tiles_wide + tile.x) * step
-                } else {
-                    sprite.tile + tile.y * 32 + tile.x * step
-                } & 0x3FF;
-
-                let tile_number = if sprite.bpp == Bpp::EigthBpp {
-                    tile_number / 2
-                } else {
-                    tile_number
-                };
-
-                let palette_index = self.read_tile_pixel_palette_index(
-                    4,
-                    tile_number,
-                    pixel_inside_tile,
-                    sprite.bpp,
-                    sprite.palette_bank,
-                );
+                let palette_index =
+                    self.get_sprite_palette_index(&sprite, texture_x as usize, texture_y as usize);
 
                 if palette_index == 0 {
                     continue;
@@ -879,6 +858,101 @@ impl PPU {
         }
 
         (sprite_line, obj_window)
+    }
+
+    fn get_non_affine_sprite_textures(
+        &self,
+        sprite: &SpriteAttributes,
+        col: i32,
+        row: i32,
+    ) -> (i32, i32) {
+        let texture_x = if sprite.horizontal_flip {
+            sprite.dimension.width - 1 - col
+        } else {
+            col
+        };
+
+        let texture_y = if sprite.vertical_flip {
+            sprite.dimension.height - 1 - row
+        } else {
+            row
+        };
+
+        (texture_x, texture_y)
+    }
+
+    fn get_sprite_palette_index(
+        &self,
+        sprite: &SpriteAttributes,
+        texture_x: usize,
+        texture_y: usize,
+    ) -> usize {
+        let tile = Coordinate {
+            x: texture_x / 8,
+            y: texture_y / 8,
+        };
+        let pixel_inside_tile = Coordinate {
+            x: texture_x % 8,
+            y: texture_y % 8,
+        };
+
+        let tiles_wide = sprite.dimension.width as usize / 8;
+        let step = if sprite.bpp == Bpp::EigthBpp { 2 } else { 1 };
+
+        let tile_number = if self.dispcnt.is_set(6) {
+            sprite.tile + (tile.y * tiles_wide + tile.x) * step
+        } else {
+            sprite.tile + tile.y * 32 + tile.x * step
+        } & 0x3FF;
+
+        let tile_number = if sprite.bpp == Bpp::EigthBpp {
+            tile_number / 2
+        } else {
+            tile_number
+        };
+
+        let palette_index = self.read_tile_pixel_palette_index(
+            4,
+            tile_number,
+            pixel_inside_tile,
+            sprite.bpp,
+            sprite.palette_bank,
+        );
+
+        palette_index
+    }
+
+    // not perfect but this is the minimum amount of code i could come with to add sprites
+    // to debugger
+    pub fn update_oam_debug_data(&mut self) {
+        self.sprites_data = Vec::with_capacity(128);
+
+        for index in 0..128 {
+            let mut sprite = SpriteAttributes::from_bytes(index, &self.oam, DisplayMode::Debug);
+
+            for row in 0..sprite.dimension.height {
+                for col in 0..sprite.dimension.width {
+                    let pixel = (row * sprite.dimension.width + col) as usize;
+                    let (texture_x, texture_y) =
+                        self.get_non_affine_sprite_textures(&sprite, col, row);
+                    let palette_index = self.get_sprite_palette_index(
+                        &sprite,
+                        texture_x as usize,
+                        texture_y as usize,
+                    );
+
+                    if let Some(frame) = sprite.frame.as_mut() {
+                        frame.pixels[pixel] = self.fetch_color(
+                            palette_index + 256,
+                            LayerId::Sprite,
+                            self.transparant_sprite_background,
+                        )
+                    }
+                }
+            }
+
+            self.sprites_data.push(sprite);
+        }
     }
 
     pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> ScanlineEvent {
@@ -912,6 +986,11 @@ impl PPU {
 
         if (160..227).contains(&self.vcount) {
             self.dispstat.set_bit(DispstatBit::VblankFlag as usize);
+
+            if self.vcount == 226 {
+                self.update_oam_debug_data();
+                self.sprites_ready = true;
+            }
         } else {
             self.dispstat.clear_bit(DispstatBit::VblankFlag as usize);
         }

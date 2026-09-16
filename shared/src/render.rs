@@ -84,7 +84,7 @@ pub fn to_rgba(frame: &Frame) -> Vec<u8> {
     for pixel in &frame.pixels {
         let rgb888 = rgb555_to_rgb888(*pixel as u16);
         rgba.extend(rgb888);
-        rgba.push(255);
+        rgba.push(if *pixel == (1 << 31) { 0 } else { 255 });
     }
 
     rgba

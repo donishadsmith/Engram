@@ -13,7 +13,7 @@ mod debug;
 
 use crate::{
     components::{gamepak::GamePak, gba::GBA},
-    debug::ppu::PpuDebugger,
+    debug::video::PpuDebugger,
 };
 use debug::audio::AudioDebugger;
 use macroquad::input::KeyCode;
@@ -106,7 +106,7 @@ impl EmulatorSession for GBASession {
     fn toggle_debug(&mut self, debug_page: DebugPage) {
         match self.active_debug {
             Some(DebugPage::Audio) => self.audio_debugger.close(&mut self.gba),
-            Some(DebugPage::Video) => self.ppu_debugger.close(),
+            Some(DebugPage::Video) => self.ppu_debugger.close(&mut self.gba),
             None => {}
         }
 

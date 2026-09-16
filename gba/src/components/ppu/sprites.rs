@@ -1,5 +1,14 @@
 use crate::components::ppu::{AffineMatrix, Bpp};
-use shared::traits::BitOps;
+use shared::{
+    render::{Frame, PixelFormat},
+    traits::BitOps,
+};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum DisplayMode {
+    Game,
+    Debug,
+}
 
 const SPRITE_DIMENSIONS: [[(usize, usize); 4]; 3] = [
     [(8, 8), (16, 16), (32, 32), (64, 64)],
@@ -56,10 +65,12 @@ pub struct SpriteAttributes {
     pub priority: u8,
     pub palette_bank: usize,
     pub bounding_box: SpriteDimension,
+    pub frame: Option<Frame>,
+    pub double_size: bool,
 }
 
 impl SpriteAttributes {
-    pub fn from_bytes(sprite_id: usize, oam: &Box<[u8; 1024]>) -> Self {
+    pub fn from_bytes(sprite_id: usize, oam: &Box<[u8; 1024]>, display_mode: DisplayMode) -> Self {
         let (attribute0, attribute1, attribute2) = create_attribute_halfwords(sprite_id, oam);
 
         let affine = attribute0.is_set(8);
@@ -91,13 +102,24 @@ impl SpriteAttributes {
         } else {
             SPRITE_DIMENSIONS[shape][size]
         };
-        let dimension = SpriteDimension {
+        let sprite_dimension = SpriteDimension {
             width: dimension.0 as i32,
             height: dimension.1 as i32,
         };
         let tile = attribute2.get_bit_range(0..10) as usize;
         let priority = attribute2.get_bit_range(10..12) as u8;
         let palette_bank = attribute2.get_bit_range(12..16) as usize;
+
+        let frame = if display_mode == DisplayMode::Debug {
+            Some(Frame {
+                pixels: vec![0; dimension.0 * dimension.1].into_boxed_slice(),
+                width: dimension.0,
+                height: dimension.1,
+                pixel_format: PixelFormat::Rgb555,
+            })
+        } else {
+            None
+        };
 
         let matrix = if affine {
             Some(create_sprite_affine(
@@ -110,11 +132,11 @@ impl SpriteAttributes {
 
         let bounding_box = if double_size {
             SpriteDimension {
-                width: dimension.width * 2,
-                height: dimension.height * 2,
+                width: sprite_dimension.width * 2,
+                height: sprite_dimension.height * 2,
             }
         } else {
-            dimension
+            sprite_dimension
         };
 
         Self {
@@ -125,11 +147,13 @@ impl SpriteAttributes {
             vertical_flip,
             bpp,
             matrix,
-            dimension,
+            dimension: sprite_dimension,
             tile,
             priority,
             palette_bank,
             bounding_box,
+            frame,
+            double_size,
         }
     }
 
