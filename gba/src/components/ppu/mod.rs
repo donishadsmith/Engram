@@ -124,6 +124,30 @@ struct Coordinate {
     y: usize,
 }
 
+pub struct BgDebugInfo {
+    pub mosaic: bool,
+    pub affine: bool,
+    pub screen_size: (usize, usize),
+    pub reference_coordinate: (f32, f32),
+    pub bpp: usize,
+    pub character_base_block: usize,
+    pub screen_base_block: usize,
+}
+
+impl BgDebugInfo {
+    pub fn new() -> Self {
+        Self {
+            mosaic: false,
+            affine: false,
+            screen_size: (0, 0),
+            reference_coordinate: (0.0, 0.0),
+            bpp: 0,
+            character_base_block: 0,
+            screen_base_block: 0,
+        }
+    }
+}
+
 pub struct PPU {
     pub vram: Box<[u8; 0x18000]>,
     pub palette_ram: Box<[u8; 0x400]>,
@@ -152,6 +176,7 @@ pub struct PPU {
     pub sprites_ready: bool,
     pub transparant_sprite_background: bool,
     pub transparant_background: bool,
+    pub bg_debug_info: [BgDebugInfo; 4],
 }
 
 impl PPU {
@@ -204,6 +229,7 @@ impl PPU {
             sprites_ready: false,
             transparant_sprite_background: true,
             transparant_background: false,
+            bg_debug_info: from_fn(|_| BgDebugInfo::new()),
         }
     }
 
@@ -287,6 +313,11 @@ impl PPU {
             self.bg3_affine_parameters.from_index(2),
             self.bg3_affine_parameters.from_index(3),
         );
+
+        if self.vcount as usize % (self.mosaic.get_bit_range(4..8) as usize + 1) == 0 {
+            self.bg2_affine_state.mosaic_reference = self.bg2_affine_state.internal_reference;
+            self.bg3_affine_state.mosaic_reference = self.bg3_affine_state.internal_reference;
+        }
 
         if self.dispcnt.is_set(7) {
             let row = self.vcount as usize * SCREEN_WIDTH;
@@ -396,6 +427,17 @@ impl PPU {
 
             bg_line.palette_indices[pixel] = index
         }
+
+        if self.bg_control.from_index(bg_line.id).is_set(6) {
+            let mosaic_h = self.mosaic.get_bit_range(0..4) as usize + 1;
+            //let mosaic_h = 10;
+            if mosaic_h > 1 {
+                for pixel in 0..SCREEN_WIDTH {
+                    bg_line.palette_indices[pixel] =
+                        bg_line.palette_indices[pixel - pixel % mosaic_h];
+                }
+            }
+        }
     }
 
     fn composite(
@@ -480,24 +522,34 @@ impl PPU {
         matches!(self.current_mode(), 3 | 5) && layer_id == LayerId::Bg2
     }
 
-    fn get_text_bg_palette_index(&self, bg_id: usize, lcd_pixel_x: usize) -> Option<usize> {
+    fn get_text_bg_palette_index(&mut self, bg_id: usize, lcd_pixel_x: usize) -> Option<usize> {
         let control = self.bg_control.from_index(bg_id);
         let character_base_block = control.get_bit_range(2..4) as usize;
         let screen_base_block = control.get_bit_range(8..13) as usize;
-        let bpp = if control.is_set(7) {
-            Bpp::EigthBpp
+        let (bpp, bpp_value) = if control.is_set(7) {
+            (Bpp::EigthBpp, 8)
         } else {
-            Bpp::FourBpp
+            (Bpp::FourBpp, 4)
         };
 
         let lcd = Coordinate {
             x: lcd_pixel_x,
-            y: self.vcount as usize,
+            y: self.vertical_text_mosaic(bg_id),
         };
         let bg_screen_size = self.text_bg_screen_size(bg_id);
         let bg_scroll = Coordinate {
             x: self.bg_text_offset.from_index(bg_id * 2) as usize,
             y: self.bg_text_offset.from_index((bg_id * 2) + 1) as usize,
+        };
+
+        self.bg_debug_info[bg_id] = BgDebugInfo {
+            mosaic: self.bg_control.from_index(bg_id).is_set(6),
+            affine: false,
+            screen_size: (bg_screen_size.x, bg_screen_size.y),
+            reference_coordinate: (bg_scroll.x as f32, bg_scroll.y as f32),
+            bpp: bpp_value,
+            character_base_block,
+            screen_base_block,
         };
 
         let bg_map_pixel = Coordinate {
@@ -553,7 +605,7 @@ impl PPU {
     }
 
     fn get_affine_bg_palette_index(
-        &self,
+        &mut self,
         bg_id: usize,
         lcd_pixel_x: usize,
         matrix: AffineMatrix,
@@ -568,15 +620,27 @@ impl PPU {
         } else {
             &self.bg3_affine_state
         };
+        let reference = if control.is_set(6) {
+            affine_state.mosaic_reference
+        } else {
+            affine_state.internal_reference
+        };
 
-        let mut affine_map_pixel_x = affine_state
-            .internal_reference
-            .x
-            .transformed_pixel(matrix.pa, lcd_pixel_x);
-        let mut affine_map_pixel_y = affine_state
-            .internal_reference
-            .y
-            .transformed_pixel(matrix.pc, lcd_pixel_x);
+        self.bg_debug_info[bg_id] = BgDebugInfo {
+            mosaic: self.bg_control.from_index(bg_id).is_set(6),
+            affine: true,
+            screen_size: (screen_size as usize, screen_size as usize),
+            reference_coordinate: (
+                reference.x.raw() as f32 / 256.0,
+                reference.y.raw() as f32 / 256.0,
+            ),
+            bpp: 8,
+            character_base_block,
+            screen_base_block,
+        };
+
+        let mut affine_map_pixel_x = reference.x.transformed_pixel(matrix.pa, lcd_pixel_x);
+        let mut affine_map_pixel_y = reference.y.transformed_pixel(matrix.pc, lcd_pixel_x);
 
         if wrap {
             affine_map_pixel_x = affine_map_pixel_x.rem_euclid(screen_size);
@@ -736,6 +800,17 @@ impl PPU {
         }
     }
 
+    fn vertical_text_mosaic(&self, bg_id: usize) -> usize {
+        let y = self.vcount as usize;
+        if self.bg_control.from_index(bg_id).is_set(6) {
+            let mosaic_v = self.mosaic.get_bit_range(4..8) as usize + 1;
+
+            y - y % mosaic_v
+        } else {
+            y
+        }
+    }
+
     fn get_bitmap_palette_index(
         &self,
         bitmap_mode_params: BitmapModeParams,
@@ -795,15 +870,29 @@ impl PPU {
                 continue;
             }
 
+            let (mosaic_h, mosaic_v) = if sprite.mosaic && sprite.mosaic {
+                (
+                    self.mosaic.get_bit_range(8..12) as i32 + 1,
+                    self.mosaic.get_bit_range(12..16) as i32 + 1,
+                )
+            } else {
+                (1, 1)
+            };
+
+            //let (mosaic_h, mosaic_v) = (10, 10);
+
             let Some(row) = sprite.visible_row(self.vcount) else {
                 continue;
             };
 
+            let row = (row - self.vcount as i32 % mosaic_v).max(0);
             for col in 0..sprite.bounding_box.width {
                 let pixel = sprite.coordinate.x + col;
                 if pixel < 0 || pixel >= SCREEN_WIDTH as i32 {
                     continue;
                 }
+
+                let col = (col - pixel % mosaic_h).max(0);
 
                 let (texture_x, texture_y) = match sprite.matrix {
                     Some(matrix) => {
@@ -930,9 +1019,22 @@ impl PPU {
         for index in 0..128 {
             let mut sprite = SpriteAttributes::from_bytes(index, &self.oam, DisplayMode::Debug);
 
+            let (mosaic_h, mosaic_v) = if sprite.mosaic && sprite.mosaic {
+                (
+                    self.mosaic.get_bit_range(8..12) as i32 + 1,
+                    self.mosaic.get_bit_range(12..16) as i32 + 1,
+                )
+            } else {
+                (1, 1)
+            };
+
             for row in 0..sprite.dimension.height {
+                let row = (row - self.vcount as i32 % mosaic_v).max(0);
+
                 for col in 0..sprite.dimension.width {
                     let pixel = (row * sprite.dimension.width + col) as usize;
+                    let col = (col - (pixel as i32) % mosaic_h).max(0);
+
                     let (texture_x, texture_y) =
                         self.get_non_affine_sprite_textures(&sprite, col, row);
                     let palette_index = self.get_sprite_palette_index(

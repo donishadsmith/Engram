@@ -67,6 +67,7 @@ impl AffineMatrix {
 pub struct AffineState {
     pub programmed_reference: AffineCoordinate,
     pub internal_reference: AffineCoordinate,
+    pub mosaic_reference: AffineCoordinate,
     pub reload: bool,
 }
 
@@ -75,6 +76,7 @@ impl AffineState {
         Self {
             programmed_reference: AffineCoordinate::default(),
             internal_reference: AffineCoordinate::default(),
+            mosaic_reference: AffineCoordinate::default(),
             reload: true,
         }
     }

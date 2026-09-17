@@ -611,14 +611,14 @@ impl AudioDebugger {
                 register(&mut cols[0], "SOUND1CNT_X:", self.registers.channel1[2]);
 
                 register(&mut cols[1], "SOUND2CNT_L:", self.registers.channel2[0]);
-                register(&mut cols[1], "SOUND2CNT_X:", self.registers.channel2[1]);
+                register(&mut cols[1], "SOUND2CNT_H:", self.registers.channel2[1]);
 
                 register(&mut cols[2], "SOUND3CNT_L:", self.registers.channel3[0]);
                 register(&mut cols[2], "SOUND3CNT_H:", self.registers.channel3[1]);
                 register(&mut cols[2], "SOUND3CNT_X:", self.registers.channel3[2]);
 
                 register(&mut cols[3], "SOUND4CNT_L:", self.registers.channel4[0]);
-                register(&mut cols[3], "SOUND4CNT_X:", self.registers.channel4[1]);
+                register(&mut cols[3], "SOUND4CNT_H:", self.registers.channel4[1]);
             });
         });
 

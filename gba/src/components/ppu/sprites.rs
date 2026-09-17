@@ -58,6 +58,7 @@ pub struct SpriteAttributes {
     pub mode: SpriteMode,
     pub horizontal_flip: bool,
     pub vertical_flip: bool,
+    pub mosaic: bool,
     pub bpp: Bpp,
     pub matrix: Option<AffineMatrix>,
     pub dimension: SpriteDimension,
@@ -85,6 +86,7 @@ impl SpriteAttributes {
         let disabled = !affine && attribute0.is_set(9);
         let horizontal_flip = !affine && attribute1.is_set(12);
         let vertical_flip = !affine && attribute1.is_set(13);
+        let mosaic = attribute0.is_set(12);
         let bpp = if attribute0.is_set(13) {
             Bpp::EigthBpp
         } else {
@@ -145,6 +147,7 @@ impl SpriteAttributes {
             mode,
             horizontal_flip,
             vertical_flip,
+            mosaic,
             bpp,
             matrix,
             dimension: sprite_dimension,

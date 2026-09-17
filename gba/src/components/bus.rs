@@ -116,6 +116,8 @@ pub struct Bus {
     internal_memory_control: u32,
     pub trace: Option<Trace>,
     pub interrupt_flag_copy: u16,
+    pub interrupt_enable_copy: u16,
+    pub interrupt_master_enable_copy: u32,
 }
 
 impl Bus {
@@ -152,6 +154,8 @@ impl Bus {
             internal_memory_control: 0x0D000020,
             trace,
             interrupt_flag_copy: 0,
+            interrupt_enable_copy: 0,
+            interrupt_master_enable_copy: 0,
         }
     }
 
@@ -1031,8 +1035,10 @@ impl Bus {
         });
     }
 
-    pub fn copy_interrupt_flag(&mut self) {
+    pub fn copy_interrupt_info(&mut self) {
         self.interrupt_flag_copy = self.interrupt_flag;
+        self.interrupt_enable_copy = self.interrupt_enable;
+        self.interrupt_master_enable_copy = self.interrupt_master_enable;
     }
 }
 

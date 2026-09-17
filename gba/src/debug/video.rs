@@ -1,4 +1,7 @@
-use crate::components::{gba::GBA, ppu::sprites::SpriteAttributes};
+use crate::components::{
+    gba::GBA,
+    ppu::{BgDebugInfo, sprites::SpriteAttributes},
+};
 use egui::{Color32, RichText, Sense, TextureHandle, Window, vec2};
 use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
@@ -7,7 +10,6 @@ use shared::{
 };
 use std::{
     array::from_fn,
-    fmt::Display,
     mem::{swap, take},
 };
 
@@ -44,13 +46,17 @@ fn palette_grid(ui: &mut egui::Ui, id: &str, palette: &[Color32]) {
                 let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
                 ui.painter().rect_filled(rect, 1.0, color);
 
-                response.on_hover_text(format!(
-                    "Palette Index={:3x}\n#{:2x}{:2x}{:2x}",
+                let text = format!(
+                    "Palette Index {:03x}\n#{:02x}{:02x}{:02x}",
                     index,
                     color.r(),
                     color.g(),
                     color.b()
-                ));
+                );
+
+                response.on_hover_ui(|ui| {
+                    ui.label(RichText::new(text).monospace());
+                });
 
                 if (index + 1) % GRID_COLUMNS as usize == 0 {
                     ui.end_row();
@@ -59,11 +65,40 @@ fn palette_grid(ui: &mut egui::Ui, id: &str, palette: &[Color32]) {
         });
 }
 
-fn horizontal_text<T: Display>(ui: &mut egui::Ui, title: &'static str, state: T) {
+fn horizontal_text<T: Into<egui::WidgetText>>(ui: &mut egui::Ui, title: &str, value: T) {
     ui.horizontal(|ui| {
         ui.label(format!("{}: ", title));
-        ui.label(state.to_string());
+        ui.label(value);
     });
+}
+
+fn state_text(state: bool, on: &str, off: &str) -> RichText {
+    if state {
+        RichText::new(on).color(Color32::LIGHT_GREEN)
+    } else {
+        RichText::new(off).weak()
+    }
+}
+
+fn flag_row(ui: &mut egui::Ui, title: &str, flags: &[(&str, bool)]) {
+    ui.horizontal(|ui| {
+        ui.label(format!("{}: ", title));
+
+        for &(name, state) in flags {
+            ui.label(state_text(state, name, name));
+        }
+    });
+}
+
+fn mode_description(mode: u8) -> String {
+    let description = match mode {
+        0 => "4 text backgrounds",
+        1 => "2 text + 1 affine background",
+        2 => "2 affine backgrounds",
+        _ => "bitmap",
+    };
+
+    format!("{} ({})", mode, description)
 }
 
 pub struct PpuDebugger {
@@ -79,9 +114,13 @@ pub struct PpuDebugger {
     current_mode: u8,
     bg_on: [bool; 4],
     interrupt_flag: u16,
+    interrupt_enable: u16,
+    interrupt_master_enable: u32,
     vcount: u8,
     dispstat: u16,
     dispcnt: u16,
+    bg_debug_info: [BgDebugInfo; 4],
+    mosaic: u16,
 }
 
 impl PpuDebugger {
@@ -104,9 +143,13 @@ impl PpuDebugger {
             current_mode: 0,
             bg_on: [false; 4],
             interrupt_flag: 0,
+            interrupt_enable: 0,
+            interrupt_master_enable: 0,
             vcount: 0,
             dispcnt: 0,
             dispstat: 0,
+            bg_debug_info: from_fn(|_| BgDebugInfo::new()),
+            mosaic: 0,
         }
     }
 
@@ -118,10 +161,16 @@ impl PpuDebugger {
         self.current_mode = 0;
         self.bg_on = [false; 4];
         self.interrupt_flag = 0;
+        self.interrupt_enable = 0;
+        self.interrupt_master_enable = 0;
         self.vcount = 0;
         self.dispcnt = 0;
         self.dispstat = 0;
+        self.bg_debug_info = from_fn(|_| BgDebugInfo::new());
+        self.mosaic = 0;
     }
+
+    // TODO: continue improving this and improving accuracy, vra palette
 
     pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
         if !self.frozen {
@@ -142,15 +191,18 @@ impl PpuDebugger {
             }
 
             self.interrupt_flag = gba.bus.interrupt_flag_copy;
+            self.interrupt_enable = gba.bus.interrupt_enable_copy;
+            self.interrupt_master_enable = gba.bus.interrupt_master_enable_copy;
             self.vcount = gba.bus.ppu.vcount;
             self.dispstat = gba.bus.ppu.dispstat;
             self.dispcnt = gba.bus.ppu.dispcnt;
+            self.mosaic = gba.bus.ppu.mosaic;
+            swap(&mut gba.bus.ppu.bg_debug_info, &mut self.bg_debug_info);
         }
 
         let background_palettes = self.get_pallete(PaletteType::Background);
         let sprite_palettes = self.get_pallete(PaletteType::Sprite);
 
-        // TODO: figure out the organization for this + add registers
         Window::new("Video Debugger")
             .resizable(true)
             .collapsible(true)
@@ -225,18 +277,7 @@ impl PpuDebugger {
 
                         self.show_sprites(ui)
                     }
-                    RenderTab::Information => {
-                        // TODO: do the rest of this later
-                        ui.vertical(|ui| {
-                            horizontal_text(ui, "Current Mode", self.current_mode);
-                            self.interrupt_text(ui, "VBlank Interrupt", 0);
-                            self.interrupt_text(ui, "HBlank Interrupt", 1);
-                            self.interrupt_text(ui, "VCounter Interrupt", 2);
-                            horizontal_text(ui, "Vcount Line", self.vcount);
-                            horizontal_text(ui, "Dispstat", format!("{:016b}", self.dispstat));
-                            horizontal_text(ui, "Dispcnt", format!("{:016b}", self.dispcnt));
-                        });
-                    }
+                    RenderTab::Information => self.show_information(ui),
                     RenderTab::Palette => {
                         self.show_palettes(ui, &background_palettes, &sprite_palettes)
                     }
@@ -268,6 +309,116 @@ impl PpuDebugger {
         palette
     }
 
+    fn show_information(&self, ui: &mut egui::Ui) {
+        ui.label(RichText::new("Display").strong());
+
+        horizontal_text(ui, "Mode", mode_description(self.current_mode));
+        horizontal_text(
+            ui,
+            "Forced Blank",
+            state_text(self.dispcnt.is_set(7), "on", "off"),
+        );
+
+        flag_row(
+            ui,
+            "Layers",
+            &[
+                ("BG0", self.dispcnt.is_set(8)),
+                ("BG1", self.dispcnt.is_set(9)),
+                ("BG2", self.dispcnt.is_set(10)),
+                ("BG3", self.dispcnt.is_set(11)),
+                ("OBJ", self.dispcnt.is_set(12)),
+            ],
+        );
+        flag_row(
+            ui,
+            "Windows",
+            &[
+                ("WIN0", self.dispcnt.is_set(13)),
+                ("WIN1", self.dispcnt.is_set(14)),
+                ("OBJWIN", self.dispcnt.is_set(15)),
+            ],
+        );
+        horizontal_text(
+            ui,
+            "OBJ Character VRAM Mapping",
+            if self.dispcnt.is_set(6) { "1D" } else { "2D" },
+        );
+        horizontal_text(
+            ui,
+            "OAM Access Allowed In HBlank",
+            state_text(self.dispcnt.is_set(5), "on", "off"),
+        );
+
+        ui.separator();
+        ui.label(RichText::new("Mosaic").strong());
+
+        horizontal_text(
+            ui,
+            "Background Size",
+            format!(
+                "{}x{}",
+                self.mosaic.get_bit_range(0..4) + 1,
+                self.mosaic.get_bit_range(4..8) + 1
+            ),
+        );
+        horizontal_text(
+            ui,
+            "Sprite Size",
+            format!(
+                "{}x{}",
+                self.mosaic.get_bit_range(8..12) + 1,
+                self.mosaic.get_bit_range(12..16) + 1
+            ),
+        );
+
+        ui.separator();
+        ui.label(RichText::new("Scanline").strong());
+
+        horizontal_text(ui, "Current Vcount Line", self.vcount.to_string());
+        horizontal_text(
+            ui,
+            "Target Vcount Line",
+            self.dispstat.get_bit_range(8..16).to_string(),
+        );
+
+        ui.separator();
+        ui.label(RichText::new("Interrupts").strong());
+
+        horizontal_text(
+            ui,
+            "Master Enable",
+            state_text(self.interrupt_master_enable.is_set(0), "on", "off"),
+        );
+
+        egui::Grid::new("PPU Interrupt Grid")
+            .num_columns(4)
+            .spacing([16.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("");
+                ui.label(RichText::new("Dispstat").weak());
+                ui.label(RichText::new("IE").weak());
+                ui.label(RichText::new("IF").weak());
+
+                ui.end_row();
+
+                for (name, bit) in [("VBlank", 0), ("HBlank", 1), ("VCounter", 2)] {
+                    let pending = if self.interrupt_flag.is_set(bit) {
+                        RichText::new("pending").color(Color32::YELLOW)
+                    } else {
+                        RichText::new("idle").weak()
+                    };
+
+                    ui.label(name);
+                    ui.label(state_text(self.dispstat.is_set(3 + bit), "on", "off"));
+                    ui.label(state_text(self.interrupt_enable.is_set(bit), "on", "off"));
+                    ui.label(pending);
+
+                    ui.end_row();
+                }
+            });
+    }
+
     fn show_palettes(
         &mut self,
         ui: &mut egui::Ui,
@@ -282,14 +433,14 @@ impl PpuDebugger {
         ui.separator();
 
         match self.palette_tab {
-            PaletteType::Background => palette_grid(ui, "Background Palette", &background_palettes),
-            PaletteType::Sprite => palette_grid(ui, "Sprite Palette", &sprite_palettes),
+            PaletteType::Background => palette_grid(ui, "Background Palette", background_palettes),
+            PaletteType::Sprite => palette_grid(ui, "Sprite Palette", sprite_palettes),
         }
     }
 
     fn show_backgrounds(&mut self, ui: &mut egui::Ui) {
         let width = ui.available_width();
-        let size_vec = vec2(width, width * 160.0 / 240.0);
+        let cell = vec2(width, width * 160.0 / 240.0);
 
         for index in 0..4 {
             let title = format!("Background {}:", index);
@@ -304,7 +455,9 @@ impl PpuDebugger {
                 ui.label(state);
             });
 
-            let size = compute_size(size_vec, &self.background_frames[index]);
+            let (rect, _) = ui.allocate_exact_size(cell, Sense::hover());
+
+            let size = compute_size(cell, &self.background_frames[index]);
             let texture_id = get_texture_id(
                 &mut self.background_textures[index],
                 ui.ctx(),
@@ -312,8 +465,38 @@ impl PpuDebugger {
                 title,
             );
 
-            ui.image((texture_id, size));
+            let image_rect = egui::Rect::from_center_size(rect.center(), size);
+
+            egui::Image::new((texture_id, size)).paint_at(ui, image_rect);
+
+            let response = ui.interact(
+                image_rect,
+                ui.id().with(("BG Response Hover", index)),
+                Sense::hover(),
+            );
+
             ui.separator();
+
+            let debug_info = &self.bg_debug_info[index];
+            let mode = if debug_info.affine { "affine" } else { "text" };
+            if self.bg_on[index] {
+                let text = format!(
+                    "mode: {}\nscreen base block: {}\ncharacter base block: {}\nbpp: {}\nreference coordinate: ({:<10.2},{:<10.2})\nscreen size: {}x{}\nmosaic: {}",
+                    mode,
+                    debug_info.screen_base_block,
+                    debug_info.character_base_block,
+                    debug_info.bpp,
+                    debug_info.reference_coordinate.0,
+                    debug_info.reference_coordinate.1,
+                    debug_info.screen_size.0,
+                    debug_info.screen_size.1,
+                    debug_info.mosaic
+                );
+
+                response.on_hover_ui(|ui| {
+                    ui.label(RichText::new(text).monospace());
+                });
+            }
         }
     }
 
@@ -331,8 +514,10 @@ impl PpuDebugger {
 
                     if let Some(frame) = &self.sprites[index].frame {
                         if frame.width > 0 && frame.height > 0 {
-                        let scale = (cell.x / frame.width as f32).min(cell.y / frame.height as f32);
-                            let size = vec2(frame.width as f32 * scale, frame.height as f32 * scale);
+                            let scale =
+                                (cell.x / frame.width as f32).min(cell.y / frame.height as f32);
+                            let size =
+                                vec2(frame.width as f32 * scale, frame.height as f32 * scale);
                             let texture_id = get_texture_id(
                                 &mut self.sprite_textures[index],
                                 ui.ctx(),
@@ -354,8 +539,8 @@ impl PpuDebugger {
                     };
                     let double = sprite.matrix.is_some() && sprite.double_size;
 
-                    response.on_hover_text(format!(
-                        "Sprite #{index}\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: {}\ndisabled: {}\nmode: {}\ndouble size: {}",
+                    let text = format!(
+                        "Sprite #{index}\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: {}\ndisabled: {}\nmode: {}\ndouble size: {}\nmosaic: {}",
                         sprite.dimension.width,
                         sprite.dimension.height,
                         sprite.coordinate.x,
@@ -370,26 +555,18 @@ impl PpuDebugger {
                         sprite.disabled,
                         mode,
                         double,
-                    ));
+                        sprite.mosaic
+                    );
 
-                if (index + 1) % GRID_COLUMNS as usize == 0 {
+                    response.on_hover_ui(|ui| {
+                        ui.label(RichText::new(text).monospace());
+                    });
+
+                    if (index + 1) % GRID_COLUMNS as usize == 0 {
                         ui.end_row();
                     }
                 }
             });
-    }
-
-    fn interrupt_text(&self, ui: &mut egui::Ui, text: &'static str, bit: usize) {
-        let state = if self.interrupt_flag.is_set(bit) {
-            RichText::new("pending").color(Color32::YELLOW)
-        } else {
-            RichText::new("idle").weak()
-        };
-
-        ui.horizontal(|ui| {
-            ui.label(format!("{}: ", text));
-            ui.label(state);
-        });
     }
 
     pub fn freeze(&mut self) {
