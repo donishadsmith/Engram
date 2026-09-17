@@ -41,14 +41,9 @@ jobs:
       - name: Build release
         run: cargo build --release
 
-      - name: Rename binary (Unix)
-        if: matrix.runner != 'windows-latest'
-        run: mv target/release/engram target/release/engram-${{ matrix.target }}
-
-      - name: Rename binary (Windows)
-        if: startsWith(matrix.runner, 'windows')
+      - name: Rename binary
         shell: bash
-        run: mv target/release/engram.exe target/release/engram-${{ matrix.target }}${{ matrix.ext }}
+        run: mv target/release/engram${{ matrix.ext }} target/release/engram-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Attach files to GitHub Release
         uses: softprops/action-gh-release@v2
