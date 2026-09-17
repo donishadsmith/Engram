@@ -66,6 +66,7 @@ impl EmulatorSession for GBASession {
         &mut self,
         key_bindings: &Vec<KeyCode>,
         input_blocked: bool,
+        volume: u8,
     ) -> Result<EmulatorState, Error> {
         self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
             .as_slice()
@@ -75,7 +76,7 @@ impl EmulatorSession for GBASession {
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             self.gba.run();
             for sample in self.gba.bus.apu.sample_buffer.drain(..) {
-                let _ = self.audio.producer.push(sample);
+                let _ = self.audio.play(sample, volume);
             }
         }
 

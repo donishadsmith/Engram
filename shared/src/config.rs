@@ -10,10 +10,13 @@ use toml::{from_str, to_string_pretty};
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct Config {
-    // just to save deterministically since random ordering bugs mes
+    // just to save deterministically since random ordering bugs me
     pub gbakeys: BTreeMap<String, String>,
     pub hotkeys: BTreeMap<String, String>,
     pub image_dir: Option<String>,
+    pub master_volume: Option<u8>,
+    pub solar_level: u8,
+    pub gif_settings: BTreeMap<String, u8>,
 }
 
 fn get_config_path() -> PathBuf {

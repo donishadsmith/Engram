@@ -3,6 +3,7 @@ use chrono::Local;
 use gif::{Encoder, Frame, Repeat};
 use macroquad::prelude::*;
 use std::{
+    collections::BTreeMap,
     fs::File,
     io::{Error, ErrorKind},
     path::PathBuf,
@@ -15,18 +16,18 @@ pub trait Emulator {
 pub struct GifRecorder {
     encoder: Option<Encoder<File>>,
     counter: u8,
-    pub delay: u16,
+    pub delay: u8,
     pub every_n_frame: u8,
     path: Option<PathBuf>,
 }
 
 impl GifRecorder {
-    pub fn new() -> Self {
+    pub fn new(gif_settings: &BTreeMap<String, u8>) -> Self {
         Self {
             encoder: None,
             counter: 0,
-            delay: 3,
-            every_n_frame: 5,
+            delay: *gif_settings.get("delay").unwrap_or_else(|| &3),
+            every_n_frame: *gif_settings.get("every_n_frame").unwrap_or_else(|| &5),
             path: None,
         }
     }
@@ -92,9 +93,17 @@ impl GifRecorder {
             10,
         );
 
-        gif_frame.delay = self.delay;
+        gif_frame.delay = self.delay as u16;
 
         let _ = encoder.write_frame(&gif_frame);
+    }
+
+    pub fn settings(&self) -> BTreeMap<String, u8> {
+        let mut map = BTreeMap::new();
+        map.insert("every_n_frame".to_owned(), self.every_n_frame);
+        map.insert("delay".to_owned(), self.delay);
+
+        map
     }
 }
 

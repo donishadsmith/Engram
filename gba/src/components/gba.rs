@@ -56,6 +56,8 @@ impl GBA {
 
         self.bus.dump(format_args!("interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}", ie, iflag, dispstat, ime));
 
+        // technically serviced by the time it shows on ui + plus will just be a flash on ui when enabled but looks cool
+        self.bus.copy_interrupt_flag();
         self.check_interrupts();
     }
 

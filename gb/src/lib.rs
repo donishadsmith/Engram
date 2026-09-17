@@ -56,6 +56,7 @@ impl EmulatorSession for GameBoySession {
         &mut self,
         key_bindings: &Vec<KeyCode>,
         input_blocked: bool,
+        volume: u8,
     ) -> Result<EmulatorState, Error> {
         self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
             .as_slice()
@@ -66,7 +67,7 @@ impl EmulatorSession for GameBoySession {
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             self.gameboy.run(self.apu_sample_cycles);
             for sample in self.gameboy.cpu.bus.apu.sample_buffer.drain(..) {
-                let _ = self.audio.producer.push(sample);
+                let _ = self.audio.play(sample, volume);
             }
         }
 

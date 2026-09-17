@@ -115,6 +115,7 @@ pub struct Bus {
     haltcnt: Option<u8>,
     internal_memory_control: u32,
     pub trace: Option<Trace>,
+    pub interrupt_flag_copy: u16,
 }
 
 impl Bus {
@@ -150,6 +151,7 @@ impl Bus {
             haltcnt: None,
             internal_memory_control: 0x0D000020,
             trace,
+            interrupt_flag_copy: 0,
         }
     }
 
@@ -1027,6 +1029,10 @@ impl Bus {
             let _ = write.write_fmt(arguments);
             let _ = writeln!(write);
         });
+    }
+
+    pub fn copy_interrupt_flag(&mut self) {
+        self.interrupt_flag_copy = self.interrupt_flag;
     }
 }
 

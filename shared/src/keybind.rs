@@ -315,8 +315,7 @@ impl KeyBindings {
             KeyId::Hotkeys => &mut self.hotkeys,
         };
 
-        let binding = &mut key_bindings[index];
-        binding.key = key;
+        key_bindings[index].key = key;
     }
 
     pub fn restore_defaults(&mut self, key_id: KeyId, emulator_id: EmulatorId) {

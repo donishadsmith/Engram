@@ -168,9 +168,15 @@ fn to_percent(volume: f32) -> String {
 }
 
 fn register(ui: &mut egui::Ui, name: &str, value: u16) {
+    let size = (ui.available_width() / 18.0).clamp(8.0, 24.0);
+
     ui.horizontal(|ui| {
-        ui.strong(name);
-        ui.monospace(format!("{:016b}", value));
+        ui.label(RichText::new(name).strong().size(size));
+        ui.label(
+            RichText::new(format!("{:016b}", value))
+                .monospace()
+                .size(size),
+        );
     });
 }
 
@@ -508,41 +514,42 @@ impl AudioDebugger {
         });
 
         TopBottomPanel::top("Global Controls").show(egui_ctx, |ui| {
-            ui.heading("Global Control Register Settings").highlight();
+            ui.horizontal(|ui| {
+                ui.heading("Global Control Register Settings").highlight();
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let (text, hover) = if self.frozen {
+                        (
+                            RichText::new("FROZEN").strong().color(Color32::YELLOW),
+                            "Click to resume debugger",
+                        )
+                    } else {
+                        (
+                            RichText::new("LIVE").strong().color(Color32::LIGHT_GREEN),
+                            "Click to pause debugger",
+                        )
+                    };
+
+                    ui.add_space(12.0);
+
+                    if ui
+                        .add(egui::Label::new(text).sense(egui::Sense::click()))
+                        .on_hover_text(hover)
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked()
+                    {
+                        self.freeze();
+                    }
+
+                    ui.label(RichText::new("Debugger Status:").strong());
+                });
+            });
+
             ui.separator();
 
             egui::Grid::new("Global Control Register Settings")
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (text, hover) = if self.frozen {
-                            (
-                                RichText::new("PAUSED").strong().color(Color32::YELLOW),
-                                "Click to resume",
-                            )
-                        } else {
-                            (
-                                RichText::new("LIVE").strong().color(Color32::LIGHT_GREEN),
-                                "Click to pause",
-                            )
-                        };
-
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(50.0, ui.spacing().interact_size.y),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                if ui
-                                    .add(egui::Label::new(text.clone()).sense(egui::Sense::click()))
-                                    .on_hover_text(hover)
-                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                    .clicked()
-                                {
-                                    self.freeze();
-                                }
-                            },
-                        );
-                    });
-
                     for channel_id in [
                         "Channel 1",
                         "Channel 2",

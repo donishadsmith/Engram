@@ -32,6 +32,7 @@ pub trait EmulatorSession {
         &mut self,
         key_bindings: &Vec<KeyCode>,
         input_blocked: bool,
+        volume: u8,
     ) -> Result<EmulatorState, Error>;
 
     fn save_game(&mut self) -> Result<(), Error>;

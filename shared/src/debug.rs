@@ -51,10 +51,12 @@ pub fn create_game_screen(
 ) {
     let texture_id = get_texture_id(texture_handle, egui_ctx, frame, id);
 
-    CentralPanel::default().show(egui_ctx, |ui| {
-        let size = compute_size(ui.available_size(), frame);
-        ui.centered_and_justified(|ui| {
-            ui.image((texture_id, size));
+    CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(egui_ctx, |ui| {
+            let size = compute_size(ui.available_size(), frame);
+            ui.centered_and_justified(|ui| {
+                ui.image((texture_id, size));
+            });
         });
-    });
 }

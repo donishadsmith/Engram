@@ -1,5 +1,5 @@
 use crate::components::{gba::GBA, ppu::sprites::SpriteAttributes};
-use egui::{Color32, RichText, Sense, TextureHandle, TopBottomPanel, Window, vec2};
+use egui::{Color32, RichText, Sense, TextureHandle, Window, vec2};
 use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
     render::{Frame, PixelFormat, rgb555_to_rgb888},
@@ -7,6 +7,7 @@ use shared::{
 };
 use std::{
     array::from_fn,
+    fmt::Display,
     mem::{swap, take},
 };
 
@@ -18,6 +19,7 @@ enum RenderTab {
     Background,
     Sprite,
     Information,
+    Palette,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -57,12 +59,18 @@ fn palette_grid(ui: &mut egui::Ui, id: &str, palette: &[Color32]) {
         });
 }
 
+fn horizontal_text<T: Display>(ui: &mut egui::Ui, title: &'static str, state: T) {
+    ui.horizontal(|ui| {
+        ui.label(format!("{}: ", title));
+        ui.label(state.to_string());
+    });
+}
+
 pub struct PpuDebugger {
     frozen: bool,
     texture: Option<TextureHandle>,
     palette: [u8; 0x400],
     palette_tab: PaletteType,
-    show_palettes: bool,
     background_frames: [Frame; 4],
     background_textures: Vec<Option<TextureHandle>>,
     sprites: Vec<SpriteAttributes>,
@@ -70,6 +78,10 @@ pub struct PpuDebugger {
     render_tab: RenderTab,
     current_mode: u8,
     bg_on: [bool; 4],
+    interrupt_flag: u16,
+    vcount: u8,
+    dispstat: u16,
+    dispcnt: u16,
 }
 
 impl PpuDebugger {
@@ -78,7 +90,6 @@ impl PpuDebugger {
             frozen: false,
             texture: None,
             palette: [0; 0x400],
-            show_palettes: true,
             palette_tab: PaletteType::Background,
             background_frames: from_fn(|_| Frame {
                 pixels: Box::new([0; 240 * 160]),
@@ -92,17 +103,24 @@ impl PpuDebugger {
             render_tab: RenderTab::Background,
             current_mode: 0,
             bg_on: [false; 4],
+            interrupt_flag: 0,
+            vcount: 0,
+            dispcnt: 0,
+            dispstat: 0,
         }
     }
 
     pub fn close(&mut self, gba: &mut GBA) {
         self.frozen = false;
-        self.show_palettes = true;
         self.palette_tab = PaletteType::Background;
         gba.bus.ppu.transparant_sprite_background = true;
         gba.bus.ppu.transparant_background = false;
         self.current_mode = 0;
         self.bg_on = [false; 4];
+        self.interrupt_flag = 0;
+        self.vcount = 0;
+        self.dispcnt = 0;
+        self.dispstat = 0;
     }
 
     pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
@@ -122,82 +140,58 @@ impl PpuDebugger {
             for bg_id in 0..4 {
                 self.bg_on[bg_id] = gba.bus.ppu.dispcnt.is_set(8 + bg_id);
             }
+
+            self.interrupt_flag = gba.bus.interrupt_flag_copy;
+            self.vcount = gba.bus.ppu.vcount;
+            self.dispstat = gba.bus.ppu.dispstat;
+            self.dispcnt = gba.bus.ppu.dispcnt;
         }
 
         let background_palettes = self.get_pallete(PaletteType::Background);
         let sprite_palettes = self.get_pallete(PaletteType::Sprite);
 
         // TODO: figure out the organization for this + add registers
-        TopBottomPanel::top("Header").show(egui_ctx, |ui| {
-            egui::Grid::new("Header").show(ui, |ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let (text, hover) = if self.frozen {
-                        (
-                            RichText::new("PAUSED").strong().color(Color32::YELLOW),
-                            "Click to resume",
-                        )
-                    } else {
-                        (
-                            RichText::new("LIVE").strong().color(Color32::LIGHT_GREEN),
-                            "Click to pause",
-                        )
-                    };
-
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(50.0, ui.spacing().interact_size.y),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            if ui
-                                .add(egui::Label::new(text).sense(egui::Sense::click()))
-                                .on_hover_text(hover)
-                                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                .clicked()
-                            {
-                                self.freeze();
-                            }
-                        },
-                    );
-                });
-
-                ui.end_row();
-            })
-        });
-
-        Window::new("Palettes")
-            .default_open(false)
-            .open(&mut self.show_palettes)
-            .collapsible(true)
-            .resizable(true)
-            .default_size([354.0, 380.0])
-            .min_width(120.0)
-            .show(egui_ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(
-                        &mut self.palette_tab,
-                        PaletteType::Background,
-                        "Background",
-                    );
-                    ui.selectable_value(&mut self.palette_tab, PaletteType::Sprite, "Sprite");
-                });
-
-                ui.separator();
-
-                match self.palette_tab {
-                    PaletteType::Background => {
-                        palette_grid(ui, "Background Palette", &background_palettes)
-                    }
-                    PaletteType::Sprite => palette_grid(ui, "Sprite Palette", &sprite_palettes),
-                }
-            });
-
-        Window::new("Renders")
+        Window::new("Video Debugger")
             .resizable(true)
             .collapsible(true)
             .default_size([360.0, 820.0])
             .min_width(120.0)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(0.0, 10.0))
+            .default_pos(egui_ctx.screen_rect().right_top() + vec2(-370.0, 10.0))
             .show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.label(RichText::new("Debugger Status:").strong());
+
+                        let (text, hover) = if self.frozen {
+                            (
+                                RichText::new("FROZEN").strong().color(Color32::YELLOW),
+                                "Click to resume debugger",
+                            )
+                        } else {
+                            (
+                                RichText::new("LIVE").strong().color(Color32::LIGHT_GREEN),
+                                "Click to pause debugger",
+                            )
+                        };
+
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(50.0, ui.spacing().interact_size.y),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                if ui
+                                    .add(egui::Label::new(text).sense(egui::Sense::click()))
+                                    .on_hover_text(hover)
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    .clicked()
+                                {
+                                    self.freeze();
+                                }
+                            },
+                        );
+                    });
+
+                    ui.separator();
+
                     ui.selectable_value(
                         &mut self.render_tab,
                         RenderTab::Information,
@@ -205,6 +199,7 @@ impl PpuDebugger {
                     );
                     ui.selectable_value(&mut self.render_tab, RenderTab::Background, "Background");
                     ui.selectable_value(&mut self.render_tab, RenderTab::Sprite, "Sprite");
+                    ui.selectable_value(&mut self.render_tab, RenderTab::Palette, "Palette");
                 });
 
                 ui.separator();
@@ -232,9 +227,18 @@ impl PpuDebugger {
                     }
                     RenderTab::Information => {
                         // TODO: do the rest of this later
-                        ui.horizontal(|ui| {
-                            ui.label(format!("Current Mode: {}", self.current_mode));
+                        ui.vertical(|ui| {
+                            horizontal_text(ui, "Current Mode", self.current_mode);
+                            self.interrupt_text(ui, "VBlank Interrupt", 0);
+                            self.interrupt_text(ui, "HBlank Interrupt", 1);
+                            self.interrupt_text(ui, "VCounter Interrupt", 2);
+                            horizontal_text(ui, "Vcount Line", self.vcount);
+                            horizontal_text(ui, "Dispstat", format!("{:016b}", self.dispstat));
+                            horizontal_text(ui, "Dispcnt", format!("{:016b}", self.dispcnt));
                         });
+                    }
+                    RenderTab::Palette => {
+                        self.show_palettes(ui, &background_palettes, &sprite_palettes)
                     }
                 });
             });
@@ -262,6 +266,25 @@ impl PpuDebugger {
         }
 
         palette
+    }
+
+    fn show_palettes(
+        &mut self,
+        ui: &mut egui::Ui,
+        background_palettes: &[Color32],
+        sprite_palettes: &[Color32],
+    ) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.palette_tab, PaletteType::Background, "Background");
+            ui.selectable_value(&mut self.palette_tab, PaletteType::Sprite, "Sprite");
+        });
+
+        ui.separator();
+
+        match self.palette_tab {
+            PaletteType::Background => palette_grid(ui, "Background Palette", &background_palettes),
+            PaletteType::Sprite => palette_grid(ui, "Sprite Palette", &sprite_palettes),
+        }
     }
 
     fn show_backgrounds(&mut self, ui: &mut egui::Ui) {
@@ -332,7 +355,7 @@ impl PpuDebugger {
                     let double = sprite.matrix.is_some() && sprite.double_size;
 
                     response.on_hover_text(format!(
-                        "Sprite {index}\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: {}\ndisabled: {}\nmode: {}\ndouble size: {}",
+                        "Sprite #{index}\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: {}\ndisabled: {}\nmode: {}\ndouble size: {}",
                         sprite.dimension.width,
                         sprite.dimension.height,
                         sprite.coordinate.x,
@@ -354,6 +377,19 @@ impl PpuDebugger {
                     }
                 }
             });
+    }
+
+    fn interrupt_text(&self, ui: &mut egui::Ui, text: &'static str, bit: usize) {
+        let state = if self.interrupt_flag.is_set(bit) {
+            RichText::new("pending").color(Color32::YELLOW)
+        } else {
+            RichText::new("idle").weak()
+        };
+
+        ui.horizontal(|ui| {
+            ui.label(format!("{}: ", text));
+            ui.label(state);
+        });
     }
 
     pub fn freeze(&mut self) {

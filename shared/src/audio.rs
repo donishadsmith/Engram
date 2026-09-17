@@ -62,6 +62,10 @@ impl AudioOutput {
             sample_rate: config.sample_rate(),
         }
     }
+
+    pub fn play(&mut self, sample: f32, volume: u8) {
+        let _ = self.producer.push(sample * (volume as f32) / 100.0);
+    }
 }
 
 pub struct LowPassFilter {

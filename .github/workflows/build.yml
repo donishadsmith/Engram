@@ -20,6 +20,9 @@ jobs:
           - runner: windows-latest
             target: windows_x86_64
             ext: '.exe'
+          - runner: windows-11-arm
+            target: windows_aarch64
+            ext: '.exe'
           - runner: macos-latest
             target: macos_arm64
             ext: ''
@@ -43,7 +46,7 @@ jobs:
         run: mv target/release/engram target/release/engram-${{ matrix.target }}
 
       - name: Rename binary (Windows)
-        if: matrix.runner == 'windows-latest'
+        if: startsWith(matrix.runner, 'windows')
         shell: bash
         run: mv target/release/engram.exe target/release/engram-${{ matrix.target }}${{ matrix.ext }}
 

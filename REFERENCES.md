@@ -61,6 +61,8 @@ Emulators, documentation, and guides that Engram relied on during development.
 - [Writing an Emulator: The First Pixel](https://blog.tigris.fr/2019/09/15/writing-an-emulator-the-first-pixel/)
 - [Game Boy Emulation in JavaScript by Imran Nazar](https://imrannazar.com/series/gameboy-emulation-in-javascript/graphics)
 - [Playkid by Toni Sagristà](https://tonisagrista.com/blog/2026/playkid/)
+- [The Ultimate Game Boy Talk (33c3)](https://youtu.be/HyzD8pNlpwI?si=diHfWXHCWxSmughI)
+- [Manuel Fuchs Emulating the Nintendo Game Boy Audio Hardware in Elm](https://youtu.be/a52p6ji1WZs?si=QO7LZ1f9MhjdOeiU)
 
 ## Game Boy Advance
 
@@ -85,7 +87,7 @@ Emulators, documentation, and guides that Engram relied on during development.
 
 ## ARM7TDMI
 
-### Reference documentation
+### Reference Documentation
 
 - [ARM Architecture Reference Manual](https://student.cs.uwaterloo.ca/~cs452/docs/ts7200/arm-architecture.pdf)
 - [ARM7TDMI Technical Reference Manual](https://ww1.microchip.com/downloads/en/DeviceDoc/DDI0029G_7TDMI_R3_trm.pdf)
@@ -93,13 +95,13 @@ Emulators, documentation, and guides that Engram relied on during development.
 - [ARM7TDMI Instruction Set Reference](https://users.ece.utexas.edu/~mcdermot/arch/articles/ARM/arm7tdmi_instruction_set_reference.pdf)
 - [ARM7TDMI-S Technical Reference Manual Revision 3.0](https://developer.arm.com/documentation/ddi0084/f/memory-interface/bus-cycle-types/sequential-cycles)
 
-### Guides and articles
+### Guides & Articles
 
 - [Decoding the ARM7TDMI Instruction Set](https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/) by Gregory Gaines
 - [ARM7TDMI multiplication by bmchtech](https://bmchtech.github.io/post/multiply/)
 - [ARM Architecture Fundamentals](https://www.youtube.com/watch?v=7LqPJGnBPMM)
 
-## General emulation and background reading
+## General Emulation & Background Reading
 
 - [Emulator Polling vs. Scheduler Game Loop](https://www.gregorygaines.com/blog/emulator-polling-vs-scheduler-game-loop/) by Gregory Gaines
 - [NESdev: Open Bus Behavior](https://www.nesdev.org/wiki/Open_bus_behavior)

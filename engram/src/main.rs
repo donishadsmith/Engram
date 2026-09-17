@@ -34,6 +34,8 @@ struct Session {
     open_gif_settings: bool,
     start_time: Option<DateTime<Local>>,
     message_queue: VecDeque<&'static str>,
+    master_volume: u8,
+    solar_level: u8,
 }
 
 impl Session {
@@ -41,12 +43,15 @@ impl Session {
         prevent_quit();
 
         let config = load_config();
+        let master_volume = config.master_volume.unwrap_or_else(|| 100).min(100);
+        let solar_level = config.solar_level;
+        let gif_settings = &config.gif_settings;
 
         Self {
             state: EmulatorState::Launch,
             emulator: None,
             rom_path: None,
-            gif: GifRecorder::new(),
+            gif: GifRecorder::new(gif_settings),
             key_bindings: KeyBindings::new().load_keys(&config),
             image_dir: PathBuf::from(config.image_dir.unwrap()),
             show_key_bindings: false,
@@ -55,6 +60,8 @@ impl Session {
             set_image_dir: false,
             start_time: None,
             message_queue: VecDeque::new(),
+            master_volume,
+            solar_level,
         }
     }
 
@@ -81,6 +88,7 @@ impl Session {
                 emu.run(
                     &self.key_bindings.keys(key_id),
                     self.show_key_bindings || self.show_hotkeys,
+                    self.master_volume,
                 )
             }
             None => Ok(EmulatorState::Selection),
@@ -89,7 +97,8 @@ impl Session {
 
     fn reset(&mut self) -> Result<(), Error> {
         if let Some(emulator) = &mut self.emulator {
-            emulator.reset(self.rom_path.clone().unwrap())?
+            emulator.reset(self.rom_path.clone().unwrap())?;
+            emulator.solar_level(self.solar_level);
         }
 
         Ok(())
@@ -108,6 +117,9 @@ impl Session {
                     .into_string()
                     .unwrap(),
             ),
+            solar_level: self.solar_level,
+            master_volume: Some(self.master_volume),
+            gif_settings: self.gif.settings(),
         };
 
         save_config(&config)
@@ -215,7 +227,6 @@ fn bindings_grid(
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
-    let mut solar_level: u8 = 0;
     let mut key_rebinding: Option<usize> = None;
     let mut target_key_id: Option<KeyId> = None;
     let mut restore_default_bindings = false;
@@ -253,6 +264,9 @@ async fn main() -> Result<(), Error> {
                     "gba" => session.set_emulator(engram_gba::GBASession::new_session(rom_path)?),
                     _ => continue,
                 }
+
+                let emulator = session.emulator.as_mut().unwrap();
+                emulator.solar_level(session.solar_level);
             }
             EmulatorState::Running => {
                 session.state = session.run()?;
@@ -294,8 +308,15 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
-                    if let Some(emu) = &mut session.emulator {
-                        ui.menu_button("Emulation", |ui| {
+                    ui.menu_button("Emulation", |ui| {
+                        ui.menu_button("Volume", |ui| {
+                            ui.add(
+                                egui::Slider::new(&mut session.master_volume, 0..=100)
+                                    .text("Adjust volume for the emulator."),
+                            );
+                        });
+
+                        if let Some(emu) = &mut session.emulator {
                             if ui.button("Reset").clicked() {
                                 session.state = EmulatorState::Reset;
                                 ui.close_menu();
@@ -304,19 +325,25 @@ async fn main() -> Result<(), Error> {
                             if emu.has_solar() {
                                 ui.menu_button("Solar", |ui| {
                                     ui.add(
-                                        egui::Slider::new(&mut solar_level, 0..=10)
+                                        egui::Slider::new(&mut session.solar_level, 0..=10)
                                             .text("Solar sensor level from lowest to highest"),
                                     );
-                                    emu.solar_level(solar_level);
+                                    emu.solar_level(session.solar_level);
                                 });
                             }
 
-                            if ui.button("Key Bindings").clicked() {
+                            if ui
+                                .add(
+                                    egui::Button::new("Key Bindings")
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                )
+                                .clicked()
+                            {
                                 session.show_key_bindings = true;
                                 ui.close_menu();
                             }
-                        });
-                    }
+                        }
+                    });
 
                     ui.menu_button("Settings", |ui| {
                         if ui
