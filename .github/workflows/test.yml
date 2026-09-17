@@ -19,6 +19,9 @@ jobs:
           - runner: windows-latest
             target: windows_x86_64
             ext: '.exe'
+          - runner: windows-11-arm
+            target: windows_aarch64
+            ext: '.exe'
           - runner: macos-latest
             target: macos_arm64
             ext: ''
