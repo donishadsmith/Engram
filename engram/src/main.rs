@@ -241,12 +241,13 @@ async fn main() -> Result<(), Error> {
         match session.state {
             EmulatorState::Selection => {
                 let Some(rom_path) = file_dialog() else {
-                    if session.emulator.is_some() {
-                        session.state = EmulatorState::Running;
-                        continue;
-                    }
+                    session.state = if session.emulator.is_some() {
+                        EmulatorState::Running
+                    } else {
+                        EmulatorState::Launch
+                    };
 
-                    return Ok(());
+                    continue;
                 };
 
                 session.rom_path = Some(rom_path.clone());
