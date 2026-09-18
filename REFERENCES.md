@@ -10,6 +10,7 @@ Emulators, documentation, and guides that Engram relied on during development.
 - [ayyboy-advance](https://github.com/ioncodes/ayyboy-advance)
 - [gba-emulator](https://github.com/elipsitz/gba-emulator)
 - [CowBite](https://github.com/Warpten/CowBite)
+- [hades](https://github.com/hades-emu/hades)
 - [SameBoy](https://github.com/LIJI32/SameBoy)
 - [rboy](https://github.com/mvdnes/rboy)
 - [retroboy](https://github.com/smparsons/retroboy)
