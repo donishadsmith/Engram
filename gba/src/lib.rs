@@ -104,17 +104,17 @@ impl EmulatorSession for GBASession {
         self.active_debug == Some(debug_page)
     }
 
-    fn toggle_debug(&mut self, debug_page: DebugPage) {
+    fn toggle_debug(&mut self, debug_page: Option<DebugPage>) {
         match self.active_debug {
             Some(DebugPage::Audio) => self.audio_debugger.close(&mut self.gba),
-            Some(DebugPage::Video) => self.ppu_debugger.close(&mut self.gba),
+            Some(_) => self.ppu_debugger.close(&mut self.gba),
             None => {}
         }
 
-        self.active_debug = if self.active_debug == Some(debug_page) {
+        self.active_debug = if self.active_debug == debug_page {
             None
         } else {
-            Some(debug_page)
+            debug_page
         };
     }
 

@@ -5,7 +5,7 @@ use rfd::FileDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     config::{Config, load_config, save_config},
-    debug::DEBUG_PAGES,
+    debug::{DEBUG_PAGES, DebugPage},
     keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
     utils::{GifRecorder, screenshot},
 };
@@ -36,6 +36,7 @@ struct Session {
     message_queue: VecDeque<&'static str>,
     master_volume: u8,
     solar_level: u8,
+    last_debug_page: DebugPage,
 }
 
 impl Session {
@@ -62,12 +63,49 @@ impl Session {
             message_queue: VecDeque::new(),
             master_volume,
             solar_level,
+            last_debug_page: DebugPage::Video,
         }
     }
 
     fn set_emulator<T: EmulatorSession + 'static>(&mut self, emu: T) {
         self.emulator = Some(Box::new(emu));
         self.state = EmulatorState::Running;
+    }
+
+    fn debug_active(&self) -> bool {
+        self.emulator
+            .as_ref()
+            .is_some_and(|emu| DEBUG_PAGES.iter().any(|&page| emu.debug_visible(page)))
+    }
+
+    fn toggle_debug_mode(&mut self) {
+        let active = self.debug_active();
+        let Some(emu) = self.emulator.as_mut() else {
+            return;
+        };
+
+        if !emu.has_debug_ui() {
+            return;
+        }
+
+        if active {
+            emu.toggle_debug(None);
+
+            return;
+        }
+
+        let page = if emu.debug_page_available(self.last_debug_page) {
+            Some(self.last_debug_page)
+        } else {
+            DEBUG_PAGES
+                .iter()
+                .copied()
+                .find(|&page| emu.debug_page_available(page))
+        };
+
+        if let Some(page) = page {
+            emu.toggle_debug(Some(page));
+        }
     }
 
     fn save(&mut self) -> Result<(), Error> {
@@ -125,7 +163,7 @@ impl Session {
         save_config(&config)
     }
 
-    // TODO: do better
+    // TODO: do better, probably should refactor
     fn create_image_path(&self) -> Result<(), Error> {
         create_dir_all(self.image_dir.parent().unwrap())?;
 
@@ -428,29 +466,6 @@ async fn main() -> Result<(), Error> {
                         target_key_id = None;
                     }
 
-                    if let Some(emu) = &mut session.emulator {
-                        if emu.has_debug_ui() {
-                            ui.menu_button("Debug", |ui| {
-                                for debug_page in DEBUG_PAGES {
-                                    if !emu.debug_page_available(debug_page) {
-                                        continue;
-                                    }
-
-                                    if ui
-                                        .selectable_label(
-                                            emu.debug_visible(debug_page),
-                                            debug_page.to_str(),
-                                        )
-                                        .clicked()
-                                    {
-                                        emu.toggle_debug(debug_page);
-                                        ui.close_menu();
-                                    }
-                                }
-                            });
-                        }
-                    }
-
                     ui.menu_button("Tools", |ui| {
                         let text = &format!(
                             "Screenshot ({})",
@@ -540,11 +555,17 @@ async fn main() -> Result<(), Error> {
                             });
                     }
 
+                    let mut toggle_requested = false;
+
                     if !session.show_hotkeys {
                         if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                         {
                             session.add_message("Screenshot saved");
                             screenshot(session.get_image_path());
+                        }
+
+                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Debugger)) {
+                            toggle_requested = true;
                         }
 
                         if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
@@ -600,17 +621,81 @@ async fn main() -> Result<(), Error> {
                         session.open_gif_settings = false;
                     }
 
-                    if session.gif.is_recording() && !session.display_message() {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let debug_active = session.debug_active();
+                    let has_debug_ui = session
+                        .emulator
+                        .as_ref()
+                        .is_some_and(|emu| emu.has_debug_ui());
+                    let show_message = session.display_message();
+                    let message = session.get_message();
+                    let recording = session.gif.is_recording();
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if has_debug_ui {
+                            let (text, hover) = if debug_active {
+                                (
+                                    egui::RichText::new("ON").color(egui::Color32::LIGHT_GREEN),
+                                    "Click to close debugger",
+                                )
+                            } else {
+                                (egui::RichText::new("OFF").weak(), "Click to open debugger")
+                            };
+
+                            let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
+                            let title = ui.add(
+                                egui::Label::new(egui::RichText::new("Debug Mode:").strong())
+                                    .sense(egui::Sense::click()),
+                            );
+
+                            if title
+                                .union(state)
+                                .on_hover_text(hover)
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .clicked()
+                            {
+                                toggle_requested = true;
+                            }
+                        }
+
+                        if show_message {
+                            if let Some(message) = message {
+                                ui.label(egui::RichText::new(message).color(egui::Color32::WHITE));
+                            }
+                        } else if recording {
                             ui.label(egui::RichText::new("RECORDING").color(egui::Color32::RED));
-                        });
+                        }
+                    });
+
+                    if debug_active {
+                        if let Some(emu) = &mut session.emulator {
+                            egui::Window::new("Debuggers")
+                                .collapsible(true)
+                                .show(egui_ctx, |ui| {
+                                    ui.vertical(|ui| {
+                                        for debug_page in DEBUG_PAGES {
+                                            if !emu.debug_page_available(debug_page) {
+                                                continue;
+                                            }
+
+                                            let clicked = ui
+                                                .selectable_label(
+                                                    emu.debug_visible(debug_page),
+                                                    debug_page.to_str(),
+                                                )
+                                                .clicked();
+
+                                            if clicked && !emu.debug_visible(debug_page) {
+                                                emu.toggle_debug(Some(debug_page));
+                                                session.last_debug_page = debug_page;
+                                            }
+                                        }
+                                    });
+                                });
+                        }
                     }
 
-                    if session.display_message() {
-                        let message = session.get_message().unwrap();
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(egui::RichText::new(message).color(egui::Color32::WHITE));
-                        });
+                    if toggle_requested {
+                        session.toggle_debug_mode();
                     }
                 });
             });

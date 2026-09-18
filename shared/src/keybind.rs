@@ -139,10 +139,14 @@ pub struct Bindings {
     key: KeyCode,
 }
 
-pub const DEFAULT_HOT_KEYS: [Bindings; 2] = [
+pub const DEFAULT_HOT_KEYS: [Bindings; 3] = [
     Bindings {
         label: "Screenshot",
         key: KeyCode::F7,
+    },
+    Bindings {
+        label: "Debugger",
+        key: KeyCode::F11,
     },
     Bindings {
         label: "Gif",
@@ -232,6 +236,7 @@ impl KeyId {
 
 pub enum Hotkeys {
     Screenshot,
+    Debugger,
     Gif,
 }
 
@@ -333,6 +338,7 @@ impl KeyBindings {
     pub fn get_hotkey_bind(&self, hotkey: Hotkeys) -> KeyCode {
         let text = match hotkey {
             Hotkeys::Screenshot => "Screenshot",
+            Hotkeys::Debugger => "Debugger",
             Hotkeys::Gif => "Gif",
         };
 
