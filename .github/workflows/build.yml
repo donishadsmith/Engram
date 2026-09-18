@@ -15,22 +15,22 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            target: ubuntu
+            target: ubuntu_x64
             ext: ''
-          - runner: ubuntu-24.04-arm
-            target: linux_aarch64
+          - runner: ubuntu-26.04-arm
+            target: ubuntu_arm64
             ext: ''
           - runner: windows-latest
-            target: windows_x86_64
+            target: windows_x64
             ext: '.exe'
           - runner: windows-11-arm
-            target: windows_aarch64
+            target: windows_arm64
             ext: '.exe'
           - runner: macos-latest
             target: macos_arm64
             ext: ''
-          - runner: macos-15-intel
-            target: macos_x86_64
+          - runner: macos-26-intel
+            target: macos_x64
             ext: ''
     steps:
       - uses: actions/checkout@v6
