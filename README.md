@@ -38,42 +38,12 @@ A Gameboy Advance & Game Boy Color emulator (supports DMG games too) written in 
 
 <p align="center"><i>Gifs captured with built-in gif recorder.</i></p>
 
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="assets/audio.png" width="500">
-      <br>GBA Audio Debugger
-    </td>
-    <td align="center">
-      <img src="assets/video.png" width="500">
-      <br>GBA Video Debugger
-  </tr>
-</table>
-
 ## Usage
-In a terminal:
-
 ```bash
 git clone https://github.com/donishadsmith/Engram
 cd Engram
 cargo run --release
 ```
-
-## Default Controls
-The default controls are as follows but can be reconfigured in the menu.
-
-| Keyboard    |    GBA     |     GB/GBC      |
-|-------------|------------|-----------------|
-| W           | Up         | Up              |
-| A           | Left       | Left            |
-| S           | Down       | Down            |
-| D           | Right      | Right           |
-| L           | A          | A               |
-| K           | B          | B               |
-| Enter       | Start      | Start           |
-| Right Shift | Select     | Select          |
-| I           | R          |                 |
-| O           | L          |                 |
 
 ## Demo
 https://github.com/user-attachments/assets/de25befe-c87b-4c96-b198-8b29d849e68b
