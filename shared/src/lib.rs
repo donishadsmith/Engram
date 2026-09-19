@@ -92,4 +92,6 @@ pub trait ScriptTarget {
     fn write_u16(&mut self, address: u32, value: u16);
 
     fn write_u32(&mut self, address: u32, value: u32);
+
+    fn read_cpu_register(&self, _index: usize) -> Option<u64>;
 }
