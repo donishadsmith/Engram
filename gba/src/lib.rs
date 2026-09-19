@@ -23,6 +23,7 @@ use shared::{
     debug::DebugPage,
     keybind::get_relevant_key_presses,
     render::Screen,
+    script::ScriptEngine,
     utils::Emulator,
 };
 use std::{io::Error, path::PathBuf};
@@ -37,6 +38,7 @@ pub struct GBASession {
     screen: Screen,
     frame_ready: bool,
     active_debug: Option<DebugPage>,
+    script_engine: ScriptEngine,
 }
 
 impl GBASession {
@@ -57,6 +59,7 @@ impl GBASession {
             screen,
             frame_ready: false,
             active_debug: None,
+            script_engine: ScriptEngine::new(),
         })
     }
 }
@@ -75,12 +78,17 @@ impl EmulatorSession for GBASession {
 
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             self.gba.run();
+            if self.gba.take_frame_start() {
+                self.script_engine.execute(&mut self.gba);
+            }
+
             for sample in self.gba.bus.apu.sample_buffer.drain(..) {
                 let _ = self.audio.play(sample, volume);
             }
         }
 
         self.frame_ready = self.gba.take_frame();
+
         if self.frame_ready && self.active_debug.is_none() {
             self.screen.update(&self.gba.bus.ppu.frontend);
         }
@@ -144,6 +152,7 @@ impl EmulatorSession for GBASession {
         self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
         self.frame_ready = false;
         self.active_debug = None;
+        self.script_engine = ScriptEngine::new();
 
         Ok(())
     }
@@ -160,10 +169,22 @@ impl EmulatorSession for GBASession {
         EmulatorId::Gba
     }
 
-    fn debug_page_available(&self, debug_page: DebugPage) -> bool {
+    fn debug_page_available(&self, debug_page: Option<DebugPage>) -> bool {
         match debug_page {
-            DebugPage::Audio | DebugPage::Video => true,
-            //_ => false,
+            Some(DebugPage::Audio) | Some(DebugPage::Video) => true,
+            _ => false,
         }
+    }
+
+    fn supports_scripting(&self) -> bool {
+        true
+    }
+
+    fn take_script_output(&mut self) -> Vec<String> {
+        self.script_engine.take_output()
+    }
+
+    fn load_script(&mut self, code: String) {
+        self.script_engine.load(code);
     }
 }

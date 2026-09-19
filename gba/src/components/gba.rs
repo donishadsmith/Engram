@@ -1,12 +1,12 @@
 // https://archive.org/details/NintendoGbaManualV1.1/page/n59/mode/1up
 use crate::components::{
-    bus::Bus,
+    bus::{AccessType, Bus},
     cpu::{Arm7tdmi, HaltState},
     dma::Trigger,
     gamepak::GamePak,
     scheduler::Event,
 };
-use shared::{traits::BitOps, utils::Emulator};
+use shared::{ScriptTarget, traits::BitOps, utils::Emulator};
 use std::{io::Error, mem::take};
 
 pub struct GBA {
@@ -132,6 +132,10 @@ impl GBA {
         take(&mut self.bus.ppu.frame_ready)
     }
 
+    pub fn take_frame_start(&mut self) -> bool {
+        take(&mut self.bus.ppu.frame_start)
+    }
+
     pub fn trigger_dma(&mut self, trigger: Option<Trigger>) {
         if let Some(trigger) = trigger {
             for channel in 0..4 {
@@ -152,5 +156,31 @@ impl Emulator for GBA {
 impl Drop for GBA {
     fn drop(&mut self) {
         let _ = self.save();
+    }
+}
+
+impl ScriptTarget for GBA {
+    fn read_u8(&mut self, address: u32) -> u8 {
+        self.bus.read_u8(address, AccessType::Lua)
+    }
+
+    fn read_u16(&mut self, address: u32) -> u16 {
+        self.bus.read_u16(address, AccessType::Lua)
+    }
+
+    fn read_u32(&mut self, address: u32) -> u32 {
+        self.bus.read_u32(address, AccessType::Lua)
+    }
+
+    fn write_u8(&mut self, address: u32, value: u8) {
+        self.bus.write_u8(address, value, AccessType::Lua);
+    }
+
+    fn write_u16(&mut self, address: u32, value: u16) {
+        self.bus.write_u16(address, value, AccessType::Lua);
+    }
+
+    fn write_u32(&mut self, address: u32, value: u32) {
+        self.bus.write_u32(address, value, AccessType::Lua);
     }
 }
