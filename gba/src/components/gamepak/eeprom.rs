@@ -66,6 +66,34 @@ impl Eeprom {
         }
     }
 
+    // a very lazy fix to prevent reads from mutating state
+    pub fn read_bit_lua(&self) -> u16 {
+        match &self.mode {
+            EepromMode::ReadData {
+                block_start_index,
+                bits_sent,
+            } => {
+                if *bits_sent < 4 {
+                    return 0;
+                } else {
+                    let full_word = u64::from_be_bytes([
+                        self.memory[*block_start_index],
+                        self.memory[*block_start_index + 1],
+                        self.memory[*block_start_index + 2],
+                        self.memory[*block_start_index + 3],
+                        self.memory[*block_start_index + 4],
+                        self.memory[*block_start_index + 5],
+                        self.memory[*block_start_index + 6],
+                        self.memory[*block_start_index + 7],
+                    ]);
+
+                    return full_word.get_bit(63 - (*bits_sent - 4) as usize) as u16;
+                }
+            }
+            _ => 1,
+        }
+    }
+
     pub fn read_bit(&mut self) -> u16 {
         match &mut self.mode {
             EepromMode::ReadData {
@@ -74,6 +102,7 @@ impl Eeprom {
             } => {
                 if *bits_sent < 4 {
                     *bits_sent += 1;
+
                     return 0;
                 } else {
                     let full_word = u64::from_be_bytes([

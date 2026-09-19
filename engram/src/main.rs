@@ -6,10 +6,16 @@ use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     config::{Config, load_config, save_config},
     debug::{DEBUG_PAGES, DebugPage},
+    editor::LuaEditor,
     keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
     utils::{GifRecorder, screenshot},
 };
-use std::{collections::VecDeque, fs::create_dir_all, io::Error, path::PathBuf};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs::create_dir_all,
+    io::Error,
+    path::PathBuf,
+};
 
 fn conf() -> Conf {
     Conf {
@@ -19,6 +25,14 @@ fn conf() -> Conf {
         high_dpi: true,
         ..Default::default()
     }
+}
+
+fn initialize_debug_hashmap() -> HashMap<EmulatorId, DebugPage> {
+    let mut map = HashMap::new();
+
+    map.insert(EmulatorId::Gba, DebugPage::Video);
+
+    map
 }
 
 struct Session {
@@ -36,7 +50,8 @@ struct Session {
     message_queue: VecDeque<&'static str>,
     master_volume: u8,
     solar_level: u8,
-    last_debug_page: DebugPage,
+    last_debug_page: HashMap<EmulatorId, DebugPage>,
+    lua_editor: LuaEditor,
 }
 
 impl Session {
@@ -63,7 +78,8 @@ impl Session {
             message_queue: VecDeque::new(),
             master_volume,
             solar_level,
-            last_debug_page: DebugPage::Video,
+            last_debug_page: initialize_debug_hashmap(),
+            lua_editor: LuaEditor::new(),
         }
     }
 
@@ -94,13 +110,14 @@ impl Session {
             return;
         }
 
-        let page = if emu.debug_page_available(self.last_debug_page) {
-            Some(self.last_debug_page)
+        let last_debug_page = self.last_debug_page.get(&emu.id()).copied();
+        let page = if emu.debug_page_available(last_debug_page) {
+            last_debug_page
         } else {
             DEBUG_PAGES
                 .iter()
                 .copied()
-                .find(|&page| emu.debug_page_available(page))
+                .find(|&page| emu.debug_page_available(Some(page)))
         };
 
         if let Some(page) = page {
@@ -125,7 +142,7 @@ impl Session {
 
                 emu.run(
                     &self.key_bindings.keys(key_id),
-                    self.show_key_bindings || self.show_hotkeys,
+                    self.show_key_bindings || self.show_hotkeys || self.lua_editor.occupied(),
                     self.master_volume,
                 )
             }
@@ -218,7 +235,7 @@ impl Drop for Session {
 
 fn file_dialog() -> Option<PathBuf> {
     FileDialog::new()
-        .set_title("Select a ROM file")
+        .set_title("Select ROM")
         .add_filter("ROMs", &["gb", "gbc", "gba"])
         .pick_file()
 }
@@ -467,13 +484,36 @@ async fn main() -> Result<(), Error> {
                     }
 
                     ui.menu_button("Tools", |ui| {
-                        let text = &format!(
+                        if let Some(emu) = &session.emulator {
+                            if emu.supports_scripting() {
+                                let keycode = keycode_to_string(
+                                    session.key_bindings.get_hotkey_bind(Hotkeys::Lua),
+                                );
+                                let text = if session.lua_editor.opened {
+                                    format!("Close Lua Editor ({})", keycode)
+                                } else {
+                                    format!("Open Lua Editor ({})", keycode)
+                                };
+
+                                if ui
+                                    .add(
+                                        egui::Button::new(text)
+                                            .wrap_mode(egui::TextWrapMode::Extend),
+                                    )
+                                    .clicked()
+                                {
+                                    session.lua_editor.opened = !session.lua_editor.opened;
+                                    ui.close_menu();
+                                }
+                            }
+                        }
+
+                        let text = format!(
                             "Screenshot ({})",
                             keycode_to_string(
                                 session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot)
                             )
-                        )
-                        .to_string();
+                        );
                         if ui
                             .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
                             .clicked()
@@ -483,22 +523,12 @@ async fn main() -> Result<(), Error> {
                             ui.close_menu();
                         }
 
+                        let keycode =
+                            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
                         let text = if session.gif.is_recording() {
-                            &format!(
-                                "Stop GIF ({})",
-                                keycode_to_string(
-                                    session.key_bindings.get_hotkey_bind(Hotkeys::Gif)
-                                )
-                            )
-                            .to_string()
+                            format!("Stop GIF ({})", keycode)
                         } else {
-                            &format!(
-                                "Record GIF ({})",
-                                keycode_to_string(
-                                    session.key_bindings.get_hotkey_bind(Hotkeys::Gif)
-                                )
-                            )
-                            .to_string()
+                            format!("Record GIF ({})", keycode)
                         };
 
                         if ui
@@ -522,7 +552,7 @@ async fn main() -> Result<(), Error> {
 
                         if ui
                             .add(
-                                egui::Button::new("Choose Save Location")
+                                egui::Button::new("Choose Image Save Location")
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             )
                             .clicked()
@@ -533,7 +563,7 @@ async fn main() -> Result<(), Error> {
                     });
 
                     if session.set_image_dir {
-                        egui::Window::new("Choose File Location")
+                        egui::Window::new("Choose Image File Location")
                             .open(&mut session.set_image_dir)
                             .show(egui_ctx, |ui| {
                                 egui::Grid::new("Choose File Location").num_columns(1).show(
@@ -568,16 +598,20 @@ async fn main() -> Result<(), Error> {
                             toggle_requested = true;
                         }
 
-                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
-                            if session.gif.is_recording() {
-                                if let Some(emu) = &session.emulator {
+                        if let Some(emu) = &session.emulator {
+                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua)) {
+                                session.lua_editor.opened = !session.lua_editor.opened;
+                            }
+
+                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
+                                if session.gif.is_recording() {
                                     let _ = session
                                         .gif
                                         .toggle(emu.reference_frontend(), session.get_image_path());
                                     session.add_message("GIF saved");
+                                } else {
+                                    session.open_gif_settings = !session.open_gif_settings;
                                 }
-                            } else {
-                                session.open_gif_settings = !session.open_gif_settings;
                             }
                         }
                     }
@@ -673,7 +707,7 @@ async fn main() -> Result<(), Error> {
                                 .show(egui_ctx, |ui| {
                                     ui.vertical(|ui| {
                                         for debug_page in DEBUG_PAGES {
-                                            if !emu.debug_page_available(debug_page) {
+                                            if !emu.debug_page_available(Some(debug_page)) {
                                                 continue;
                                             }
 
@@ -686,7 +720,9 @@ async fn main() -> Result<(), Error> {
 
                                             if clicked && !emu.debug_visible(debug_page) {
                                                 emu.toggle_debug(Some(debug_page));
-                                                session.last_debug_page = debug_page;
+                                                let _ = session
+                                                    .last_debug_page
+                                                    .insert(emu.id(), debug_page);
                                             }
                                         }
                                     });
@@ -697,6 +733,19 @@ async fn main() -> Result<(), Error> {
                     if toggle_requested {
                         session.toggle_debug_mode();
                     }
+
+                    if session.lua_editor.opened {
+                        if let Some(emu) = &mut session.emulator {
+                            if let Some(code) = session.lua_editor.show_ui(&egui_ctx) {
+                                emu.load_script(code);
+                            }
+
+                            let lines = emu.take_script_output();
+                            if !lines.is_empty() {
+                                session.lua_editor.push_output(lines);
+                            }
+                        }
+                    };
                 });
             });
 

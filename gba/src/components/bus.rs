@@ -44,6 +44,7 @@ const WAIT_STATE2_SEQUENTIAL: [u8; 2] = [8, 1];
 pub enum AccessType {
     Sequential, // Memory address related to previous address, incremented by + 2 (half word) or +4 (word)
     Nonsequential, // Memory address is fetched and has nothing to do with the previous instruction
+    Lua,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -333,7 +334,7 @@ impl Bus {
         self.cost(address, 16, access_type);
 
         if self.is_eeprom_address(address) {
-            return self.eeprom_read_u16();
+            return self.eeprom_read_u16(access_type);
         }
 
         if address & !1 == 0x4000300 {
@@ -565,6 +566,10 @@ impl Bus {
     }
 
     pub fn cost(&mut self, address: u32, width: u32, access_type: AccessType) {
+        if access_type == AccessType::Lua {
+            return;
+        }
+
         let region = (address >> 24) as usize;
         let cycles = match region {
             0x00 | 0x03 | 0x04 | 0x07 => 1,
@@ -959,9 +964,12 @@ impl Bus {
         self.dma.channels[channel].transfer_complete(&mut self.interrupt_flag);
     }
 
-    fn eeprom_read_u16(&mut self) -> u16 {
+    fn eeprom_read_u16(&mut self, access_type: AccessType) -> u16 {
         match &mut self.gamepak.backup_chip {
-            BackupChip::Eeprom(eeprom) => eeprom.read_bit(),
+            BackupChip::Eeprom(eeprom) => match access_type {
+                AccessType::Lua => eeprom.read_bit_lua(),
+                _ => eeprom.read_bit(),
+            },
             _ => unreachable!(),
         }
     }

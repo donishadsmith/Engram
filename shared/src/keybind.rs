@@ -139,10 +139,14 @@ pub struct Bindings {
     key: KeyCode,
 }
 
-pub const DEFAULT_HOT_KEYS: [Bindings; 3] = [
+pub const DEFAULT_HOT_KEYS: [Bindings; 4] = [
     Bindings {
         label: "Screenshot",
         key: KeyCode::F7,
+    },
+    Bindings {
+        label: "Lua",
+        key: KeyCode::F8,
     },
     Bindings {
         label: "Debugger",
@@ -238,6 +242,7 @@ pub enum Hotkeys {
     Screenshot,
     Debugger,
     Gif,
+    Lua,
 }
 
 // TODO: probably should clean this up later
@@ -340,6 +345,7 @@ impl KeyBindings {
             Hotkeys::Screenshot => "Screenshot",
             Hotkeys::Debugger => "Debugger",
             Hotkeys::Gif => "Gif",
+            Hotkeys::Lua => "Lua",
         };
 
         self.hotkeys

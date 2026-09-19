@@ -34,7 +34,7 @@ fn compute_cell_width(available_width: f32) -> f32 {
     ((available_width - GRID_SPACING * (GRID_COLUMNS - 1.0)) / GRID_COLUMNS).max(4.0)
 }
 
-fn palette_grid(ui: &mut egui::Ui, id: &str, palette: &[Color32]) {
+fn palette_grid(ui: &mut egui::Ui, id: &str, base_address: usize, palette: &[Color32]) {
     let size = compute_cell_width(ui.available_width());
 
     egui::Grid::new(id)
@@ -46,9 +46,15 @@ fn palette_grid(ui: &mut egui::Ui, id: &str, palette: &[Color32]) {
                 let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
                 ui.painter().rect_filled(rect, 1.0, color);
 
+                let mut address = base_address + index * 2 + 1;
+                if id == "Sprite Palette" {
+                    address += 256;
+                }
+
                 let text = format!(
-                    "Palette Index {:03x}\n#{:02x}{:02x}{:02x}",
+                    "Palette Index {:03x}\naddress: {:08x}h\n#{:02x}{:02x}{:02x}",
                     index,
+                    address,
                     color.r(),
                     color.g(),
                     color.b()
@@ -433,8 +439,10 @@ impl PpuDebugger {
         ui.separator();
 
         match self.palette_tab {
-            PaletteType::Background => palette_grid(ui, "Background Palette", background_palettes),
-            PaletteType::Sprite => palette_grid(ui, "Sprite Palette", sprite_palettes),
+            PaletteType::Background => {
+                palette_grid(ui, "Background Palette", 0x05000000, background_palettes)
+            }
+            PaletteType::Sprite => palette_grid(ui, "Sprite Palette", 0x05000200, sprite_palettes),
         }
     }
 
@@ -540,7 +548,8 @@ impl PpuDebugger {
                     let double = sprite.matrix.is_some() && sprite.double_size;
 
                     let text = format!(
-                        "Sprite #{index}\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: {}\ndisabled: {}\nmode: {}\ndouble size: {}\nmosaic: {}",
+                        "Sprite #{index}\nstart address: {:08x}h\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: {}\ndisabled: {}\nmode: {}\ndouble size: {}\nmosaic: {}",
+                        0x07000000 + index * 8,
                         sprite.dimension.width,
                         sprite.dimension.height,
                         sprite.coordinate.x,

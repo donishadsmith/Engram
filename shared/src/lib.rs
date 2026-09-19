@@ -1,8 +1,10 @@
 pub mod audio;
 pub mod config;
 pub mod debug;
+pub mod editor;
 pub mod keybind;
 pub mod render;
+pub mod script;
 pub mod traits;
 pub mod utils;
 
@@ -12,7 +14,7 @@ use std::{io::Error, path::PathBuf};
 
 use crate::{debug::DebugPage, render::Frame};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EmulatorId {
     Gb,
     Gba,
@@ -49,7 +51,7 @@ pub trait EmulatorSession {
 
     fn debug_ui(&mut self, _egui_ctx: &Context) {}
 
-    fn debug_page_available(&self, _debug_page: DebugPage) -> bool {
+    fn debug_page_available(&self, _debug_page: Option<DebugPage>) -> bool {
         false
     }
 
@@ -66,4 +68,28 @@ pub trait EmulatorSession {
     fn frame_ready(&self) -> bool;
 
     fn id(&self) -> EmulatorId;
+
+    fn supports_scripting(&self) -> bool {
+        false
+    }
+
+    fn load_script(&mut self, _code: String) {}
+
+    fn take_script_output(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+pub trait ScriptTarget {
+    fn read_u8(&mut self, address: u32) -> u8;
+
+    fn read_u16(&mut self, address: u32) -> u16;
+
+    fn read_u32(&mut self, address: u32) -> u32;
+
+    fn write_u8(&mut self, address: u32, value: u8);
+
+    fn write_u16(&mut self, address: u32, value: u16);
+
+    fn write_u32(&mut self, address: u32, value: u32);
 }
