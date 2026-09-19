@@ -75,11 +75,16 @@ impl LuaEditor {
                     .max_height(150.0)
                     .auto_shrink([false, false])
                     .stick_to_bottom(true)
-                    .show(ui, |ui| {
-                        for line in &self.output {
-                            ui.monospace(line);
-                        }
-                    });
+                    .show_rows(
+                        ui,
+                        ui.text_style_height(&egui::TextStyle::Monospace),
+                        self.output.len(),
+                        |ui, range| {
+                            for line in &self.output[range] {
+                                ui.monospace(line);
+                            }
+                        },
+                    );
             });
 
         self.opened = opened;
@@ -89,7 +94,11 @@ impl LuaEditor {
     }
 
     pub fn push_output(&mut self, lines: Vec<String>) {
-        self.output.extend(lines)
+        self.output.extend(lines);
+        if self.output.len() > 1000 {
+            let excess = self.output.len() - 1000;
+            self.output.drain(..excess);
+        }
     }
 
     pub fn occupied(&self) -> bool {

@@ -1,12 +1,20 @@
 use crate::ScriptTarget;
-use mlua::{Function, Lua, Value, Variadic};
-use std::{cell::RefCell, collections::VecDeque, mem::take};
+use mlua::{Function, HookTriggers, Lua, Value, Variadic, VmState};
+use std::{
+    cell::{Cell, RefCell},
+    collections::VecDeque,
+    mem::take,
+    time::{Duration, Instant},
+};
 
 const HELP: &str = r#"
 Read memory address:
 - read_u8(address)
 - read_u16(address)
 - read_u32(address)
+
+Read CPU register:
+- read_cpu_register(index)
 
 Write memory address:
 - write_u8(address, value)
@@ -29,7 +37,7 @@ impl ScriptEngine {
     pub fn new() -> Self {
         Self {
             lua: Lua::new(),
-            pending: VecDeque::with_capacity(100),
+            pending: VecDeque::new(),
             output: Vec::new(),
         }
     }
@@ -53,12 +61,19 @@ impl ScriptEngine {
             output,
         } = self;
 
-        let mut errors: Vec<String> = Vec::new();
         let target = RefCell::new(target);
         let output = RefCell::new(output);
+        let printed = Cell::new(0u32);
 
-        let result = lua.scope(|scope| {
-            let print = scope.create_function_mut(|_, vals: Variadic<Value>| {
+        let _ = lua.scope(|scope| {
+            let print = scope.create_function(|_, vals: Variadic<Value>| {
+                printed.set(printed.get() + 1);
+                if printed.get() > 1000 {
+                    return Err(mlua::Error::runtime(
+                        "script terminated due to too much output",
+                    ));
+                }
+
                 let line = vals
                     .iter()
                     .map(|v| v.to_string())
@@ -102,6 +117,18 @@ impl ScriptEngine {
             })?;
             lua.globals().set("write_u32", write_u32)?;
 
+            // TODO: find better way to do this
+            let read_cpu_register = scope.create_function(|_, index: usize| {
+                let value = target.borrow_mut().read_cpu_register(index);
+
+                if value.is_none() {
+                    return Err(mlua::Error::runtime("not supported"));
+                }
+
+                Ok(value)
+            })?;
+            lua.globals().set("read_cpu_register", read_cpu_register)?;
+
             let help = scope.create_function(|_, ()| {
                 output.borrow_mut().push(HELP.to_string());
 
@@ -110,25 +137,38 @@ impl ScriptEngine {
             lua.globals().set("help", help)?;
 
             while let Some(code) = pending.pop_front() {
+                time_limit(lua, Duration::from_millis(100));
                 if let Err(e) = lua.load(&code).exec() {
-                    errors.push(format!("Error: {e}"));
+                    output.borrow_mut().push(format!("{e}"));
                 }
             }
 
-            if let Ok(execute_every_frame) = lua.globals().get::<Function>("on_frame") {
-                if let Err(e) = execute_every_frame.call::<()>(()) {
-                    errors.push(format!("Error: {e}"));
+            if let Ok(hook) = lua.globals().get::<Function>("on_frame") {
+                time_limit(lua, Duration::from_millis(5));
+                if let Err(e) = hook.call::<()>(()) {
+                    output.borrow_mut().push(format!("{e}"));
                     let _ = lua.globals().set("on_frame", Value::Nil);
                 }
             }
 
             Ok(())
         });
-
-        if let Err(e) = result {
-            errors.push(format!("Script Engine Error: {e}"));
-        }
-
-        output.borrow_mut().extend(errors);
     }
+}
+
+fn time_limit(lua: &Lua, budget: Duration) {
+    let start = Instant::now();
+
+    let _ = lua.set_hook(
+        HookTriggers::new().every_nth_instruction(1000),
+        move |_, _| {
+            if start.elapsed() > budget {
+                Err(mlua::Error::runtime(
+                    "script ran too long and was terminated",
+                ))
+            } else {
+                Ok(VmState::Continue)
+            }
+        },
+    );
 }

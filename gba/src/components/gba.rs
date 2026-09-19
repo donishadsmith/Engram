@@ -183,4 +183,12 @@ impl ScriptTarget for GBA {
     fn write_u32(&mut self, address: u32, value: u32) {
         self.bus.write_u32(address, value, AccessType::Lua);
     }
+
+    fn read_cpu_register(&self, index: usize) -> Option<u64> {
+        if index > 15 {
+            return None;
+        }
+
+        Some(self.cpu.registers.r[index] as u64)
+    }
 }
