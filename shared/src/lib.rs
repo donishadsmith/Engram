@@ -12,7 +12,7 @@ use egui::Context;
 use macroquad::input::KeyCode;
 use std::{io::Error, path::PathBuf};
 
-use crate::{debug::DebugPage, render::Frame};
+use crate::{debug::DebugPage, render::Frame, script::ScriptEngine};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EmulatorId {
@@ -69,14 +69,8 @@ pub trait EmulatorSession {
 
     fn id(&self) -> EmulatorId;
 
-    fn supports_scripting(&self) -> bool {
-        false
-    }
-
-    fn load_script(&mut self, _code: String) {}
-
-    fn take_script_output(&mut self) -> Vec<String> {
-        Vec::new()
+    fn script_engine(&mut self) -> Option<&mut ScriptEngine> {
+        None
     }
 }
 
@@ -94,4 +88,7 @@ pub trait ScriptTarget {
     fn write_u32(&mut self, address: u32, value: u32);
 
     fn read_cpu_register(&self, _index: usize) -> Option<u64>;
+
+    // probably useless but still a fun function
+    fn to_rgb(&self, value: u32) -> [u8; 3];
 }

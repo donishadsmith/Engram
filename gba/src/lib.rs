@@ -176,15 +176,7 @@ impl EmulatorSession for GBASession {
         }
     }
 
-    fn supports_scripting(&self) -> bool {
-        true
-    }
-
-    fn take_script_output(&mut self) -> Vec<String> {
-        self.script_engine.take_output()
-    }
-
-    fn load_script(&mut self, code: String) {
-        self.script_engine.load(code);
+    fn script_engine(&mut self) -> Option<&mut ScriptEngine> {
+        Some(&mut self.script_engine)
     }
 }

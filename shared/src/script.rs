@@ -21,6 +21,10 @@ Write memory address:
 - write_u16(address, value)
 - write_u32(address, value)
 
+Get rgb:
+- to_rgb(read_u16(address))
+- to_rgb_hex(read_u16(address))
+
 Execute every frame:
 function on_frame()
     ...
@@ -101,33 +105,45 @@ impl ScriptEngine {
 
             let write_u8 = scope.create_function(|_, (address, value): (u32, u8)| {
                 target.borrow_mut().write_u8(address, value);
+
                 Ok(())
             })?;
             lua.globals().set("write_u8", write_u8)?;
 
             let write_u16 = scope.create_function(|_, (address, value): (u32, u16)| {
                 target.borrow_mut().write_u16(address, value);
+
                 Ok(())
             })?;
             lua.globals().set("write_u16", write_u16)?;
 
             let write_u32 = scope.create_function(|_, (address, value): (u32, u32)| {
                 target.borrow_mut().write_u32(address, value);
+
                 Ok(())
             })?;
             lua.globals().set("write_u32", write_u32)?;
 
-            // TODO: find better way to do this
             let read_cpu_register = scope.create_function(|_, index: usize| {
-                let value = target.borrow_mut().read_cpu_register(index);
-
-                if value.is_none() {
-                    return Err(mlua::Error::runtime("not supported"));
-                }
-
-                Ok(value)
+                target.borrow_mut().read_cpu_register(index).ok_or_else(|| {
+                    mlua::Error::runtime(format!("no CPU register at index {index}"))
+                })
             })?;
             lua.globals().set("read_cpu_register", read_cpu_register)?;
+
+            let to_rgb = scope.create_function(|_, value: u32| {
+                let [r, g, b] = target.borrow_mut().to_rgb(value);
+
+                Ok(format!("({r}, {g}, {b})"))
+            })?;
+            lua.globals().set("to_rgb", to_rgb)?;
+
+            let to_rgb_hex = scope.create_function(|_, value: u32| {
+                let [r, g, b] = target.borrow_mut().to_rgb(value);
+
+                Ok(format!("#{r:02x}{g:02x}{b:02x}"))
+            })?;
+            lua.globals().set("to_rgb_hex", to_rgb_hex)?;
 
             let help = scope.create_function(|_, ()| {
                 output.borrow_mut().push(HELP.to_string());

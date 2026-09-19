@@ -484,27 +484,27 @@ async fn main() -> Result<(), Error> {
                     }
 
                     ui.menu_button("Tools", |ui| {
-                        if let Some(emu) = &session.emulator {
-                            if emu.supports_scripting() {
-                                let keycode = keycode_to_string(
-                                    session.key_bindings.get_hotkey_bind(Hotkeys::Lua),
-                                );
-                                let text = if session.lua_editor.opened {
-                                    format!("Close Lua Editor ({})", keycode)
-                                } else {
-                                    format!("Open Lua Editor ({})", keycode)
-                                };
+                        if session
+                            .emulator
+                            .as_mut()
+                            .map(|emu| emu.script_engine())
+                            .is_some()
+                        {
+                            let keycode = keycode_to_string(
+                                session.key_bindings.get_hotkey_bind(Hotkeys::Lua),
+                            );
+                            let text = if session.lua_editor.opened {
+                                format!("Close Lua Editor ({})", keycode)
+                            } else {
+                                format!("Open Lua Editor ({})", keycode)
+                            };
 
-                                if ui
-                                    .add(
-                                        egui::Button::new(text)
-                                            .wrap_mode(egui::TextWrapMode::Extend),
-                                    )
-                                    .clicked()
-                                {
-                                    session.lua_editor.opened = !session.lua_editor.opened;
-                                    ui.close_menu();
-                                }
+                            if ui
+                                .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
+                                .clicked()
+                            {
+                                session.lua_editor.opened = !session.lua_editor.opened;
+                                ui.close_menu();
                             }
                         }
 
@@ -735,12 +735,14 @@ async fn main() -> Result<(), Error> {
                     }
 
                     if session.lua_editor.opened {
-                        if let Some(emu) = &mut session.emulator {
+                        if let Some(emu) = &mut session.emulator
+                            && let Some(script_engine) = emu.script_engine()
+                        {
                             if let Some(code) = session.lua_editor.show_ui(&egui_ctx) {
-                                emu.load_script(code);
+                                script_engine.load(code);
                             }
 
-                            let lines = emu.take_script_output();
+                            let lines = script_engine.take_output();
                             if !lines.is_empty() {
                                 session.lua_editor.push_output(lines);
                             }

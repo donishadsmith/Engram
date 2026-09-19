@@ -6,7 +6,7 @@ use crate::components::{
     gamepak::GamePak,
     scheduler::Event,
 };
-use shared::{ScriptTarget, traits::BitOps, utils::Emulator};
+use shared::{ScriptTarget, render::to_rbg_single, traits::BitOps, utils::Emulator};
 use std::{io::Error, mem::take};
 
 pub struct GBA {
@@ -190,5 +190,9 @@ impl ScriptTarget for GBA {
         }
 
         Some(self.cpu.registers.r[index] as u64)
+    }
+
+    fn to_rgb(&self, value: u32) -> [u8; 3] {
+        to_rbg_single(value, self.bus.ppu.frontend.pixel_format)
     }
 }

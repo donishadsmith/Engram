@@ -46,10 +46,7 @@ fn palette_grid(ui: &mut egui::Ui, id: &str, base_address: usize, palette: &[Col
                 let (rect, response) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
                 ui.painter().rect_filled(rect, 1.0, color);
 
-                let mut address = base_address + index * 2 + 1;
-                if id == "Sprite Palette" {
-                    address += 256;
-                }
+                let address = base_address + index * 2;
 
                 let text = format!(
                     "Palette Index {:03x}\naddress: {:08x}h\n#{:02x}{:02x}{:02x}",

@@ -42,7 +42,7 @@ impl Screen {
             .iter()
             .zip(self.image.bytes.chunks_exact_mut(RGBA_BYTES_PER_PIXEL))
         {
-            let [r, g, b] = rgb555_to_rgb888(*pixel as u16);
+            let [r, g, b] = to_rbg_single(*pixel, frame.pixel_format);
             out.copy_from_slice(&[r, g, b, 255]);
         }
 
@@ -82,7 +82,7 @@ pub fn rgb555_to_rgb888(rgb555: u16) -> [u8; 3] {
 pub fn to_rgba(frame: &Frame) -> Vec<u8> {
     let mut rgba: Vec<u8> = Vec::with_capacity(frame.height * frame.width * RGBA_BYTES_PER_PIXEL);
     for pixel in &frame.pixels {
-        let rgb888 = rgb555_to_rgb888(*pixel as u16);
+        let rgb888 = to_rbg_single(*pixel, frame.pixel_format);
         rgba.extend(rgb888);
         rgba.push(if *pixel == (1 << 31) { 0 } else { 255 });
     }
@@ -90,11 +90,18 @@ pub fn to_rgba(frame: &Frame) -> Vec<u8> {
     rgba
 }
 
+pub fn to_rbg_single(value: u32, format: PixelFormat) -> [u8; 3] {
+    match format {
+        PixelFormat::Rgb555 => rgb555_to_rgb888(value as u16),
+        PixelFormat::Rgb888 => [(value >> 16) as u8, (value >> 8) as u8, value as u8],
+    }
+}
+
 pub fn to_rgb(frame: &Frame) -> Vec<u8> {
     let mut rgb = Vec::with_capacity(frame.width * frame.height * 3);
 
     for pixel in &frame.pixels {
-        rgb.extend(rgb555_to_rgb888(*pixel as u16));
+        rgb.extend(to_rbg_single(*pixel, frame.pixel_format));
     }
 
     rgb
