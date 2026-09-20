@@ -16,6 +16,7 @@ use shared::{
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     keybind::get_relevant_key_presses,
     render::Screen,
+    script::ScriptEngine,
     utils::Emulator,
 };
 use std::{io::Error, path::PathBuf};
@@ -28,6 +29,7 @@ pub struct GameBoySession {
     screen: Screen,
     apu_sample_cycles: u32,
     frame_ready: bool,
+    script_engine: ScriptEngine,
 }
 
 impl GameBoySession {
@@ -47,6 +49,7 @@ impl GameBoySession {
             screen,
             apu_sample_cycles,
             frame_ready: false,
+            script_engine: ScriptEngine::new(),
         })
     }
 }
@@ -73,7 +76,8 @@ impl EmulatorSession for GameBoySession {
 
         self.frame_ready = self.gameboy.take_frame();
         if self.frame_ready {
-            //self.script_engine.execute(&mut self.gameboy, EmulatorId::Gb);
+            self.script_engine
+                .execute(&mut self.gameboy, EmulatorId::Gb);
             self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
         }
 
@@ -96,6 +100,7 @@ impl EmulatorSession for GameBoySession {
             self.gameboy.cpu.bus.ppu.frame.height,
         );
         self.frame_ready = false;
+        self.script_engine = ScriptEngine::new();
 
         Ok(())
     }
@@ -110,5 +115,9 @@ impl EmulatorSession for GameBoySession {
 
     fn id(&self) -> EmulatorId {
         EmulatorId::Gb
+    }
+
+    fn script_engine(&mut self) -> Option<&mut ScriptEngine> {
+        Some(&mut self.script_engine)
     }
 }

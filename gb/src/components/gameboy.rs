@@ -1,5 +1,16 @@
-use crate::components::{bus::Bus, cpu::CPU, gamepak::GamePak};
-use shared::utils::Emulator;
+use crate::components::{
+    bus::{AddressBus, Bus},
+    cpu::{
+        CPU,
+        registers::{Register8Bits, Register16Bits},
+    },
+    gamepak::GamePak,
+};
+use shared::{
+    ScriptTarget,
+    render::{PixelFormat, to_rbg_single},
+    utils::Emulator,
+};
 use std::{io::Error, mem::take};
 
 const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
@@ -130,5 +141,75 @@ impl Emulator for GameBoy {
 impl Drop for GameBoy {
     fn drop(&mut self) {
         let _ = self.save();
+    }
+}
+
+impl ScriptTarget for GameBoy {
+    fn read_u8(&mut self, address: u32) -> u8 {
+        match u16::try_from(address) {
+            Ok(address) => self.cpu.bus.read(address),
+            Err(_) => 0xFF,
+        }
+    }
+
+    fn read_u16(&mut self, address: u32) -> u16 {
+        u16::from_le_bytes([self.read_u8(address), self.read_u8(address + 1)])
+    }
+
+    fn read_u32(&mut self, address: u32) -> u32 {
+        u32::from_le_bytes([
+            self.read_u8(address),
+            self.read_u8(address + 1),
+            self.read_u8(address + 2),
+            self.read_u8(address + 3),
+        ])
+    }
+
+    fn write_u8(&mut self, address: u32, value: u8) {
+        match u16::try_from(address) {
+            Ok(address) => self.cpu.bus.write(address, value),
+            Err(_) => {}
+        }
+    }
+
+    fn write_u16(&mut self, address: u32, value: u16) {
+        let bytes = u16::to_le_bytes(value);
+
+        self.write_u8(address, bytes[0]);
+        self.write_u8(address + 1, bytes[1]);
+    }
+
+    fn write_u32(&mut self, address: u32, value: u32) {
+        let bytes = u32::to_le_bytes(value);
+
+        self.write_u8(address, bytes[0]);
+        self.write_u8(address + 1, bytes[1]);
+        self.write_u8(address + 2, bytes[2]);
+        self.write_u8(address + 3, bytes[3]);
+    }
+
+    fn to_rgb(&self, value: u32) -> [u8; 3] {
+        to_rbg_single(value, PixelFormat::Rgb555)
+    }
+
+    fn read_cpu_register(&self, register_name: String) -> Option<u64> {
+        match register_name.as_str() {
+            "a" => Some(self.cpu.registers.get_8bit(Register8Bits::A) as u64),
+            "f" => Some(self.cpu.registers.get_8bit(Register8Bits::F) as u64),
+            "b" => Some(self.cpu.registers.get_8bit(Register8Bits::B) as u64),
+            "c" => Some(self.cpu.registers.get_8bit(Register8Bits::C) as u64),
+            "d" => Some(self.cpu.registers.get_8bit(Register8Bits::D) as u64),
+            "e" => Some(self.cpu.registers.get_8bit(Register8Bits::E) as u64),
+            "h" => Some(self.cpu.registers.get_8bit(Register8Bits::H) as u64),
+            "l" => Some(self.cpu.registers.get_8bit(Register8Bits::L) as u64),
+            "ir" => Some(self.cpu.registers.instruction_register.unwrap_or_else(|| 0) as u64),
+            "pc" => Some(self.cpu.registers.program_counter.address as u64),
+            "sp" => Some(self.cpu.registers.stack_pointer as u64),
+            "af" => Some(self.cpu.registers.get_16bit(Register16Bits::AF) as u64),
+            "bc" => Some(self.cpu.registers.get_16bit(Register16Bits::BC) as u64),
+            "de" => Some(self.cpu.registers.get_16bit(Register16Bits::DE) as u64),
+            "hl" => Some(self.cpu.registers.get_16bit(Register16Bits::HL) as u64),
+            _ => None,
+        }
     }
 }

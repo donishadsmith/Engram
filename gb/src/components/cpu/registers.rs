@@ -123,7 +123,7 @@ impl Registers {
         }
     }
 
-    pub fn get_8bit(&mut self, register_8bits: Register8Bits) -> u8 {
+    pub fn get_8bit(&self, register_8bits: Register8Bits) -> u8 {
         match register_8bits {
             Register8Bits::A => self.a,
             Register8Bits::F => self.f,
