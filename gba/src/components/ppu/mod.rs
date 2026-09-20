@@ -1068,6 +1068,9 @@ impl PPU {
         self.vcount = (self.vcount + 1) % 228;
         if self.vcount == 0 {
             self.frame_start = true;
+
+            self.update_oam_debug_data();
+            self.sprites_ready = true;
         }
 
         self.dispstat.clear_bit(DispstatBit::HblankFlag as usize);
@@ -1093,11 +1096,6 @@ impl PPU {
 
         if (160..227).contains(&self.vcount) {
             self.dispstat.set_bit(DispstatBit::VblankFlag as usize);
-
-            if self.vcount == 226 {
-                self.update_oam_debug_data();
-                self.sprites_ready = true;
-            }
         } else {
             self.dispstat.clear_bit(DispstatBit::VblankFlag as usize);
         }

@@ -73,6 +73,7 @@ impl EmulatorSession for GameBoySession {
 
         self.frame_ready = self.gameboy.take_frame();
         if self.frame_ready {
+            //self.script_engine.execute(&mut self.gameboy, EmulatorId::Gb);
             self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
         }
 

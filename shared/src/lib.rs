@@ -87,7 +87,7 @@ pub trait ScriptTarget {
 
     fn write_u32(&mut self, address: u32, value: u32);
 
-    fn read_cpu_register(&self, _index: usize) -> Option<u64>;
+    fn read_cpu_register(&self, _register_name: String) -> Option<u64>;
 
     // probably useless but still a fun function
     fn to_rgb(&self, value: u32) -> [u8; 3];

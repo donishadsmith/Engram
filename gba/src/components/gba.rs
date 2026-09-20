@@ -184,12 +184,27 @@ impl ScriptTarget for GBA {
         self.bus.write_u32(address, value, AccessType::Lua);
     }
 
-    fn read_cpu_register(&self, index: usize) -> Option<u64> {
-        if index > 15 {
-            return None;
+    fn read_cpu_register(&self, register_name: String) -> Option<u64> {
+        match register_name.as_str() {
+            "cpsr" => Some(self.cpu.registers.cpsr as u64),
+            "r0" => Some(self.cpu.registers.r[0] as u64),
+            "r1" => Some(self.cpu.registers.r[1] as u64),
+            "r2" => Some(self.cpu.registers.r[2] as u64),
+            "r3" => Some(self.cpu.registers.r[3] as u64),
+            "r4" => Some(self.cpu.registers.r[4] as u64),
+            "r5" => Some(self.cpu.registers.r[5] as u64),
+            "r6" => Some(self.cpu.registers.r[6] as u64),
+            "r7" => Some(self.cpu.registers.r[7] as u64),
+            "r8" => Some(self.cpu.registers.r[8] as u64),
+            "r9" => Some(self.cpu.registers.r[9] as u64),
+            "r10" => Some(self.cpu.registers.r[10] as u64),
+            "r11" => Some(self.cpu.registers.r[11] as u64),
+            "r12" => Some(self.cpu.registers.r[12] as u64),
+            "r13" | "sp" => Some(self.cpu.registers.r[13] as u64),
+            "r14" | "lr" => Some(self.cpu.registers.r[14] as u64),
+            "r15" | "pc" => Some(self.cpu.registers.r[15] as u64),
+            _ => None,
         }
-
-        Some(self.cpu.registers.r[index] as u64)
     }
 
     fn to_rgb(&self, value: u32) -> [u8; 3] {

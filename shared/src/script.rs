@@ -63,7 +63,11 @@ impl ScriptEngine {
         take(&mut self.output)
     }
 
-    pub fn execute(&mut self, target: &mut dyn ScriptTarget, emulator_id: EmulatorId) {
+    pub fn execute(&mut self, target: &mut dyn ScriptTarget, mut emulator_id: EmulatorId) {
+        if emulator_id == EmulatorId::Gb {
+            emulator_id = EmulatorId::Gba;
+        }
+
         let help_vec: Vec<(EmulatorId, &str)> = HELP
             .iter()
             .copied()
@@ -136,10 +140,13 @@ impl ScriptEngine {
             })?;
             lua.globals().set("write_u32", write_u32)?;
 
-            let read_cpu_register = scope.create_function(|_, index: usize| {
-                target.borrow_mut().read_cpu_register(index).ok_or_else(|| {
-                    mlua::Error::runtime(format!("no CPU register at index {index}"))
-                })
+            let read_cpu_register = scope.create_function(|_, register_name: String| {
+                target
+                    .borrow_mut()
+                    .read_cpu_register(register_name.clone())
+                    .ok_or_else(|| {
+                        mlua::Error::runtime(format!("invalid CPU register: {register_name}"))
+                    })
             })?;
             lua.globals().set("read_cpu_register", read_cpu_register)?;
 
