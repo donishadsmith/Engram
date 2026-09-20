@@ -6,16 +6,15 @@ authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
 
 [dependencies]
-cpal = "0.18.2"
-macroquad = "0.4.16"
-egui = "0.31.1"
-rtrb = "0.4.0"
-gif = "0.14.2"
-chrono = "0.4.45"
-rfd = "0.17.2"
-dirs = "7.0.0"
-toml = "1.1.6"
-serde = { version = "1.0.229", features = ["derive"] }
-egui_code_editor = "=0.2.13"
-mlua = { version = "0.12.1", features = ["lua54", "vendored"] }
-arboard = "3.6.1"
+cpal.workspace = true
+macroquad.workspace = true
+egui.workspace = true
+rtrb.workspace = true
+gif.workspace = true
+chrono.workspace = true
+rfd.workspace = true
+dirs.workspace = true
+toml.workspace = true
+serde.workspace = true
+egui_code_editor.workspace = true
+mlua.workspace = true

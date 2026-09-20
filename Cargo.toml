@@ -6,6 +6,21 @@ resolver = "3"
 shared = { path = "shared" }
 engram_gb = { path = "gb" }
 engram_gba = { path = "gba" }
+egui = "0.31.1"
+egui-macroquad = { version = "0.17.3", default-features = false }
+macroquad = "0.4.16"
+rfd = "0.17.2"
+chrono = "0.4.45"
+egui_plot = "0.32.0"
+cpal = "0.18.2"
+rtrb = "0.4.0"
+gif = "0.14.2"
+dirs = "7.0.0"
+toml = "1.1.6"
+serde = { version = "1.0.229", features = ["derive"] }
+egui_code_editor = "=0.2.13"
+mlua = { version = "0.12.1", features = ["lua54", "vendored"] }
+serde_json = "1"
 
 [profile.dev]
 opt-level = 1

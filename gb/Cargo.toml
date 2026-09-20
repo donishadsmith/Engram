@@ -6,10 +6,10 @@ authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
 
 [dependencies]
-chrono = "0.4"
-macroquad = { version = "0.4", default-features = false }
 shared.workspace = true
+chrono.workspace = true
+macroquad.workspace = true
 
 [dev-dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde.workspace = true
+serde_json.workspace = true

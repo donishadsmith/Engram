@@ -1,4 +1,3 @@
-use arboard::Clipboard;
 use egui::{Context, ScrollArea, Window};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use rfd::FileDialog;
@@ -30,7 +29,7 @@ impl LuaEditor {
             .open(&mut opened)
             .show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("Open Script").clicked() {
+                    if ui.button("Load Script").clicked() {
                         if let Some(path) = open_lua_script() {
                             match read_to_string(&path) {
                                 Ok(text) => self.code = text,
@@ -40,13 +39,7 @@ impl LuaEditor {
                     }
 
                     run = ui.button("Run").clicked();
-                    if ui.button("Paste").clicked() {
-                        if let Ok(mut clipboard) = Clipboard::new() {
-                            if let Ok(text) = clipboard.get_text() {
-                                self.code.push_str(&format!("{}\n", text));
-                            }
-                        }
-                    }
+
                     if ui.button("Clear").clicked() {
                         self.output.clear();
                     }

@@ -6,9 +6,9 @@ authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
 
 [dependencies]
-chrono = "0.4.45"
-egui = "0.31.1"
-egui-macroquad = { version = "0.17.3", default-features = false }
-egui_plot = "0.32.0"
-macroquad = { version = "0.4", default-features = false }
+chrono.workspace = true
+egui.workspace = true
+egui-macroquad.workspace = true
+egui_plot.workspace = true
+macroquad.workspace = true
 shared.workspace = true
