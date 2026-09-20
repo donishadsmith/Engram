@@ -58,7 +58,7 @@ cargo run --release
 ```
 
 ## Demo
-https://github.com/user-attachments/assets/de25befe-c87b-4c96-b198-8b29d849e68b
+https://github.com/user-attachments/assets/79fd373a-1171-41a1-bfd2-b76c44d38d98
 
 Captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a> and converted to mp4 with <a href="https://github.com/FFmpeg/FFmpeg">FFmpeg</a>.
 
