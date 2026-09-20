@@ -38,6 +38,18 @@ A Gameboy Advance & Game Boy Color emulator (supports DMG games too) written in 
 
 <p align="center"><i>Gifs captured with built-in gif recorder.</i></p>
 
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/audio.png" width="500">
+      <br>GBA Audio Debugger
+    </td>
+    <td align="center">
+      <img src="assets/video.png" width="500">
+      <br>GBA Video Debugger
+  </tr>
+</table>
+
 ## Usage
 ```bash
 git clone https://github.com/donishadsmith/Engram

@@ -1,4 +1,4 @@
-use crate::ScriptTarget;
+use crate::{EmulatorId, ScriptTarget};
 use mlua::{Function, HookTriggers, Lua, Value, Variadic, VmState};
 use std::{
     cell::{Cell, RefCell},
@@ -7,7 +7,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-const HELP: &str = r#"
+// https://github.com/ioncodes/gecko/blob/master/crates/scripting/src/lib.rs
+
+const HELP: [(EmulatorId, &str); 1] = [(
+    EmulatorId::Gba,
+    r#"
 Read memory address:
 - read_u8(address)
 - read_u16(address)
@@ -29,7 +33,8 @@ Execute every frame:
 function on_frame()
     ...
 end
-"#;
+"#,
+)];
 
 pub struct ScriptEngine {
     lua: Lua,
@@ -58,7 +63,14 @@ impl ScriptEngine {
         take(&mut self.output)
     }
 
-    pub fn execute(&mut self, target: &mut dyn ScriptTarget) {
+    pub fn execute(&mut self, target: &mut dyn ScriptTarget, emulator_id: EmulatorId) {
+        let help_vec: Vec<(EmulatorId, &str)> = HELP
+            .iter()
+            .copied()
+            .filter(|x| x.0 == emulator_id)
+            .collect();
+        let help_string = Cell::new(help_vec[0].1.to_string());
+
         let Self {
             lua,
             pending,
@@ -146,7 +158,7 @@ impl ScriptEngine {
             lua.globals().set("to_rgb_hex", to_rgb_hex)?;
 
             let help = scope.create_function(|_, ()| {
-                output.borrow_mut().push(HELP.to_string());
+                output.borrow_mut().push(help_string.take());
 
                 Ok(())
             })?;

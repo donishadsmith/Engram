@@ -76,10 +76,11 @@ impl EmulatorSession for GBASession {
             .try_into()
             .unwrap();
 
+        let emulator_id = self.id();
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             self.gba.run();
             if self.gba.take_frame_start() {
-                self.script_engine.execute(&mut self.gba);
+                self.script_engine.execute(&mut self.gba, emulator_id);
             }
 
             for sample in self.gba.bus.apu.sample_buffer.drain(..) {

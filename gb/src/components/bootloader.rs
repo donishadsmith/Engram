@@ -18,6 +18,7 @@ pub const DMG_BOOTIX: [u8; 256] = [
 
 /*
     Replaced logo from SameBoy: https://github.com/LIJI32/SameBoy/
+    TODO: maybe recreate image again - https://github.com/LIJI32/SameBoy/blob/master/BootROMs/cgb_boot.asm
 */
 pub const CGB_BOOT: [u8; 2304] = [
     0x31, 0xfe, 0xff, 0xcd, 0x18, 0x06, 0x26, 0xfe, 0x0e, 0xa0, 0x22, 0x0d, 0x20, 0xfc, 0x0e, 0x10,
