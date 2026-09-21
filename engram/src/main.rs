@@ -5,7 +5,7 @@ use rfd::FileDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     config::{Config, load_config, save_config},
-    debug::{DEBUG_PAGES, DebugPage},
+    debug::DebugPage,
     editor::LuaEditor,
     keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
     utils::{GifRecorder, screenshot},
@@ -52,6 +52,7 @@ struct Session {
     solar_level: u8,
     last_debug_page: HashMap<EmulatorId, DebugPage>,
     lua_editor: LuaEditor,
+    emulator_paused: bool,
 }
 
 impl Session {
@@ -80,48 +81,49 @@ impl Session {
             solar_level,
             last_debug_page: initialize_debug_hashmap(),
             lua_editor: LuaEditor::new(),
+            emulator_paused: false,
         }
     }
 
-    fn set_emulator<T: EmulatorSession + 'static>(&mut self, emu: T) {
-        self.emulator = Some(Box::new(emu));
+    fn set_emulator<T: EmulatorSession + 'static>(&mut self, emulator: T) {
+        self.emulator = Some(Box::new(emulator));
         self.state = EmulatorState::Running;
     }
 
-    fn debug_active(&self) -> bool {
-        self.emulator
-            .as_ref()
-            .is_some_and(|emu| DEBUG_PAGES.iter().any(|&page| emu.debug_visible(page)))
+    fn toggle_debug_mode(&mut self) {
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+
+        let emulator_id = emulator.id();
+
+        let Some(debugger) = emulator.debugger_mut() else {
+            return;
+        };
+
+        if debugger.active() {
+            debugger.toggle(None);
+
+            return;
+        }
+
+        let debug_page =
+            if let Some(last_debug_page) = self.last_debug_page.get(&emulator_id).copied() {
+                Some(last_debug_page)
+            } else {
+                Some(debugger.available_pages()[0])
+            };
+
+        debugger.toggle(debug_page);
     }
 
-    fn toggle_debug_mode(&mut self) {
-        let active = self.debug_active();
-        let Some(emu) = self.emulator.as_mut() else {
-            return;
-        };
-
-        if !emu.has_debug_ui() {
-            return;
-        }
-
-        if active {
-            emu.toggle_debug(None);
-
-            return;
-        }
-
-        let last_debug_page = self.last_debug_page.get(&emu.id()).copied();
-        let page = if emu.debug_page_available(last_debug_page) {
-            last_debug_page
+    fn toggle_emulator_status(&mut self) {
+        self.state = if self.state == EmulatorState::Running {
+            self.emulator_paused = true;
+            EmulatorState::Paused
         } else {
-            DEBUG_PAGES
-                .iter()
-                .copied()
-                .find(|&page| emu.debug_page_available(Some(page)))
-        };
-
-        if let Some(page) = page {
-            emu.toggle_debug(Some(page));
+            self.emulator_paused = false;
+            EmulatorState::Running
         }
     }
 
@@ -134,29 +136,40 @@ impl Session {
     }
 
     fn run(&mut self) -> Result<EmulatorState, Error> {
-        match &mut self.emulator {
-            Some(emu) => {
-                let key_id = match emu.id() {
-                    EmulatorId::Gb | EmulatorId::Gba => KeyId::Gba,
-                };
+        let emulator = self.emulator.as_mut().unwrap();
 
-                emu.run(
-                    &self.key_bindings.keys(key_id),
-                    self.show_key_bindings || self.show_hotkeys || self.lua_editor.occupied(),
-                    self.master_volume,
-                )
-            }
-            None => Ok(EmulatorState::Selection),
-        }
+        let key_id = match emulator.id() {
+            EmulatorId::Gb | EmulatorId::Gba => KeyId::Gba,
+        };
+
+        emulator.run(
+            &self.key_bindings.keys(key_id),
+            self.show_key_bindings || self.show_hotkeys || self.lua_editor.occupied(),
+            self.master_volume,
+        )
+    }
+
+    fn pause(&mut self) {
+        self.emulator.as_mut().unwrap().pause();
     }
 
     fn reset(&mut self) -> Result<(), Error> {
-        if let Some(emulator) = &mut self.emulator {
-            emulator.reset(self.rom_path.clone().unwrap())?;
-            emulator.solar_level(self.solar_level);
-        }
+        self.emulator
+            .as_mut()
+            .unwrap()
+            .reset(self.rom_path.clone().unwrap())?;
+
+        self.set_solar_sensor();
 
         Ok(())
+    }
+
+    fn set_solar_sensor(&mut self) {
+        let emulator = self.emulator.as_mut().unwrap();
+
+        if let Some(solar_sensor) = emulator.solar_sensor() {
+            solar_sensor.set_level(self.solar_level);
+        }
     }
 
     fn save_configs(&self) -> Result<(), Error> {
@@ -297,7 +310,11 @@ async fn main() -> Result<(), Error> {
             EmulatorState::Selection => {
                 let Some(rom_path) = file_dialog() else {
                     session.state = if session.emulator.is_some() {
-                        EmulatorState::Running
+                        if session.emulator_paused {
+                            EmulatorState::Paused
+                        } else {
+                            EmulatorState::Running
+                        }
                     } else {
                         EmulatorState::Launch
                     };
@@ -317,24 +334,27 @@ async fn main() -> Result<(), Error> {
                     "gb" | "gbc" => {
                         session.set_emulator(engram_gb::GameBoySession::new_session(rom_path)?)
                     }
-                    "gba" => session.set_emulator(engram_gba::GBASession::new_session(rom_path)?),
+                    "gba" => {
+                        session.set_emulator(engram_gba::GBASession::new_session(rom_path)?);
+                        session.set_solar_sensor();
+                    }
                     _ => continue,
                 }
 
-                let emulator = session.emulator.as_mut().unwrap();
-                emulator.solar_level(session.solar_level);
+                session.emulator_paused = false;
             }
             EmulatorState::Running => {
-                session.state = session.run()?;
-                if let Some(emu) = &session.emulator {
-                    let frame = emu.reference_frontend();
-                    if emu.frame_ready() {
+                session.run()?;
+                if let Some(emulator) = &session.emulator {
+                    let frame = emulator.frontend_ref();
+                    if emulator.frame_ready() {
                         session.gif.capture(frame);
                     }
                 }
             }
             EmulatorState::Reset => {
                 let _ = session.reset();
+                session.emulator_paused = false;
                 session.state = EmulatorState::Running;
             }
             EmulatorState::Quit => {
@@ -345,6 +365,13 @@ async fn main() -> Result<(), Error> {
             EmulatorState::Launch => {
                 // just so file dialog doesnt occur on launch, since it blocks execution
                 // TODO: figure out what i wanna put here, leave blank, render an image for this state, or something else?
+            }
+            EmulatorState::Paused => {
+                session.pause();
+                if let Some(emulator) = &session.emulator {
+                    let frame = emulator.frontend_ref();
+                    session.gif.capture(frame); // frame is coonstant but think of better way to handle pause + gif active later
+                }
             }
         }
 
@@ -372,19 +399,19 @@ async fn main() -> Result<(), Error> {
                             );
                         });
 
-                        if let Some(emu) = &mut session.emulator {
+                        if let Some(emulator) = &mut session.emulator {
                             if ui.button("Reset").clicked() {
                                 session.state = EmulatorState::Reset;
                                 ui.close_menu();
                             }
 
-                            if emu.has_solar() {
+                            if let Some(solar_sensor) = emulator.solar_sensor() {
                                 ui.menu_button("Solar", |ui| {
                                     ui.add(
                                         egui::Slider::new(&mut session.solar_level, 0..=10)
                                             .text("Solar sensor level from lowest to highest"),
                                     );
-                                    emu.solar_level(session.solar_level);
+                                    solar_sensor.set_level(session.solar_level);
                                 });
                             }
 
@@ -414,8 +441,8 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
-                    if let Some(emu) = &session.emulator {
-                        let key_id = match emu.id() {
+                    if let Some(emulator) = &session.emulator {
+                        let key_id = match emulator.id() {
                             EmulatorId::Gb | EmulatorId::Gba => KeyId::Gba,
                         };
 
@@ -455,7 +482,7 @@ async fn main() -> Result<(), Error> {
                             let emu_id = session
                                 .emulator
                                 .as_ref()
-                                .map(|emu| emu.id())
+                                .map(|emulator| emulator.id())
                                 .unwrap_or(EmulatorId::Gba);
                             session.key_bindings.restore_defaults(key_id, emu_id);
                         }
@@ -487,7 +514,7 @@ async fn main() -> Result<(), Error> {
                         if session
                             .emulator
                             .as_mut()
-                            .map(|emu| emu.script_engine())
+                            .map(|emulator| emulator.script_engine())
                             .is_some()
                         {
                             let keycode = keycode_to_string(
@@ -536,10 +563,10 @@ async fn main() -> Result<(), Error> {
                             .clicked()
                         {
                             if session.gif.is_recording() {
-                                if let Some(emu) = &session.emulator {
+                                if let Some(emulator) = &session.emulator {
                                     let _ = session
                                         .gif
-                                        .toggle(emu.reference_frontend(), session.get_image_path());
+                                        .toggle(emulator.frontend_ref(), session.get_image_path());
 
                                     session.add_message("GIF saved");
                                 }
@@ -598,7 +625,7 @@ async fn main() -> Result<(), Error> {
                             toggle_requested = true;
                         }
 
-                        if let Some(emu) = &session.emulator {
+                        if let Some(emulator) = &session.emulator {
                             if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua)) {
                                 session.lua_editor.opened = !session.lua_editor.opened;
                             }
@@ -607,7 +634,7 @@ async fn main() -> Result<(), Error> {
                                 if session.gif.is_recording() {
                                     let _ = session
                                         .gif
-                                        .toggle(emu.reference_frontend(), session.get_image_path());
+                                        .toggle(emulator.frontend_ref(), session.get_image_path());
                                     session.add_message("GIF saved");
                                 } else {
                                     session.open_gif_settings = !session.open_gif_settings;
@@ -646,27 +673,24 @@ async fn main() -> Result<(), Error> {
                         });
 
                     if start_recording {
-                        if let Some(emu) = &session.emulator {
+                        if let Some(emulator) = &session.emulator {
                             let _ = session
                                 .gif
-                                .toggle(emu.reference_frontend(), session.get_image_path());
+                                .toggle(emulator.frontend_ref(), session.get_image_path());
                         }
 
                         session.open_gif_settings = false;
                     }
 
-                    let debug_active = session.debug_active();
-                    let has_debug_ui = session
-                        .emulator
-                        .as_ref()
-                        .is_some_and(|emu| emu.has_debug_ui());
                     let show_message = session.display_message();
                     let message = session.get_message();
                     let recording = session.gif.is_recording();
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if has_debug_ui {
-                            let (text, hover) = if debug_active {
+                        if let Some(emulator) = &mut session.emulator
+                            && let Some(debugger) = emulator.debugger_ref()
+                        {
+                            let (text, hover) = if debugger.active() {
                                 (
                                     egui::RichText::new("ON").color(egui::Color32::LIGHT_GREEN),
                                     "Click to close debugger",
@@ -677,7 +701,7 @@ async fn main() -> Result<(), Error> {
 
                             let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
                             let title = ui.add(
-                                egui::Label::new(egui::RichText::new("Debug Mode:").strong())
+                                egui::Label::new(egui::RichText::new("| Debug Mode:").strong())
                                     .sense(egui::Sense::click()),
                             );
 
@@ -691,6 +715,37 @@ async fn main() -> Result<(), Error> {
                             }
                         }
 
+                        if session.emulator.is_some() {
+                            let (text, hover) = if session.emulator_paused {
+                                (
+                                    egui::RichText::new("PAUSED").color(egui::Color32::YELLOW),
+                                    "Click to resume emulator",
+                                )
+                            } else {
+                                (
+                                    egui::RichText::new("LIVE").weak(),
+                                    "Click to pause emulator",
+                                )
+                            };
+
+                            let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
+                            let title = ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new("| Emulator Status:").strong(),
+                                )
+                                .sense(egui::Sense::click()),
+                            );
+
+                            if title
+                                .union(state)
+                                .on_hover_text(hover)
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .clicked()
+                            {
+                                session.toggle_emulator_status();
+                            }
+                        }
+
                         if show_message {
                             if let Some(message) = message {
                                 ui.label(egui::RichText::new(message).color(egui::Color32::WHITE));
@@ -700,29 +755,28 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
-                    if debug_active {
-                        if let Some(emu) = &mut session.emulator {
+                    if let Some(emulator) = &mut session.emulator {
+                        let emulator_id = emulator.id();
+                        if let Some(debugger) = emulator.debugger_mut()
+                            && debugger.active()
+                        {
                             egui::Window::new("Debuggers")
                                 .collapsible(true)
                                 .show(egui_ctx, |ui| {
                                     ui.vertical(|ui| {
-                                        for debug_page in DEBUG_PAGES {
-                                            if !emu.debug_page_available(Some(debug_page)) {
-                                                continue;
-                                            }
-
+                                        for debug_page in debugger.available_pages() {
                                             let clicked = ui
                                                 .selectable_label(
-                                                    emu.debug_visible(debug_page),
+                                                    debugger.visible(debug_page),
                                                     debug_page.to_str(),
                                                 )
                                                 .clicked();
 
-                                            if clicked && !emu.debug_visible(debug_page) {
-                                                emu.toggle_debug(Some(debug_page));
+                                            if clicked && !debugger.visible(debug_page) {
+                                                debugger.toggle(Some(debug_page));
                                                 let _ = session
                                                     .last_debug_page
-                                                    .insert(emu.id(), debug_page);
+                                                    .insert(emulator_id, debug_page);
                                             }
                                         }
                                     });
@@ -735,8 +789,8 @@ async fn main() -> Result<(), Error> {
                     }
 
                     if session.lua_editor.opened {
-                        if let Some(emu) = &mut session.emulator
-                            && let Some(script_engine) = emu.script_engine()
+                        if let Some(emulator) = &mut session.emulator
+                            && let Some(script_engine) = emulator.script_engine()
                         {
                             if let Some(code) = session.lua_editor.show_ui(&egui_ctx) {
                                 script_engine.load(code);
@@ -751,8 +805,10 @@ async fn main() -> Result<(), Error> {
                 });
             });
 
-            if let Some(emu) = &mut session.emulator {
-                emu.debug_ui(egui_ctx);
+            if let Some(emulator) = &mut session.emulator
+                && let Some(debugger) = emulator.debugger_mut()
+            {
+                debugger.show_ui(egui_ctx);
             }
         });
 

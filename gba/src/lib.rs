@@ -18,7 +18,7 @@ use crate::{
 use debug::audio::AudioDebugger;
 use macroquad::input::KeyCode;
 use shared::{
-    EmulatorId, EmulatorSession, EmulatorState,
+    DebugInterface, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     debug::DebugPage,
     keybind::get_relevant_key_presses,
@@ -80,7 +80,8 @@ impl EmulatorSession for GBASession {
             self.gba.run();
 
             if self.gba.take_frame_start() {
-                self.script_engine.execute(&mut self.gba, EmulatorId::Gba);
+                self.script_engine
+                    .execute(&mut self.gba, EmulatorId::Gba, true);
             }
 
             for sample in self.gba.bus.apu.sample_buffer.drain(..) {
@@ -89,7 +90,6 @@ impl EmulatorSession for GBASession {
         }
 
         self.frame_ready = self.gba.take_frame();
-
         if self.frame_ready && self.active_debug.is_none() {
             self.screen.update(&self.gba.bus.ppu.frontend);
         }
@@ -101,47 +101,24 @@ impl EmulatorSession for GBASession {
         Ok(EmulatorState::Running)
     }
 
+    fn pause(&mut self) {
+        self.script_engine
+            .execute(&mut self.gba, EmulatorId::Gba, false);
+
+        if self.active_debug.is_none() {
+            self.screen.draw(&self.gba.bus.ppu.frontend);
+        }
+    }
+
     fn save_game(&mut self) -> Result<(), Error> {
         self.gba.save()
     }
 
-    fn has_debug_ui(&self) -> bool {
-        true
-    }
-
-    fn debug_visible(&self, debug_page: DebugPage) -> bool {
-        self.active_debug == Some(debug_page)
-    }
-
-    fn toggle_debug(&mut self, debug_page: Option<DebugPage>) {
-        match self.active_debug {
-            Some(DebugPage::Audio) => self.audio_debugger.close(&mut self.gba),
-            Some(_) => self.ppu_debugger.close(&mut self.gba),
-            None => {}
-        }
-
-        self.active_debug = if self.active_debug == debug_page {
-            None
+    fn solar_sensor(&mut self) -> Option<&mut dyn SolarSensor> {
+        if self.gba.bus.gamepak.gpio.solar_sensor.is_some() {
+            Some(self)
         } else {
-            debug_page
-        };
-    }
-
-    fn debug_ui(&mut self, egui_ctx: &egui::Context) {
-        match self.active_debug {
-            Some(DebugPage::Audio) => self.audio_debugger.show_ui(egui_ctx, &mut self.gba),
-            Some(DebugPage::Video) => self.ppu_debugger.show_ui(egui_ctx, &mut self.gba),
-            None => {}
-        }
-    }
-
-    fn has_solar(&self) -> bool {
-        self.gba.bus.gamepak.gpio.solar_sensor.is_some()
-    }
-
-    fn solar_level(&mut self, solar_level: u8) {
-        if let Some(solar_sensor) = self.gba.bus.gamepak.gpio.solar_sensor.as_mut() {
-            solar_sensor.set_level(solar_level);
+            None
         }
     }
 
@@ -158,7 +135,7 @@ impl EmulatorSession for GBASession {
         Ok(())
     }
 
-    fn reference_frontend(&self) -> &shared::render::Frame {
+    fn frontend_ref(&self) -> &shared::render::Frame {
         &self.gba.bus.ppu.frontend
     }
 
@@ -170,14 +147,61 @@ impl EmulatorSession for GBASession {
         EmulatorId::Gba
     }
 
-    fn debug_page_available(&self, debug_page: Option<DebugPage>) -> bool {
-        match debug_page {
-            Some(DebugPage::Audio) | Some(DebugPage::Video) => true,
-            _ => false,
+    fn script_engine(&mut self) -> Option<&mut ScriptEngine> {
+        Some(&mut self.script_engine)
+    }
+
+    fn debugger_ref(&self) -> Option<&dyn DebugInterface> {
+        Some(self)
+    }
+
+    fn debugger_mut(&mut self) -> Option<&mut dyn DebugInterface> {
+        Some(self)
+    }
+}
+
+impl DebugInterface for GBASession {
+    fn available_pages(&self) -> Vec<DebugPage> {
+        vec![DebugPage::Audio, DebugPage::Video]
+    }
+
+    fn visible(&self, debug_page: DebugPage) -> bool {
+        self.active_debug == Some(debug_page)
+    }
+
+    fn toggle(&mut self, debug_page: Option<DebugPage>) {
+        match self.active_debug {
+            Some(DebugPage::Audio) => self.audio_debugger.close(&mut self.gba),
+            Some(_) => self.ppu_debugger.close(&mut self.gba),
+            None => {}
+        }
+
+        self.screen.update(&self.gba.bus.ppu.frontend);
+
+        self.active_debug = if self.active_debug == debug_page {
+            None
+        } else {
+            debug_page
+        };
+    }
+
+    fn show_ui(&mut self, egui_ctx: &egui::Context) {
+        match self.active_debug {
+            Some(DebugPage::Audio) => self.audio_debugger.show_ui(egui_ctx, &mut self.gba),
+            Some(DebugPage::Video) => self.ppu_debugger.show_ui(egui_ctx, &mut self.gba),
+            None => {}
         }
     }
 
-    fn script_engine(&mut self) -> Option<&mut ScriptEngine> {
-        Some(&mut self.script_engine)
+    fn active(&self) -> bool {
+        self.active_debug.is_some()
+    }
+}
+
+impl SolarSensor for GBASession {
+    fn set_level(&mut self, solar_level: u8) {
+        if let Some(solar_sensor) = self.gba.bus.gamepak.gpio.solar_sensor.as_mut() {
+            solar_sensor.set_level(solar_level);
+        }
     }
 }

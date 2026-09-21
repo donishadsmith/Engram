@@ -63,7 +63,12 @@ impl ScriptEngine {
         take(&mut self.output)
     }
 
-    pub fn execute(&mut self, target: &mut dyn ScriptTarget, mut emulator_id: EmulatorId) {
+    pub fn execute(
+        &mut self,
+        target: &mut dyn ScriptTarget,
+        mut emulator_id: EmulatorId,
+        frame_boundary: bool,
+    ) {
         if emulator_id == EmulatorId::Gb {
             emulator_id = EmulatorId::Gba;
         }
@@ -178,7 +183,9 @@ impl ScriptEngine {
                 }
             }
 
-            if let Ok(hook) = lua.globals().get::<Function>("on_frame") {
+            if let Ok(hook) = lua.globals().get::<Function>("on_frame")
+                && frame_boundary
+            {
                 time_limit(lua, Duration::from_millis(5));
                 if let Err(e) = hook.call::<()>(()) {
                     output.borrow_mut().push(format!("{e}"));

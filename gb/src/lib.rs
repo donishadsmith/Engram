@@ -77,13 +77,20 @@ impl EmulatorSession for GameBoySession {
         self.frame_ready = self.gameboy.take_frame();
         if self.frame_ready {
             self.script_engine
-                .execute(&mut self.gameboy, EmulatorId::Gb);
+                .execute(&mut self.gameboy, EmulatorId::Gb, true);
             self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
         }
 
         self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
 
         Ok(EmulatorState::Running)
+    }
+
+    fn pause(&mut self) {
+        self.script_engine
+            .execute(&mut self.gameboy, EmulatorId::Gb, false);
+
+        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
     }
 
     fn save_game(&mut self) -> Result<(), Error> {
@@ -105,7 +112,7 @@ impl EmulatorSession for GameBoySession {
         Ok(())
     }
 
-    fn reference_frontend(&self) -> &shared::render::Frame {
+    fn frontend_ref(&self) -> &shared::render::Frame {
         &self.gameboy.cpu.bus.ppu.frontend
     }
 

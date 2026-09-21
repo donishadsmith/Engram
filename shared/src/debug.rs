@@ -1,8 +1,6 @@
 use crate::render::{Frame, to_rgba};
 use egui::{CentralPanel, TextureHandle, TextureId, TextureOptions, Vec2};
 
-pub const DEBUG_PAGES: [DebugPage; 2] = [DebugPage::Audio, DebugPage::Video];
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum DebugPage {
     Audio,

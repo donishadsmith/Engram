@@ -27,9 +27,27 @@ pub enum EmulatorState {
     Selection,
     Reset,
     Launch,
+    Paused,
+}
+
+pub trait DebugInterface {
+    fn toggle(&mut self, _debug_page: Option<DebugPage>);
+
+    fn available_pages(&self) -> Vec<DebugPage>;
+
+    fn show_ui(&mut self, _egui_ctx: &Context);
+
+    fn visible(&self, _debug_page: DebugPage) -> bool;
+
+    fn active(&self) -> bool;
+}
+
+pub trait SolarSensor {
+    fn set_level(&mut self, _solar_level: u8) {}
 }
 
 pub trait EmulatorSession {
+    // eventually allow emu to return running or paused based on internal state/conditions
     fn run(
         &mut self,
         key_bindings: &Vec<KeyCode>,
@@ -39,31 +57,21 @@ pub trait EmulatorSession {
 
     fn save_game(&mut self) -> Result<(), Error>;
 
-    fn has_debug_ui(&self) -> bool {
-        false
+    fn solar_sensor(&mut self) -> Option<&mut dyn SolarSensor> {
+        None
     }
 
-    fn debug_visible(&self, _debug_page: DebugPage) -> bool {
-        false
+    fn debugger_ref(&self) -> Option<&dyn DebugInterface> {
+        None
     }
 
-    fn toggle_debug(&mut self, _debug_page: Option<DebugPage>) {}
-
-    fn debug_ui(&mut self, _egui_ctx: &Context) {}
-
-    fn debug_page_available(&self, _debug_page: Option<DebugPage>) -> bool {
-        false
+    fn debugger_mut(&mut self) -> Option<&mut dyn DebugInterface> {
+        None
     }
-
-    fn has_solar(&self) -> bool {
-        false
-    }
-
-    fn solar_level(&mut self, _solar_level: u8) {}
 
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error>;
 
-    fn reference_frontend(&self) -> &Frame;
+    fn frontend_ref(&self) -> &Frame;
 
     fn frame_ready(&self) -> bool;
 
@@ -72,6 +80,8 @@ pub trait EmulatorSession {
     fn script_engine(&mut self) -> Option<&mut ScriptEngine> {
         None
     }
+
+    fn pause(&mut self);
 }
 
 pub trait ScriptTarget {

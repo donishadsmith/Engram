@@ -47,6 +47,9 @@ A Gameboy Advance & Game Boy Color emulator (supports DMG games too) written in 
     <td align="center">
       <img src="assets/video.png" width="500">
       <br>GBA Video Debugger
+    <td align="center">
+      <img src="assets/lua.png" width="500">
+      <br>Lua Editor
   </tr>
 </table>
 
@@ -56,11 +59,6 @@ git clone https://github.com/donishadsmith/Engram
 cd Engram
 cargo run --release
 ```
-
-## Demo
-https://github.com/user-attachments/assets/de25befe-c87b-4c96-b198-8b29d849e68b
-
-Captured with <a href="https://github.com/NickeManarin/ScreenToGif">ScreenToGif</a> and converted to mp4 with <a href="https://github.com/FFmpeg/FFmpeg">FFmpeg</a>.
 
 ## References
 
