@@ -24,10 +24,11 @@ pub enum EmulatorId {
 pub enum EmulatorState {
     Quit,
     Running,
-    Selection,
+    RomSelection,
     Reset,
     Launch,
     Paused,
+    BiosSelection,
 }
 
 pub trait DebugInterface {

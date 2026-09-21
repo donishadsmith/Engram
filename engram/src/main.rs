@@ -307,7 +307,7 @@ async fn main() -> Result<(), Error> {
         }
 
         match session.state {
-            EmulatorState::Selection => {
+            EmulatorState::RomSelection => {
                 let Some(rom_path) = file_dialog() else {
                     session.state = if session.emulator.is_some() {
                         if session.emulator_paused {
@@ -373,6 +373,9 @@ async fn main() -> Result<(), Error> {
                     session.gif.capture(frame); // frame is coonstant but think of better way to handle pause + gif active later
                 }
             }
+            EmulatorState::BiosSelection => {
+                // TODO: update for future emu
+            }
         }
 
         egui_macroquad::ui(|egui_ctx| {
@@ -381,7 +384,7 @@ async fn main() -> Result<(), Error> {
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button("Load ROM").clicked() {
-                            session.state = EmulatorState::Selection;
+                            session.state = EmulatorState::RomSelection;
                             ui.close_menu();
                         }
 
