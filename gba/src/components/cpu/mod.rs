@@ -2,7 +2,6 @@ pub mod arm;
 pub mod thumb;
 
 use arm::{decode::*, execute::*};
-use macroquad::math::u32;
 use thumb::decode::*;
 
 use crate::components::{
