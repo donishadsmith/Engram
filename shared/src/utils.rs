@@ -9,10 +9,6 @@ use std::{
     path::PathBuf,
 };
 
-pub trait Emulator {
-    fn save(&mut self) -> Result<(), Error>;
-}
-
 pub struct GifRecorder {
     encoder: Option<Encoder<File>>,
     counter: u8,

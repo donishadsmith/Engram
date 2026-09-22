@@ -8,6 +8,7 @@ use shared::{
     debug::DebugPage,
     editor::LuaEditor,
     keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
+    script::ScriptRequest,
     utils::{GifRecorder, screenshot},
 };
 use std::{
@@ -87,7 +88,6 @@ impl Session {
 
     fn set_emulator<T: EmulatorSession + 'static>(&mut self, emulator: T) {
         self.emulator = Some(Box::new(emulator));
-        self.state = EmulatorState::Running;
     }
 
     fn toggle_debug_mode(&mut self) {
@@ -237,6 +237,16 @@ impl Session {
         self.message_queue.push_back(message);
         self.start_time = Some(Local::now());
     }
+
+    fn set_paused(&mut self) {
+        self.state = EmulatorState::Paused;
+        self.emulator_paused = true;
+    }
+
+    fn set_running(&mut self) {
+        self.state = EmulatorState::Running;
+        self.emulator_paused = false;
+    }
 }
 
 impl Drop for Session {
@@ -341,10 +351,13 @@ async fn main() -> Result<(), Error> {
                     _ => continue,
                 }
 
-                session.emulator_paused = false;
+                session.set_running();
             }
             EmulatorState::Running => {
-                session.run()?;
+                if session.run()? == EmulatorState::Paused {
+                    session.set_paused();
+                };
+
                 if let Some(emulator) = &session.emulator {
                     let frame = emulator.frontend_ref();
                     if emulator.frame_ready() {
@@ -798,13 +811,65 @@ async fn main() -> Result<(), Error> {
                             if let Some(code) = session.lua_editor.show_ui(&egui_ctx) {
                                 script_engine.load(code);
                             }
-
-                            let lines = script_engine.take_output();
-                            if !lines.is_empty() {
-                                session.lua_editor.push_output(lines);
-                            }
                         }
                     };
+
+                    let mut should_pause = false;
+                    let mut should_resume = false;
+                    if let Some(emulator) = &mut session.emulator
+                        && let Some(script_engine) = emulator.script_engine()
+                    {
+                        let lines = script_engine.take_output();
+                        if !lines.is_empty() {
+                            session.lua_editor.push_output(lines);
+                        }
+
+                        for request in script_engine.take_requests() {
+                            match request {
+                                ScriptRequest::Pause => should_pause = true,
+                                ScriptRequest::Screenshot => screenshot(session.image_dir.clone()),
+                                ScriptRequest::StartGif => {
+                                    if !session.gif.is_recording() {
+                                        if emulator.frame_ready() {
+                                            let _ = session.gif.start(
+                                                emulator.frontend_ref(),
+                                                session.image_dir.clone(),
+                                            );
+                                        } else {
+                                            session.lua_editor.push_output(vec![
+                                                "frame not ready; gif recording could not start"
+                                                    .to_string(),
+                                            ]);
+                                        }
+                                    }
+                                }
+                                ScriptRequest::StopGif => {
+                                    if session.gif.is_recording() {
+                                        session.gif.stop();
+                                    }
+                                }
+                                ScriptRequest::Reset => session.state = EmulatorState::Reset,
+                                ScriptRequest::Step => {
+                                    if session.emulator_paused {
+                                        emulator.step_instruction(session.master_volume)
+                                    } else {
+                                        session.lua_editor.push_output(vec![
+                                            "emulator must be paused to step".to_string(),
+                                        ]);
+                                    }
+                                }
+                                ScriptRequest::Resume => should_resume = true,
+                            }
+                        }
+                    }
+
+                    if should_pause {
+                        session.set_paused();
+                    }
+
+                    if should_resume {
+                        session.set_running();
+                    }
                 });
             });
 

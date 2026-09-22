@@ -2,6 +2,7 @@ pub mod arm;
 pub mod thumb;
 
 use arm::{decode::*, execute::*};
+use macroquad::math::u32;
 use thumb::decode::*;
 
 use crate::components::{
@@ -478,6 +479,10 @@ impl Pipeline {
 
         executing
     }
+
+    fn full(&self) -> bool {
+        self.fetched.is_some() && self.decoded.is_some()
+    }
 }
 
 fn decode(opcode: FetchedInstruction) -> DecodedArm {
@@ -495,6 +500,9 @@ pub struct Arm7tdmi {
     next_fetch_access: AccessType,
     pub intr_wait_resume: bool,
     pub entered_idle_loop: bool,
+    pub breakpoint_hit: Option<u32>,
+    pub breakpoint_queue: Vec<u32>,
+    pub resume_from: Option<u32>,
 }
 
 impl Arm7tdmi {
@@ -507,6 +515,9 @@ impl Arm7tdmi {
             next_fetch_access: AccessType::Sequential,
             intr_wait_resume: false,
             entered_idle_loop: false,
+            breakpoint_hit: None,
+            breakpoint_queue: Vec::new(),
+            resume_from: None,
         }
     }
 
@@ -515,31 +526,26 @@ impl Arm7tdmi {
         self.registers.reset_to_boot();
     }
 
+    pub fn remove_breakpoint(&mut self, address: u32) {
+        self.breakpoint_queue.retain(|&x| x != address);
+    }
+
     pub fn step(&mut self, bus: &mut Bus) {
+        if self.pipeline.full() {
+            let address = self.next_executing_address();
+            if self.breakpoint_queue.contains(&address) && self.resume_from != Some(address) {
+                self.breakpoint_hit = Some(address);
+
+                return;
+            }
+        }
+
+        self.resume_from = None;
+
         self.branched = false;
         self.entered_idle_loop = false;
 
-        let access = self.next_fetch_access;
-        self.next_fetch_access = AccessType::Sequential;
-        let new_fetch = match self.registers.state() {
-            ProcessorState::Arm => {
-                FetchedInstruction::Arm(bus.read_u32(self.registers.r[15], access))
-            }
-            ProcessorState::Thumb => {
-                FetchedInstruction::Thumb(bus.read_u16(self.registers.r[15], access))
-            }
-        };
-
-        let latest_instruction = match new_fetch {
-            FetchedInstruction::Arm(instruction) => instruction,
-            FetchedInstruction::Thumb(instruction) => {
-                instruction as u32 | (instruction as u32) << 16
-            }
-        };
-
-        bus.last_instruction_read = latest_instruction;
-
-        let decoded_instruction = self.pipeline.advance(new_fetch);
+        let decoded_instruction = self.advance_pipeline(bus);
 
         // Assumes pc is +8 (arm) or +4 (thumb) aheah, essentially used to
         // to keep reversing the pipeline when the instruction wait bios command is called
@@ -596,6 +602,28 @@ impl Arm7tdmi {
         if !self.branched {
             self.registers.increment_pc();
         }
+    }
+
+    fn advance_pipeline(&mut self, bus: &mut Bus) -> Option<DecodedArm> {
+        let access = self.next_fetch_access;
+        self.next_fetch_access = AccessType::Sequential;
+        let new_fetch = match self.registers.state() {
+            ProcessorState::Arm => {
+                FetchedInstruction::Arm(bus.read_u32(self.registers.r[15], access))
+            }
+            ProcessorState::Thumb => {
+                FetchedInstruction::Thumb(bus.read_u16(self.registers.r[15], access))
+            }
+        };
+
+        bus.last_instruction_read = match new_fetch {
+            FetchedInstruction::Arm(instruction) => instruction,
+            FetchedInstruction::Thumb(instruction) => {
+                instruction as u32 | (instruction as u32) << 16
+            }
+        };
+
+        self.pipeline.advance(new_fetch)
     }
 
     fn flush_pipeline(&mut self) {
@@ -685,7 +713,7 @@ impl Arm7tdmi {
         self.branch_to(return_address);
     }
 
-    fn next_executing_address(&self) -> u32 {
+    pub fn next_executing_address(&self) -> u32 {
         let offset = self.registers.pc_offset();
         if self.pipeline.decoded.is_some() {
             self.registers.r[15].wrapping_sub(2 * offset)
@@ -693,6 +721,20 @@ impl Arm7tdmi {
             self.registers.r[15].wrapping_sub(offset)
         } else {
             self.registers.r[15]
+        }
+    }
+
+    pub fn set_cpsr(&mut self, value: u32) {
+        let next_address = self.next_executing_address();
+        let old_mode = self.registers.mode();
+        let old_state = self.registers.state();
+
+        self.registers.cpsr = value;
+        self.registers
+            .bank_registers(old_mode, self.registers.mode());
+
+        if old_state != self.registers.state() {
+            self.branch_to(next_address);
         }
     }
 

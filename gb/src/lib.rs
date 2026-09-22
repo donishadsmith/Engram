@@ -12,12 +12,11 @@ pub mod components;
 use crate::components::{gameboy::GameBoy, gamepak::GamePak};
 use macroquad::input::KeyCode;
 use shared::{
-    EmulatorId, EmulatorSession, EmulatorState,
+    Emulator, EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
-    utils::Emulator,
 };
 use std::{io::Error, path::PathBuf};
 
@@ -52,6 +51,23 @@ impl GameBoySession {
             script_engine: ScriptEngine::new(),
         })
     }
+
+    fn update_screen(&mut self) {
+        self.frame_ready = self.gameboy.take_frame();
+        if self.frame_ready {
+            self.script_engine
+                .execute(&mut self.gameboy, EmulatorId::Gb, true);
+            self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
+        }
+
+        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
+    }
+
+    fn drain_audio(&mut self, volume: u8) {
+        for sample in self.gameboy.cpu.bus.apu.sample_buffer.drain(..) {
+            let _ = self.audio.play(sample, volume);
+        }
+    }
 }
 
 impl EmulatorSession for GameBoySession {
@@ -69,21 +85,23 @@ impl EmulatorSession for GameBoySession {
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             self.gameboy.run(self.apu_sample_cycles);
-            for sample in self.gameboy.cpu.bus.apu.sample_buffer.drain(..) {
-                let _ = self.audio.play(sample, volume);
+            self.drain_audio(volume);
+
+            if self.gameboy.cpu.breakpoint_hit.is_some() {
+                self.set_resume();
+                break;
             }
         }
 
-        self.frame_ready = self.gameboy.take_frame();
-        if self.frame_ready {
-            self.script_engine
-                .execute(&mut self.gameboy, EmulatorId::Gb, true);
-            self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
-        }
+        let state = if self.gameboy.cpu.breakpoint_hit.is_some() {
+            Ok(EmulatorState::Paused)
+        } else {
+            Ok(EmulatorState::Running)
+        };
 
-        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
+        self.update_screen();
 
-        Ok(EmulatorState::Running)
+        return state;
     }
 
     fn pause(&mut self) {
@@ -126,5 +144,29 @@ impl EmulatorSession for GameBoySession {
 
     fn script_engine(&mut self) -> Option<&mut ScriptEngine> {
         Some(&mut self.script_engine)
+    }
+
+    fn step_instruction(&mut self, volume: u8) {
+        self.gameboy.step(self.apu_sample_cycles);
+        self.drain_audio(volume);
+
+        self.gameboy.replenish_remaining_cycles();
+
+        self.update_screen();
+
+        if self.gameboy.cpu.breakpoint_hit.is_some() {
+            self.set_resume();
+        }
+    }
+
+    fn set_resume(&mut self) {
+        let pc = self
+            .gameboy
+            .cpu
+            .registers
+            .program_counter
+            .address
+            .wrapping_sub(1);
+        self.gameboy.cpu.resume_from = Some(pc);
     }
 }

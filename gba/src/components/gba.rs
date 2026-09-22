@@ -6,7 +6,12 @@ use crate::components::{
     gamepak::GamePak,
     scheduler::Event,
 };
-use shared::{ScriptTarget, render::to_rbg_single, traits::BitOps, utils::Emulator};
+use shared::{
+    Emulator, ScriptTarget,
+    render::to_rbg_single,
+    script::{CpuError, DomainError},
+    traits::BitOps,
+};
 use std::{io::Error, mem::take};
 
 pub struct GBA {
@@ -38,8 +43,12 @@ impl GBA {
         if self.cpu.is_halted() {
             bus.scheduler.skip_to_next_event();
         } else {
-            self.cpu.step(bus)
-        };
+            self.cpu.step(bus);
+
+            if self.cpu.breakpoint_hit.is_some() {
+                return;
+            }
+        }
 
         if let Some(_) = self.bus.take_halt_request() {
             self.cpu.halt_state = HaltState::Halted;
@@ -151,6 +160,22 @@ impl Emulator for GBA {
 
         Ok(())
     }
+
+    fn set_breakpoint(&mut self, address: u32) {
+        self.cpu.breakpoint_queue.push(address);
+    }
+
+    fn remove_breakpoint(&mut self, address: u32) {
+        self.cpu.remove_breakpoint(address);
+    }
+
+    fn take_breakpoint_hit(&mut self) -> Option<u32> {
+        take(&mut self.cpu.breakpoint_hit)
+    }
+
+    fn clear_all_breakpoints(&mut self) {
+        self.cpu.breakpoint_queue.clear();
+    }
 }
 
 impl Drop for GBA {
@@ -184,30 +209,105 @@ impl ScriptTarget for GBA {
         self.bus.write_u32(address, value, AccessType::Lua);
     }
 
-    fn read_cpu_register(&self, register_name: String) -> Option<u64> {
+    fn read_cpu_register(&self, register_name: String) -> Result<u64, CpuError> {
         match register_name.as_str() {
-            "cpsr" => Some(self.cpu.registers.cpsr as u64),
-            "r0" => Some(self.cpu.registers.r[0] as u64),
-            "r1" => Some(self.cpu.registers.r[1] as u64),
-            "r2" => Some(self.cpu.registers.r[2] as u64),
-            "r3" => Some(self.cpu.registers.r[3] as u64),
-            "r4" => Some(self.cpu.registers.r[4] as u64),
-            "r5" => Some(self.cpu.registers.r[5] as u64),
-            "r6" => Some(self.cpu.registers.r[6] as u64),
-            "r7" => Some(self.cpu.registers.r[7] as u64),
-            "r8" => Some(self.cpu.registers.r[8] as u64),
-            "r9" => Some(self.cpu.registers.r[9] as u64),
-            "r10" => Some(self.cpu.registers.r[10] as u64),
-            "r11" => Some(self.cpu.registers.r[11] as u64),
-            "r12" => Some(self.cpu.registers.r[12] as u64),
-            "r13" | "sp" => Some(self.cpu.registers.r[13] as u64),
-            "r14" | "lr" => Some(self.cpu.registers.r[14] as u64),
-            "r15" | "pc" => Some(self.cpu.registers.r[15] as u64),
-            _ => None,
+            "cpsr" => Ok(self.cpu.registers.cpsr as u64),
+            "r0" => Ok(self.cpu.registers.r[0] as u64),
+            "r1" => Ok(self.cpu.registers.r[1] as u64),
+            "r2" => Ok(self.cpu.registers.r[2] as u64),
+            "r3" => Ok(self.cpu.registers.r[3] as u64),
+            "r4" => Ok(self.cpu.registers.r[4] as u64),
+            "r5" => Ok(self.cpu.registers.r[5] as u64),
+            "r6" => Ok(self.cpu.registers.r[6] as u64),
+            "r7" => Ok(self.cpu.registers.r[7] as u64),
+            "r8" => Ok(self.cpu.registers.r[8] as u64),
+            "r9" => Ok(self.cpu.registers.r[9] as u64),
+            "r10" => Ok(self.cpu.registers.r[10] as u64),
+            "r11" => Ok(self.cpu.registers.r[11] as u64),
+            "r12" => Ok(self.cpu.registers.r[12] as u64),
+            "r13" | "sp" => Ok(self.cpu.registers.r[13] as u64),
+            "r14" | "lr" => Ok(self.cpu.registers.r[14] as u64),
+            "r15" | "pc" => Ok(self.cpu.next_executing_address() as u64),
+            _ => Err(CpuError::UnknownRegister),
         }
+    }
+
+    fn write_cpu_register(&mut self, register_name: String, value: u32) -> Result<(), CpuError> {
+        match register_name.as_str() {
+            "cpsr" => self.cpu.set_cpsr(value),
+            "r0" => self.cpu.registers.r[0] = value,
+            "r1" => self.cpu.registers.r[1] = value,
+            "r2" => self.cpu.registers.r[2] = value,
+            "r3" => self.cpu.registers.r[3] = value,
+            "r4" => self.cpu.registers.r[4] = value,
+            "r5" => self.cpu.registers.r[5] = value,
+            "r6" => self.cpu.registers.r[6] = value,
+            "r7" => self.cpu.registers.r[7] = value,
+            "r8" => self.cpu.registers.r[8] = value,
+            "r9" => self.cpu.registers.r[9] = value,
+            "r10" => self.cpu.registers.r[10] = value,
+            "r11" => self.cpu.registers.r[11] = value,
+            "r12" => self.cpu.registers.r[12] = value,
+            "r13" | "sp" => self.cpu.registers.r[13] = value,
+            "r14" | "lr" => self.cpu.registers.r[14] = value,
+            "r15" | "pc" => self.cpu.branch_to(value),
+            _ => return Err(CpuError::UnknownRegister),
+        }
+
+        Ok(())
     }
 
     fn to_rgb(&self, value: u32) -> [u8; 3] {
         to_rbg_single(value, self.bus.ppu.frontend.pixel_format)
+    }
+
+    fn cpu_register_names(&self) -> &'static [&'static str] {
+        &[
+            "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13",
+            "sp", "r14", "lr", "r15", "pc", "cpsr",
+        ]
+    }
+
+    fn memory_domain_names(&self) -> &'static [&'static str] {
+        &["rom", "oam", "palette", "vram", "iwram", "ewram"]
+    }
+
+    fn read_domain(&self, domain: &str, offset: usize) -> Result<u8, DomainError> {
+        let region: &[u8] = match domain {
+            "rom" => &self.bus.gamepak.rom,
+            "vram" => &*self.bus.ppu.vram,
+            "oam" => &*self.bus.ppu.oam,
+            "iwram" => &*self.bus.iwram,
+            "ewram" => &*self.bus.ewram,
+            "palette" => &*self.bus.ppu.palette_ram,
+            _ => return Err(DomainError::UnknownDomain),
+        };
+
+        region
+            .get(offset)
+            .copied()
+            .ok_or(DomainError::OutOfRange { size: region.len() })
+    }
+
+    fn write_domain(&mut self, domain: &str, offset: usize, value: u8) -> Result<(), DomainError> {
+        let region: &mut [u8] = match domain {
+            "rom" => &mut *self.bus.gamepak.rom,
+            "vram" => &mut *self.bus.ppu.vram,
+            "oam" => &mut *self.bus.ppu.oam,
+            "iwram" => &mut *self.bus.iwram,
+            "ewram" => &mut *self.bus.ewram,
+            "palette" => &mut *self.bus.ppu.palette_ram,
+            _ => return Err(DomainError::UnknownDomain),
+        };
+
+        let old_value = region.get_mut(offset);
+
+        match old_value {
+            Some(v) => {
+                *v = value;
+                Ok(())
+            }
+            None => Err(DomainError::OutOfRange { size: region.len() }),
+        }
     }
 }

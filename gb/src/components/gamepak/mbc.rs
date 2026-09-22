@@ -13,6 +13,10 @@ pub mod prelude {
 
         fn get_ram(&self) -> &[u8];
 
+        fn get_rom_mut(&mut self) -> &mut [u8];
+
+        fn get_ram_mut(&mut self) -> &mut [u8];
+
         fn n_rom_banks(&self) -> usize {
             self.get_rom().len() / (16 * 1024)
         }
@@ -73,6 +77,14 @@ pub mod prelude {
 
         fn get_ram(&self) -> &[u8] {
             &self.ram
+        }
+
+        fn get_rom_mut(&mut self) -> &mut [u8] {
+            &mut self.rom
+        }
+
+        fn get_ram_mut(&mut self) -> &mut [u8] {
+            &mut self.ram
         }
 
         fn ram_changed(&mut self) -> &mut bool {
@@ -172,6 +184,13 @@ pub mod prelude {
         fn get_ram(&self) -> &[u8] {
             &self.ram
         }
+        fn get_rom_mut(&mut self) -> &mut [u8] {
+            &mut self.rom
+        }
+
+        fn get_ram_mut(&mut self) -> &mut [u8] {
+            &mut self.ram
+        }
 
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
@@ -252,6 +271,14 @@ pub mod prelude {
 
         fn get_ram(&self) -> &[u8] {
             &self.ram
+        }
+
+        fn get_rom_mut(&mut self) -> &mut [u8] {
+            &mut self.rom
+        }
+
+        fn get_ram_mut(&mut self) -> &mut [u8] {
+            &mut self.ram
         }
 
         fn ram_changed(&mut self) -> &mut bool {
@@ -586,6 +613,14 @@ pub mod prelude {
             &self.ram
         }
 
+        fn get_rom_mut(&mut self) -> &mut [u8] {
+            &mut self.rom
+        }
+
+        fn get_ram_mut(&mut self) -> &mut [u8] {
+            &mut self.ram
+        }
+
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
@@ -692,6 +727,14 @@ pub mod prelude {
             &self.ram
         }
 
+        fn get_rom_mut(&mut self) -> &mut [u8] {
+            &mut self.rom
+        }
+
+        fn get_ram_mut(&mut self) -> &mut [u8] {
+            &mut self.ram
+        }
+
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
@@ -791,6 +834,14 @@ pub mod prelude {
 
         fn get_ram(&self) -> &[u8] {
             &self.ram
+        }
+
+        fn get_rom_mut(&mut self) -> &mut [u8] {
+            &mut self.rom
+        }
+
+        fn get_ram_mut(&mut self) -> &mut [u8] {
+            &mut self.ram
         }
 
         fn ram_changed(&mut self) -> &mut bool {

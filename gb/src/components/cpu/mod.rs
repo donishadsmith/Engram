@@ -167,6 +167,9 @@ where
     pub halt_bug: bool,
     pub halted: bool,
     pub interrupt: Interrupt,
+    pub breakpoint_hit: Option<u32>,
+    pub breakpoint_queue: Vec<u16>,
+    pub resume_from: Option<u16>,
 }
 
 impl<A> CPU<A>
@@ -180,6 +183,9 @@ where
             halt_bug: false,
             halted: false,
             interrupt: Interrupt::new(),
+            breakpoint_hit: None,
+            breakpoint_queue: Vec::new(),
+            resume_from: None,
         };
 
         cpu.fetch();
@@ -194,12 +200,19 @@ where
             halt_bug: false,
             halted: false,
             interrupt: Interrupt::new(),
+            breakpoint_hit: None,
+            breakpoint_queue: Vec::new(),
+            resume_from: None,
         };
 
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
         cpu.registers.instruction_register = Some(cpu.bus.read(opcode_address));
 
         cpu
+    }
+
+    pub fn remove_breakpoint(&mut self, address: u16) {
+        self.breakpoint_queue.retain(|&x| x != address);
     }
 
     pub fn push(&mut self, address: u16) {
@@ -240,6 +253,19 @@ where
 
            Exit halt mode when IF and corresponding bit in IE is set, then apply those interrupt
         */
+        if !self.halted {
+            let executing_address = self.registers.program_counter.address.wrapping_sub(1);
+            if self.breakpoint_queue.contains(&executing_address)
+                && self.resume_from != Some(executing_address)
+            {
+                self.breakpoint_hit = Some(executing_address as u32);
+
+                return 0;
+            }
+        }
+
+        self.resume_from = None;
+
         if self.halted {
             if self.bus.pending_interrupt() == 0 {
                 return 1;

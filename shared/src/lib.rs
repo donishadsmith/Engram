@@ -12,7 +12,11 @@ use egui::Context;
 use macroquad::input::KeyCode;
 use std::{io::Error, path::PathBuf};
 
-use crate::{debug::DebugPage, render::Frame, script::ScriptEngine};
+use crate::{
+    debug::DebugPage,
+    render::Frame,
+    script::{CpuError, DomainError, ScriptEngine},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EmulatorId {
@@ -29,6 +33,18 @@ pub enum EmulatorState {
     Launch,
     Paused,
     BiosSelection,
+}
+
+pub trait Emulator {
+    fn save(&mut self) -> Result<(), Error>;
+
+    fn remove_breakpoint(&mut self, address: u32);
+
+    fn set_breakpoint(&mut self, address: u32);
+
+    fn take_breakpoint_hit(&mut self) -> Option<u32>;
+
+    fn clear_all_breakpoints(&mut self);
 }
 
 pub trait DebugInterface {
@@ -83,9 +99,13 @@ pub trait EmulatorSession {
     }
 
     fn pause(&mut self);
+
+    fn step_instruction(&mut self, volume: u8);
+
+    fn set_resume(&mut self);
 }
 
-pub trait ScriptTarget {
+pub trait ScriptTarget: Emulator {
     fn read_u8(&mut self, address: u32) -> u8;
 
     fn read_u16(&mut self, address: u32) -> u16;
@@ -98,8 +118,20 @@ pub trait ScriptTarget {
 
     fn write_u32(&mut self, address: u32, value: u32);
 
-    fn read_cpu_register(&self, _register_name: String) -> Option<u64>;
+    fn read_cpu_register(&self, register_name: String) -> Result<u64, CpuError>;
+
+    fn write_cpu_register(&mut self, register_name: String, value: u32) -> Result<(), CpuError>;
 
     // probably useless but still a fun function
     fn to_rgb(&self, value: u32) -> [u8; 3];
+
+    // mgba's amazing scripting api: https://mgba.io/docs/scripting.html
+    // adding these since they should help for the psx
+    fn cpu_register_names(&self) -> &'static [&'static str];
+
+    fn memory_domain_names(&self) -> &'static [&'static str];
+
+    fn read_domain(&self, domain: &str, offset: usize) -> Result<u8, DomainError>;
+
+    fn write_domain(&mut self, domain: &str, offset: usize, value: u8) -> Result<(), DomainError>;
 }

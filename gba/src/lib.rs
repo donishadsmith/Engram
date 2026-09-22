@@ -18,13 +18,12 @@ use crate::{
 use debug::audio::AudioDebugger;
 use macroquad::input::KeyCode;
 use shared::{
-    DebugInterface, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
+    DebugInterface, Emulator, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     debug::DebugPage,
     keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
-    utils::Emulator,
 };
 use std::{io::Error, path::PathBuf};
 
@@ -62,6 +61,38 @@ impl GBASession {
             script_engine: ScriptEngine::new(),
         })
     }
+
+    fn update_screen(&mut self) {
+        self.frame_ready = self.gba.take_frame();
+        if self.frame_ready && self.active_debug.is_none() {
+            self.screen.update(&self.gba.bus.ppu.frontend);
+        }
+
+        if self.active_debug.is_none() {
+            self.screen.draw(&self.gba.bus.ppu.frontend);
+        }
+    }
+
+    fn drain_audio(&mut self, volume: u8) {
+        for sample in self.gba.bus.apu.sample_buffer.drain(..) {
+            let _ = self.audio.play(sample, volume);
+        }
+    }
+
+    fn tick(&mut self, volume: u8) {
+        self.gba.run();
+
+        if self.gba.take_frame_start() {
+            self.script_engine
+                .execute(&mut self.gba, EmulatorId::Gba, true);
+        }
+
+        self.drain_audio(volume);
+
+        if self.gba.cpu.breakpoint_hit.is_some() {
+            self.set_resume();
+        }
+    }
 }
 
 impl EmulatorSession for GBASession {
@@ -77,28 +108,22 @@ impl EmulatorSession for GBASession {
             .unwrap();
 
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
-            self.gba.run();
+            self.tick(volume);
 
-            if self.gba.take_frame_start() {
-                self.script_engine
-                    .execute(&mut self.gba, EmulatorId::Gba, true);
-            }
-
-            for sample in self.gba.bus.apu.sample_buffer.drain(..) {
-                let _ = self.audio.play(sample, volume);
+            if self.gba.cpu.breakpoint_hit.is_some() {
+                break;
             }
         }
 
-        self.frame_ready = self.gba.take_frame();
-        if self.frame_ready && self.active_debug.is_none() {
-            self.screen.update(&self.gba.bus.ppu.frontend);
-        }
+        let state = if self.gba.cpu.breakpoint_hit.is_some() {
+            Ok(EmulatorState::Paused)
+        } else {
+            Ok(EmulatorState::Running)
+        };
 
-        if self.active_debug.is_none() {
-            self.screen.draw(&self.gba.bus.ppu.frontend);
-        }
+        self.update_screen();
 
-        Ok(EmulatorState::Running)
+        return state;
     }
 
     fn pause(&mut self) {
@@ -157,6 +182,15 @@ impl EmulatorSession for GBASession {
 
     fn debugger_mut(&mut self) -> Option<&mut dyn DebugInterface> {
         Some(self)
+    }
+
+    fn step_instruction(&mut self, volume: u8) {
+        self.tick(volume);
+        self.update_screen();
+    }
+
+    fn set_resume(&mut self) {
+        self.gba.cpu.resume_from = Some(self.gba.cpu.next_executing_address());
     }
 }
 
