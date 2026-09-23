@@ -4,7 +4,9 @@ pub mod instructions;
 pub mod interrupts;
 pub mod registers;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+
+use shared::EmulatorState;
 
 use crate::components::{
     bus::AddressBus,
@@ -171,6 +173,7 @@ where
     pub interrupt: Interrupt,
     pub breakpoint_hit: Option<u32>,
     pub breakpoint_queue: HashSet<u16>,
+    pub breakpoint_action: HashMap<u16, EmulatorState>,
     pub resume_from: Option<u16>,
 }
 
@@ -187,6 +190,7 @@ where
             interrupt: Interrupt::new(),
             breakpoint_hit: None,
             breakpoint_queue: HashSet::new(),
+            breakpoint_action: HashMap::new(),
             resume_from: None,
         };
 
@@ -204,6 +208,7 @@ where
             interrupt: Interrupt::new(),
             breakpoint_hit: None,
             breakpoint_queue: HashSet::new(),
+            breakpoint_action: HashMap::new(),
             resume_from: None,
         };
 
@@ -213,8 +218,23 @@ where
         cpu
     }
 
+    pub fn set_breakpoint(&mut self, address: u16, pause: bool) -> bool {
+        let added = self.breakpoint_queue.insert(address);
+        if added {
+            let action = if pause {
+                EmulatorState::Paused
+            } else {
+                EmulatorState::Running
+            };
+            self.breakpoint_action.insert(address, action);
+        }
+
+        added
+    }
+
     pub fn remove_breakpoint(&mut self, address: u16) {
         self.breakpoint_queue.retain(|&x| x != address);
+        self.breakpoint_action.remove(&address);
     }
 
     pub fn push(&mut self, address: u16) {

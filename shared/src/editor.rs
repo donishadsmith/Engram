@@ -73,13 +73,12 @@ impl LuaEditor {
                     .show_inside(ui, |ui| {
                         focused = CodeEditor::default()
                             .id_source("Lua Editpr")
-                            .with_rows(12)
+                            .with_rows(24)
                             .with_fontsize(14.0)
                             .with_theme(ColorTheme::GITHUB_DARK)
                             .with_syntax(Syntax::lua())
                             .with_numlines(true)
                             .vscroll(true)
-                            .stick_to_bottom(true)
                             .show(ui, &mut self.code)
                             .response
                             .has_focus();

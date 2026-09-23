@@ -115,8 +115,21 @@ impl EmulatorSession for GBASession {
             }
         }
 
-        let state = if self.gba.cpu.breakpoint_hit.is_some() {
-            Ok(EmulatorState::Paused)
+        let state = if let Some(address) = self.gba.cpu.breakpoint_hit {
+            let breakpoint_action = self
+                .gba
+                .cpu
+                .breakpoint_action
+                .get(&address)
+                .unwrap()
+                .clone();
+
+            if breakpoint_action == EmulatorState::Running {
+                self.script_engine
+                    .execute(&mut self.gba, EmulatorId::Gba, self.frame_ready);
+            }
+
+            Ok(breakpoint_action)
         } else {
             Ok(EmulatorState::Running)
         };

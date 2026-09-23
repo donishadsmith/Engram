@@ -157,8 +157,8 @@ impl Emulator for GameBoy {
         self.cpu.remove_breakpoint(address as u16);
     }
 
-    fn set_breakpoint(&mut self, address: u32) -> bool {
-        self.cpu.breakpoint_queue.insert(address as u16)
+    fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
+        self.cpu.set_breakpoint(address as u16, pause)
     }
 
     fn take_breakpoint_hit(&mut self) -> Option<u32> {

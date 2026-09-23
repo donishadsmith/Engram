@@ -40,7 +40,7 @@ pub trait Emulator {
 
     fn remove_breakpoint(&mut self, address: u32);
 
-    fn set_breakpoint(&mut self, address: u32) -> bool;
+    fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool;
 
     fn take_breakpoint_hit(&mut self) -> Option<u32>;
 

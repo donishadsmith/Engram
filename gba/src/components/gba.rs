@@ -161,8 +161,8 @@ impl Emulator for GBA {
         Ok(())
     }
 
-    fn set_breakpoint(&mut self, address: u32) -> bool {
-        self.cpu.breakpoint_queue.insert(address)
+    fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
+        self.cpu.set_breakpoint(address, pause)
     }
 
     fn remove_breakpoint(&mut self, address: u32) {

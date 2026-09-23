@@ -1,5 +1,5 @@
 use crate::{EmulatorId, ScriptTarget};
-use mlua::{Function, HookTriggers, Lua, Value, Variadic, VmState};
+use mlua::{Function, HookTriggers, Lua, Table, Value, Variadic, VmState};
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
@@ -28,8 +28,8 @@ write_cpu_register(name, value)
 Colors:
 to_rgb_hex(value)
 
-Breakpoints :
-set_breakpoint(address)
+Breakpoints:
+set_breakpoint(address, {pause: bool})
 remove_breakpoint(address)
 clear_all_breakpoints()
 
@@ -257,16 +257,21 @@ impl ScriptEngine {
             })?;
             lua.globals().set("to_rgb_hex", to_rgb_hex)?;
 
-            let set_breakpoint = scope.create_function(|_, address: u32| {
-                let message = if target.borrow_mut().set_breakpoint(address) {
-                    format!("breakpoint set at {address:08x}")
-                } else {
-                    format!("breakpoint at {address:08x} already exists")
-                };
+            let set_breakpoint =
+                scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
+                    let pause = match kwargs {
+                        Some(table) => table.get::<Option<bool>>("pause")?.unwrap_or(true),
+                        None => true,
+                    };
+                    let message = if target.borrow_mut().set_breakpoint(address, pause) {
+                        format!("breakpoint set at {address:08x}")
+                    } else {
+                        format!("breakpoint at {address:08x} already exists")
+                    };
 
-                output.borrow_mut().push(message);
-                Ok(())
-            })?;
+                    output.borrow_mut().push(message);
+                    Ok(())
+                })?;
             lua.globals().set("set_breakpoint", set_breakpoint)?;
 
             let remove_breakpoint = scope.create_function(|_, address: u32| {

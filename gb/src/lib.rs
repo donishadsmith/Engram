@@ -93,8 +93,21 @@ impl EmulatorSession for GameBoySession {
             }
         }
 
-        let state = if self.gameboy.cpu.breakpoint_hit.is_some() {
-            Ok(EmulatorState::Paused)
+        let state = if let Some(address) = self.gameboy.cpu.breakpoint_hit {
+            let breakpoint_action = self
+                .gameboy
+                .cpu
+                .breakpoint_action
+                .get(&(address as u16))
+                .unwrap()
+                .clone();
+
+            if breakpoint_action == EmulatorState::Running {
+                self.script_engine
+                    .execute(&mut self.gameboy, EmulatorId::Gb, self.frame_ready);
+            }
+
+            Ok(breakpoint_action)
         } else {
             Ok(EmulatorState::Running)
         };

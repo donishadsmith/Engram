@@ -4,13 +4,14 @@ pub mod thumb;
 use std::collections::HashSet;
 
 use arm::{decode::*, execute::*};
+use egui::ahash::{HashMap, HashMapExt};
 use thumb::decode::*;
 
 use crate::components::{
     bios::handle_swi,
     bus::{AccessType, Bus},
 };
-use shared::traits::BitOps;
+use shared::{EmulatorState, traits::BitOps};
 
 /*
 The ARM University Program, ARM Architecture Fundamentals: https://www.youtube.com/watch?v=7LqPJGnBPMM
@@ -503,6 +504,7 @@ pub struct Arm7tdmi {
     pub entered_idle_loop: bool,
     pub breakpoint_hit: Option<u32>,
     pub breakpoint_queue: HashSet<u32>,
+    pub breakpoint_action: HashMap<u32, EmulatorState>,
     pub resume_from: Option<u32>,
 }
 
@@ -518,6 +520,7 @@ impl Arm7tdmi {
             entered_idle_loop: false,
             breakpoint_hit: None,
             breakpoint_queue: HashSet::new(),
+            breakpoint_action: HashMap::new(),
             resume_from: None,
         }
     }
@@ -527,8 +530,23 @@ impl Arm7tdmi {
         self.registers.reset_to_boot();
     }
 
+    pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
+        let added = self.breakpoint_queue.insert(address);
+        if added {
+            let action = if pause {
+                EmulatorState::Paused
+            } else {
+                EmulatorState::Running
+            };
+            self.breakpoint_action.insert(address, action);
+        }
+
+        added
+    }
+
     pub fn remove_breakpoint(&mut self, address: u32) {
         self.breakpoint_queue.retain(|&x| x != address);
+        self.breakpoint_action.remove(&address);
     }
 
     pub fn step(&mut self, bus: &mut Bus) {
