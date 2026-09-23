@@ -1,4 +1,4 @@
-use crate::{EmulatorId, ScriptTarget};
+use crate::{EmulatorId, EmulatorState, ScriptTarget};
 use mlua::{Function, HookTriggers, Lua, Table, Value, Variadic, VmState};
 use std::{
     cell::{Cell, RefCell},
@@ -32,6 +32,7 @@ Breakpoints:
 set_breakpoint(address, {pause: bool})
 remove_breakpoint(address)
 clear_all_breakpoints()
+check_breakpoints()
 
 Emulator controls:
 pause()  resume()  step()  reset()
@@ -292,6 +293,28 @@ impl ScriptEngine {
             })?;
             lua.globals()
                 .set("clear_all_breakpoints", clear_all_breakpoints)?;
+
+            let check_breakpoints = scope.create_function(|_, (): ()| {
+                let breakpoints = target.borrow_mut().check_breakpoints();
+                if !breakpoints.is_empty() {
+                    for (address, state) in breakpoints.iter() {
+                        let action = if *state == EmulatorState::Paused {
+                            "pause"
+                        } else {
+                            "run"
+                        };
+
+                        output.borrow_mut().push(format!(
+                            "breakpoint at {:08x}, action on breakpoint: {action}",
+                            *address
+                        ))
+                    }
+                } else {
+                    output.borrow_mut().push("no breakpoints found".to_string())
+                }
+                Ok(())
+            })?;
+            lua.globals().set("check_breakpoints", check_breakpoints)?;
 
             let control =
                 |name: &'static str, request: fn() -> ScriptRequest, message: &'static str| {

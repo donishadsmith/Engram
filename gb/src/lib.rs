@@ -98,7 +98,7 @@ impl EmulatorSession for GameBoySession {
                 .gameboy
                 .cpu
                 .breakpoint_action
-                .get(&(address as u16))
+                .get(&address)
                 .unwrap()
                 .clone();
 

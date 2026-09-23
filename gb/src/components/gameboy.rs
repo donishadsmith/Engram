@@ -7,7 +7,7 @@ use crate::components::{
     gamepak::GamePak,
 };
 use shared::{
-    Emulator, ScriptTarget,
+    Emulator, EmulatorState, ScriptTarget,
     render::{PixelFormat, to_rbg_single},
     script::{CpuError, DomainError},
 };
@@ -167,6 +167,10 @@ impl Emulator for GameBoy {
 
     fn clear_all_breakpoints(&mut self) {
         self.cpu.breakpoint_queue.clear();
+    }
+
+    fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
+        self.cpu.breakpoint_action.clone().into_iter().collect()
     }
 }
 

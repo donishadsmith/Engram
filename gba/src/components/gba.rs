@@ -7,7 +7,7 @@ use crate::components::{
     scheduler::Event,
 };
 use shared::{
-    Emulator, ScriptTarget,
+    Emulator, EmulatorState, ScriptTarget,
     render::to_rbg_single,
     script::{CpuError, DomainError},
     traits::BitOps,
@@ -175,6 +175,10 @@ impl Emulator for GBA {
 
     fn clear_all_breakpoints(&mut self) {
         self.cpu.breakpoint_queue.clear();
+    }
+
+    fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
+        self.cpu.breakpoint_action.clone().into_iter().collect()
     }
 }
 

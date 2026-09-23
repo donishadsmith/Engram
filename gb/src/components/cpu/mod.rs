@@ -173,7 +173,7 @@ where
     pub interrupt: Interrupt,
     pub breakpoint_hit: Option<u32>,
     pub breakpoint_queue: HashSet<u16>,
-    pub breakpoint_action: HashMap<u16, EmulatorState>,
+    pub breakpoint_action: HashMap<u32, EmulatorState>,
     pub resume_from: Option<u16>,
 }
 
@@ -226,7 +226,7 @@ where
             } else {
                 EmulatorState::Running
             };
-            self.breakpoint_action.insert(address, action);
+            self.breakpoint_action.insert(address as u32, action);
         }
 
         added
@@ -234,7 +234,7 @@ where
 
     pub fn remove_breakpoint(&mut self, address: u16) {
         self.breakpoint_queue.retain(|&x| x != address);
-        self.breakpoint_action.remove(&address);
+        self.breakpoint_action.remove(&(address as u32));
     }
 
     pub fn push(&mut self, address: u16) {

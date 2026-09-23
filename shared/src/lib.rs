@@ -45,6 +45,8 @@ pub trait Emulator {
     fn take_breakpoint_hit(&mut self) -> Option<u32>;
 
     fn clear_all_breakpoints(&mut self);
+
+    fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)>;
 }
 
 pub trait DebugInterface {
