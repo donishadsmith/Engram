@@ -40,7 +40,7 @@ pub trait Emulator {
 
     fn remove_breakpoint(&mut self, address: u32);
 
-    fn set_breakpoint(&mut self, address: u32);
+    fn set_breakpoint(&mut self, address: u32) -> bool;
 
     fn take_breakpoint_hit(&mut self) -> Option<u32>;
 
@@ -134,4 +134,6 @@ pub trait ScriptTarget: Emulator {
     fn read_domain(&self, domain: &str, offset: usize) -> Result<u8, DomainError>;
 
     fn write_domain(&mut self, domain: &str, offset: usize, value: u8) -> Result<(), DomainError>;
+
+    fn address_to_domain(&self, address: u32) -> Option<(&'static str, usize)>;
 }

@@ -66,22 +66,28 @@ impl LuaEditor {
                     });
                 });
 
-                focused = CodeEditor::default()
-                    .id_source("Lua Editpr")
-                    .with_rows(12)
-                    .with_fontsize(14.0)
-                    .with_theme(ColorTheme::GITHUB_DARK)
-                    .with_syntax(Syntax::lua())
-                    .with_numlines(true)
-                    .show(ui, &mut self.code)
-                    .response
-                    .has_focus();
-
-                ui.separator();
+                // probably as good as its gonna get
+                egui::TopBottomPanel::top("Lua")
+                    .resizable(true)
+                    .default_height(260.0)
+                    .show_inside(ui, |ui| {
+                        focused = CodeEditor::default()
+                            .id_source("Lua Editpr")
+                            .with_rows(12)
+                            .with_fontsize(14.0)
+                            .with_theme(ColorTheme::GITHUB_DARK)
+                            .with_syntax(Syntax::lua())
+                            .with_numlines(true)
+                            .vscroll(true)
+                            .stick_to_bottom(true)
+                            .show(ui, &mut self.code)
+                            .response
+                            .has_focus();
+                    });
 
                 ScrollArea::vertical()
                     .id_salt("Lua Output")
-                    .max_height(150.0)
+                    .max_height(ui.available_height())
                     .auto_shrink([false, false])
                     .stick_to_bottom(true)
                     .show_rows(

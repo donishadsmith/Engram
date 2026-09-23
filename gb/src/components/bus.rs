@@ -149,7 +149,7 @@ impl Bus {
         self.gamepak.header.cgb_flag == CGBFlag::CGB
     }
 
-    fn get_wram_index(&self, address: u16) -> usize {
+    pub fn get_wram_index(&self, address: u16) -> usize {
         // Echo Ram is a mirror of work ram 0xC000-0xDDFF
         let adjusted_address = if (0xE000..=0xFDFF).contains(&address) {
             address - (0xFDFF - 0xDDFF)

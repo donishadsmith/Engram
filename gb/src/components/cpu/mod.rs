@@ -4,6 +4,8 @@ pub mod instructions;
 pub mod interrupts;
 pub mod registers;
 
+use std::collections::HashSet;
+
 use crate::components::{
     bus::AddressBus,
     cpu::{interrupts::InterruptMode, registers::Registers},
@@ -168,7 +170,7 @@ where
     pub halted: bool,
     pub interrupt: Interrupt,
     pub breakpoint_hit: Option<u32>,
-    pub breakpoint_queue: Vec<u16>,
+    pub breakpoint_queue: HashSet<u16>,
     pub resume_from: Option<u16>,
 }
 
@@ -184,7 +186,7 @@ where
             halted: false,
             interrupt: Interrupt::new(),
             breakpoint_hit: None,
-            breakpoint_queue: Vec::new(),
+            breakpoint_queue: HashSet::new(),
             resume_from: None,
         };
 
@@ -201,7 +203,7 @@ where
             halted: false,
             interrupt: Interrupt::new(),
             breakpoint_hit: None,
-            breakpoint_queue: Vec::new(),
+            breakpoint_queue: HashSet::new(),
             resume_from: None,
         };
 

@@ -161,8 +161,8 @@ impl Emulator for GBA {
         Ok(())
     }
 
-    fn set_breakpoint(&mut self, address: u32) {
-        self.cpu.breakpoint_queue.push(address);
+    fn set_breakpoint(&mut self, address: u32) -> bool {
+        self.cpu.breakpoint_queue.insert(address)
     }
 
     fn remove_breakpoint(&mut self, address: u32) {
@@ -309,5 +309,19 @@ impl ScriptTarget for GBA {
             }
             None => Err(DomainError::OutOfRange { size: region.len() }),
         }
+    }
+
+    fn address_to_domain(&self, address: u32) -> Option<(&'static str, usize)> {
+        let (domain, base) = match address >> 24 {
+            0x02 => ("ewram", 0x02000000),
+            0x03 => ("iwram", 0x03000000),
+            0x05 => ("palette", 0x05000000),
+            0x06 => ("vram", 0x06000000),
+            0x07 => ("oam", 0x07000000),
+            0x08..=0x0D => ("rom", 0x08000000),
+            _ => return None,
+        };
+
+        Some((domain, base))
     }
 }

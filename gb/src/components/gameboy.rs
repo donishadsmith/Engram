@@ -157,8 +157,8 @@ impl Emulator for GameBoy {
         self.cpu.remove_breakpoint(address as u16);
     }
 
-    fn set_breakpoint(&mut self, address: u32) {
-        self.cpu.breakpoint_queue.push(address as u16);
+    fn set_breakpoint(&mut self, address: u32) -> bool {
+        self.cpu.breakpoint_queue.insert(address as u16)
     }
 
     fn take_breakpoint_hit(&mut self) -> Option<u32> {
@@ -282,8 +282,7 @@ impl ScriptTarget for GameBoy {
 
     fn cpu_register_names(&self) -> &'static [&'static str] {
         &[
-            "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13",
-            "sp", "r14", "lr", "r15", "pc", "cpsr",
+            "a", "f", "b", "c", "d", "e", "h", "l", "ir", "pc", "sp", "af", "bc", "de", "hl",
         ]
     }
 
@@ -341,5 +340,31 @@ impl ScriptTarget for GameBoy {
             }
             None => Err(DomainError::OutOfRange { size: region.len() }),
         }
+    }
+
+    fn address_to_domain(&self, address: u32) -> Option<(&'static str, usize)> {
+        let address = u16::try_from(address).ok()?;
+
+        let (domain, base) = match address {
+            0x4000..=0x7FFF => (
+                "rom",
+                self.cpu.bus.gamepak.mbc.rom_bank() * 0x4000 + (address - 0x4000) as usize,
+            ),
+            0x8000..=0x9FFF => (
+                "vram",
+                (self.cpu.bus.ppu.vram.bank as usize) * 0x2000 + (address - 0x8000) as usize,
+            ),
+            0xA000..=0xBFFF => (
+                "sram",
+                self.cpu.bus.gamepak.mbc.ram_bank() * 0x2000 + (address - 0xA000) as usize,
+            ),
+            0xC000..=0xCFFF => ("wram", (address - 0xC000) as usize),
+            0xD000..=0xDFFF => ("wram", self.cpu.bus.get_wram_index(address)),
+            0xFE00..=0xFE9F => ("oam", (address - 0xFE00) as usize),
+            0xFF80..=0xFFFE => ("hram", (address - 0xFF80) as usize),
+            _ => return None,
+        };
+
+        Some((domain, base))
     }
 }

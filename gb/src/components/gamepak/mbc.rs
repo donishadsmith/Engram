@@ -17,6 +17,10 @@ pub mod prelude {
 
         fn get_ram_mut(&mut self) -> &mut [u8];
 
+        fn rom_bank(&self) -> usize;
+
+        fn ram_bank(&self) -> usize;
+
         fn n_rom_banks(&self) -> usize {
             self.get_rom().len() / (16 * 1024)
         }
@@ -79,6 +83,14 @@ pub mod prelude {
             &self.ram
         }
 
+        fn rom_bank(&self) -> usize {
+            0
+        }
+
+        fn ram_bank(&self) -> usize {
+            0
+        }
+
         fn get_rom_mut(&mut self) -> &mut [u8] {
             &mut self.rom
         }
@@ -117,18 +129,6 @@ pub mod prelude {
                 mode: false,
                 ram_enabled: false,
                 ram_updated: false,
-            }
-        }
-
-        fn rom_bank(&self) -> usize {
-            ((self.register_2bit as usize) << 5) | (self.register_5bit as usize)
-        }
-
-        fn ram_bank(&self) -> usize {
-            if self.mode {
-                self.register_2bit as usize
-            } else {
-                0
             }
         }
 
@@ -184,6 +184,19 @@ pub mod prelude {
         fn get_ram(&self) -> &[u8] {
             &self.ram
         }
+
+        fn rom_bank(&self) -> usize {
+            ((self.register_2bit as usize) << 5) | (self.register_5bit as usize)
+        }
+
+        fn ram_bank(&self) -> usize {
+            if self.mode {
+                self.register_2bit as usize
+            } else {
+                0
+            }
+        }
+
         fn get_rom_mut(&mut self) -> &mut [u8] {
             &mut self.rom
         }
@@ -239,6 +252,7 @@ pub mod prelude {
                     if !self.ram_enabled {
                         return 0xFF;
                     }
+
                     self.ram[address.get_bit_range(0..9) as usize] | 0xF0
                 }
                 _ => 0xFF,
@@ -258,11 +272,20 @@ pub mod prelude {
                     if self.ram.is_empty() || !self.ram_enabled {
                         return;
                     }
+
                     self.ram[address.get_bit_range(0..9) as usize] = value.get_bit_range(0..4);
                     self.ram_updated = true;
                 }
                 _ => {}
             }
+        }
+
+        fn rom_bank(&self) -> usize {
+            self.rom_bank
+        }
+
+        fn ram_bank(&self) -> usize {
+            0
         }
 
         fn get_rom(&self) -> &[u8] {
@@ -529,10 +552,6 @@ pub mod prelude {
             }
         }
 
-        fn rom_bank(&self) -> usize {
-            self.register_7bit as usize
-        }
-
         fn ram_index(&self, address: u16) -> usize {
             (self.ram_bank * 0x2000 + (address as usize - 0xA000)) % self.ram.len()
         }
@@ -613,6 +632,14 @@ pub mod prelude {
             &self.ram
         }
 
+        fn rom_bank(&self) -> usize {
+            self.register_7bit as usize
+        }
+
+        fn ram_bank(&self) -> usize {
+            self.ram_bank
+        }
+
         fn get_rom_mut(&mut self) -> &mut [u8] {
             &mut self.rom
         }
@@ -667,11 +694,6 @@ pub mod prelude {
             }
         }
 
-        fn rom_bank(&self) -> usize {
-            let bit = self.register_1bit as u16;
-            (bit << 8).wrapping_add(self.register_8bit as u16) as usize
-        }
-
         fn ram_index(&self, address: u16) -> usize {
             (self.ram_bank * 0x2000 + (address as usize - 0xA000)) % self.ram.len()
         }
@@ -717,6 +739,15 @@ pub mod prelude {
                 }
                 _ => {}
             }
+        }
+
+        fn rom_bank(&self) -> usize {
+            let bit = self.register_1bit as u16;
+            (bit << 8).wrapping_add(self.register_8bit as u16) as usize
+        }
+
+        fn ram_bank(&self) -> usize {
+            self.ram_bank
         }
 
         fn get_rom(&self) -> &[u8] {
@@ -826,6 +857,14 @@ pub mod prelude {
                 },
                 _ => {}
             }
+        }
+
+        fn rom_bank(&self) -> usize {
+            self.rom_bank
+        }
+
+        fn ram_bank(&self) -> usize {
+            self.ram_bank
         }
 
         fn get_rom(&self) -> &[u8] {

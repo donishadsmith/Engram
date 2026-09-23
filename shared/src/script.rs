@@ -18,6 +18,7 @@ Memory domains:
 memory_domain_names(): table of names
 read_domain(name, offset)
 write_domain(name, offset, value)
+address_to_domain: returns (name, offset)
 
 CPU registers:
 cpu_register_names(): table of names
@@ -32,7 +33,7 @@ set_breakpoint(address)
 remove_breakpoint(address)
 clear_all_breakpoints()
 
-Emulator control:
+Emulator controls:
 pause()  resume()  step()  reset()
 screenshot()  start_gif()  stop_gif()
 
@@ -88,7 +89,7 @@ fn display_value(value: &Value) -> String {
         Value::Integer(number) if *number >= 0 => format!("{number} (0x{number:x})"),
         _ => value
             .to_string()
-            .unwrap_or_else(|e| mlua::Error::runtime(format!("{e}")).to_string()),
+            .unwrap_or_else(|err| mlua::Error::runtime(format!("{err}")).to_string()),
     }
 }
 
@@ -154,7 +155,7 @@ impl ScriptEngine {
 
                 let line = vals
                     .iter()
-                    .map(|v| v.to_string())
+                    .map(|val| val.to_string())
                     .collect::<mlua::Result<Vec<String>>>()?
                     .join("\t");
 
@@ -208,17 +209,26 @@ impl ScriptEngine {
 
             let read_domain = scope.create_function(|_, (domain, offset): (String, usize)| {
                 let result = target.borrow().read_domain(&domain, offset);
-                result.map_err(|e| {
-                    domain_error(&domain, offset, e, target.borrow().memory_domain_names())
+                result.map_err(|err| {
+                    domain_error(&domain, offset, err, target.borrow().memory_domain_names())
                 })
             })?;
             lua.globals().set("read_domain", read_domain)?;
 
+            let address_to_domain = scope.create_function(|_, address: u32| {
+                target.borrow().address_to_domain(address).ok_or_else(|| {
+                    mlua::Error::runtime(format!(
+                        "address {address:#010x} not mapped to any memory domain"
+                    ))
+                })
+            })?;
+            lua.globals().set("address_to_domain", address_to_domain)?;
+
             let write_domain =
                 scope.create_function(|_, (domain, offset, value): (String, usize, u8)| {
                     let result = target.borrow_mut().write_domain(&domain, offset, value);
-                    result.map_err(|e| {
-                        domain_error(&domain, offset, e, target.borrow().memory_domain_names())
+                    result.map_err(|err| {
+                        domain_error(&domain, offset, err, target.borrow().memory_domain_names())
                     })
                 })?;
             lua.globals().set("write_domain", write_domain)?;
@@ -230,13 +240,13 @@ impl ScriptEngine {
 
             let read_cpu_register = scope.create_function(|_, name: String| {
                 let result = target.borrow().read_cpu_register(name.clone());
-                result.map_err(|e| cpu_error(&name, e, target.borrow().cpu_register_names()))
+                result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
             })?;
             lua.globals().set("read_cpu_register", read_cpu_register)?;
 
             let write_cpu_register = scope.create_function(|_, (name, value): (String, u32)| {
                 let result = target.borrow_mut().write_cpu_register(name.clone(), value);
-                result.map_err(|e| cpu_error(&name, e, target.borrow().cpu_register_names()))
+                result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
             })?;
             lua.globals()
                 .set("write_cpu_register", write_cpu_register)?;
@@ -248,10 +258,13 @@ impl ScriptEngine {
             lua.globals().set("to_rgb_hex", to_rgb_hex)?;
 
             let set_breakpoint = scope.create_function(|_, address: u32| {
-                target.borrow_mut().set_breakpoint(address);
-                output
-                    .borrow_mut()
-                    .push(format!("breakpoint set at {address:08x}"));
+                let message = if target.borrow_mut().set_breakpoint(address) {
+                    format!("breakpoint set at {address:08x}")
+                } else {
+                    format!("breakpoint at {address:08x} already exists")
+                };
+
+                output.borrow_mut().push(message);
                 Ok(())
             })?;
             lua.globals().set("set_breakpoint", set_breakpoint)?;

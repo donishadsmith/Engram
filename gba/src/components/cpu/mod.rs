@@ -1,6 +1,8 @@
 pub mod arm;
 pub mod thumb;
 
+use std::collections::HashSet;
+
 use arm::{decode::*, execute::*};
 use thumb::decode::*;
 
@@ -500,7 +502,7 @@ pub struct Arm7tdmi {
     pub intr_wait_resume: bool,
     pub entered_idle_loop: bool,
     pub breakpoint_hit: Option<u32>,
-    pub breakpoint_queue: Vec<u32>,
+    pub breakpoint_queue: HashSet<u32>,
     pub resume_from: Option<u32>,
 }
 
@@ -515,7 +517,7 @@ impl Arm7tdmi {
             intr_wait_resume: false,
             entered_idle_loop: false,
             breakpoint_hit: None,
-            breakpoint_queue: Vec::new(),
+            breakpoint_queue: HashSet::new(),
             resume_from: None,
         }
     }
