@@ -29,10 +29,21 @@ Colors:
 to_rgb_hex(value)
 
 Breakpoints:
-set_breakpoint(address, {pause: bool})
+set_breakpoint(address, {pause = true})
 remove_breakpoint(address)
 clear_all_breakpoints()
 check_breakpoints()
+
+Watchpoints for bus accesses:
+set_watchpoint(address, {pause = true, on = "rw", access = "byte", target=None})
+  - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
+  - access: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
+    a watchpoint only fires for specified access width
+  - target: on writes its the incoming value being written to address and on reads its the current value
+    at the address being accessed; watchpoint only fires for specified target
+remove_watchpoint(address)
+clear_all_watchpoints()
+check_watchpoints()
 
 Emulator controls:
 pause()  resume()  step()  reset()
@@ -41,6 +52,8 @@ screenshot()  start_gif()  stop_gif()
 Hooks:
 function on_frame(): runs once per frame
 function on_breakpoint(address): runs when a breakpoint is hit
+function on_watchpoint(hit): runs once per watchpoint hit; hit is a table with
+  address, value, pc, on, access, pause
 "#;
 
 pub enum DomainError {
@@ -61,6 +74,126 @@ pub enum ScriptRequest {
     Reset,
     Step,
     Resume,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum WatchpointType {
+    Read,
+    Write,
+    ReadWrite,
+    Change,
+}
+
+impl WatchpointType {
+    pub fn from_string(string: String) -> Result<WatchpointType, mlua::Error> {
+        match string.to_lowercase().as_str() {
+            "read" => Ok(WatchpointType::Read),
+            "write" => Ok(WatchpointType::Write),
+            "rw" => Ok(WatchpointType::ReadWrite),
+            "change" => Ok(WatchpointType::Change),
+            _ => Err(mlua::Error::runtime(format!(
+                "invalid option for `on`: {string}; valid options are 'read', 'write', 'rw', and 'change'."
+            ))),
+        }
+    }
+
+    pub fn to_string(self) -> &'static str {
+        match self {
+            WatchpointType::Read => "read",
+            WatchpointType::Write => "write",
+            WatchpointType::ReadWrite => "rw",
+            WatchpointType::Change => "change",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum WatchpointAccess {
+    Byte,
+    Halfword,
+    Word,
+}
+
+impl WatchpointAccess {
+    pub fn from_string(string: String) -> Result<WatchpointAccess, mlua::Error> {
+        match string.to_lowercase().as_str() {
+            "byte" => Ok(WatchpointAccess::Byte),
+            "halfword" => Ok(WatchpointAccess::Halfword),
+            "word" => Ok(WatchpointAccess::Word),
+            _ => Err(mlua::Error::runtime(format!(
+                "invalid option for `access`: {string}; valid options are 'byte', 'halfword', and 'word'."
+            ))),
+        }
+    }
+
+    pub fn to_string(self) -> &'static str {
+        match self {
+            WatchpointAccess::Byte => "byte",
+            WatchpointAccess::Halfword => "halfword",
+            WatchpointAccess::Word => "word",
+        }
+    }
+
+    pub fn align(self, address: u32) -> u32 {
+        match self {
+            WatchpointAccess::Byte => address,
+            WatchpointAccess::Halfword => address & !1,
+            WatchpointAccess::Word => address & !3,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct WatchpointArgs {
+    pub pause: bool,
+    pub on: WatchpointType,
+    pub target: Option<u32>,
+    pub access: WatchpointAccess,
+    pub last_written: Option<u32>,
+}
+
+impl WatchpointArgs {
+    pub fn write_changed(&mut self, new_value: u32) -> bool {
+        let changed = self.last_written != Some(new_value);
+        self.last_written = Some(new_value);
+
+        changed
+    }
+
+    pub fn fires_on_read(&self, value: u32) -> bool {
+        matches!(self.on, WatchpointType::Read | WatchpointType::ReadWrite)
+            && self
+                .target
+                .map_or(true, |target_value| target_value == value)
+    }
+
+    pub fn should_fire_on_write(&mut self, value: u32) -> bool {
+        let changed = self.write_changed(value);
+
+        let kind_hit = match self.on {
+            WatchpointType::Change => changed,
+            WatchpointType::Write | WatchpointType::ReadWrite => true,
+            WatchpointType::Read => false,
+        };
+
+        kind_hit
+            && self
+                .target
+                .map_or(true, |target_value| target_value == value)
+    }
+}
+
+pub struct WatchpointHit {
+    pub address: u32,
+    pub value: u32,
+    pub pause: bool,
+    pub access: WatchpointAccess,
+    pub on: WatchpointType,
+    pub pc: u32,
+}
+
+impl WatchpointHit {
+    pub const MAX_PENDING: usize = 4096;
 }
 
 fn cpu_error(name: &str, error: CpuError, valid: &[&str]) -> mlua::Error {
@@ -92,6 +225,42 @@ fn display_value(value: &Value) -> String {
             .to_string()
             .unwrap_or_else(|err| mlua::Error::runtime(format!("{err}")).to_string()),
     }
+}
+
+fn parse_watchpoint_args(
+    emulator_id: EmulatorId,
+    address: u32,
+    kwargs: Option<Table>,
+) -> Result<(u32, WatchpointArgs), mlua::Error> {
+    let (pause, on, access, target) = match kwargs {
+        Some(table) => (
+            table.get::<Option<bool>>("pause")?,
+            table.get::<Option<String>>("on")?,
+            table.get::<Option<String>>("access")?,
+            table.get::<Option<u32>>("target")?,
+        ),
+        None => (None, None, None, None),
+    };
+
+    let pause = pause.unwrap_or(true);
+    let on = WatchpointType::from_string(on.unwrap_or_else(|| "rw".to_string()))?;
+    let access = WatchpointAccess::from_string(access.unwrap_or_else(|| "byte".to_string()))?;
+
+    if emulator_id == EmulatorId::Gb && access != WatchpointAccess::Byte {
+        return Err(mlua::Error::runtime(
+            "invalid option for `access`: gameboy only allows byte access",
+        ));
+    }
+
+    let watchpoint_args = WatchpointArgs {
+        pause,
+        on,
+        target,
+        access,
+        last_written: None,
+    };
+
+    Ok((access.align(address), watchpoint_args))
 }
 
 pub struct ScriptEngine {
@@ -130,7 +299,7 @@ impl ScriptEngine {
     pub fn execute(
         &mut self,
         target: &mut dyn ScriptTarget,
-        _emulator_id: EmulatorId,
+        emulator_id: EmulatorId,
         frame_boundary: bool,
     ) {
         let Self {
@@ -316,6 +485,69 @@ impl ScriptEngine {
             })?;
             lua.globals().set("check_breakpoints", check_breakpoints)?;
 
+            let set_watchpoint =
+                scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
+                    let (address, watchpoint_args) =
+                        parse_watchpoint_args(emulator_id, address, kwargs)?;
+                    let message = if target.borrow_mut().set_watchpoint(address, watchpoint_args) {
+                        format!("watchpoint set at {address:08x}")
+                    } else {
+                        format!("watchpoint at {address:08x} already exists")
+                    };
+
+                    output.borrow_mut().push(message);
+                    Ok(())
+                })?;
+            lua.globals().set("set_watchpoint", set_watchpoint)?;
+
+            let remove_watchpoint = scope.create_function(|_, address: u32| {
+                target.borrow_mut().remove_watchpoint(address);
+                output
+                    .borrow_mut()
+                    .push(format!("watchpoint at {address:08x} removed"));
+                Ok(())
+            })?;
+            lua.globals().set("remove_watchpoint", remove_watchpoint)?;
+
+            let clear_all_watchpoints = scope.create_function(|_, (): ()| {
+                target.borrow_mut().clear_all_watchpoints();
+                output
+                    .borrow_mut()
+                    .push("all watchpoints cleared".to_string());
+                Ok(())
+            })?;
+            lua.globals()
+                .set("clear_all_watchpoints", clear_all_watchpoints)?;
+
+            let check_watchpoints = scope.create_function(|_, (): ()| {
+                let watchpoints = target.borrow_mut().check_watchpoints();
+                if !watchpoints.is_empty() {
+                    for (address, watchpoint_args) in watchpoints.iter() {
+                        let action = if watchpoint_args.pause {
+                            "pause"
+                        } else {
+                            "run"
+                        };
+                        let on = watchpoint_args.on.to_string();
+                        let access = watchpoint_args.access.to_string();
+                        let target_message = if let Some(target) = watchpoint_args.target {
+
+                        format!(" with target={}", target)} else {
+                            "".to_string()
+                        };
+
+                        output.borrow_mut().push(format!(
+                            "watchpoint at {:08x} on {on} for {access} access{}, action on watchpoint: {action}",
+                            *address, target_message
+                        ))
+                    }
+                } else {
+                    output.borrow_mut().push("no watchpoints found".to_string())
+                }
+                Ok(())
+            })?;
+            lua.globals().set("check_watchpoints", check_watchpoints)?;
+
             let control =
                 |name: &'static str, request: fn() -> ScriptRequest, message: &'static str| {
                     let requests = &requests;
@@ -363,14 +595,14 @@ impl ScriptEngine {
                             .join("\t"),
                     ),
                     Ok(_) => {}
-                    Err(e) => output.borrow_mut().push(format!("{e}")),
+                    Err(err) => output.borrow_mut().push(format!("{err}")),
                 }
             }
 
             if frame_boundary && let Ok(hook) = lua.globals().get::<Function>("on_frame") {
                 time_limit(lua, Duration::from_millis(5));
-                if let Err(e) = hook.call::<()>(()) {
-                    output.borrow_mut().push(format!("{e}"));
+                if let Err(err) = hook.call::<()>(()) {
+                    output.borrow_mut().push(format!("{err}"));
                     let _ = lua.globals().set("on_frame", Value::Nil);
                 }
             }
@@ -383,8 +615,55 @@ impl ScriptEngine {
 
                 if let Ok(hook) = lua.globals().get::<Function>("on_breakpoint") {
                     time_limit(lua, Duration::from_millis(5));
-                    if let Err(e) = hook.call::<()>(address) {
-                        output.borrow_mut().push(format!("{e}"));
+                    if let Err(err) = hook.call::<()>(address) {
+                        output.borrow_mut().push(format!("{err}"));
+                    }
+                }
+            }
+
+            let hits = target.borrow_mut().take_watchpoint_hits();
+            if !hits.is_empty() {
+                let hook = lua.globals().get::<Function>("on_watchpoint").ok();
+
+                let mut printed_hits = 0;
+                for hit in hits {
+                    if hit.pause || (hook.is_none() && printed_hits < 10) {
+                        printed_hits += 1;
+                        output.borrow_mut().push(format!(
+                            "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}",
+                            hit.address,
+                            hit.on.to_string(),
+                            hit.access.to_string(),
+                            hit.value,
+                            hit.pc
+                        ));
+                    }
+
+                    let Some(hook) = &hook else {
+                        continue;
+                    };
+
+                    let table = lua.create_table()?;
+                    table.set("address", hit.address)?;
+                    table.set("value", hit.value)?;
+                    table.set("pc", hit.pc)?;
+                    table.set("on", hit.on.to_string())?;
+                    table.set("access", hit.access.to_string())?;
+                    table.set("pause", hit.pause)?;
+
+                    if let Some((domain, offset)) = target.borrow().address_to_domain(hit.address) {
+                        table.set("domain", domain)?;
+                        table.set("offset", offset)?;
+                    }
+                    if let Some((_, offset)) = target.borrow().address_to_domain(hit.pc) {
+                        table.set("pc_offset", offset)?;
+                    }
+
+                    time_limit(lua, Duration::from_millis(5));
+                    if let Err(err) = hook.call::<()>(table) {
+                        output.borrow_mut().push(format!("{err}"));
+                        let _ = lua.globals().set("on_watchpoint", Value::Nil);
+                        break;
                     }
                 }
             }

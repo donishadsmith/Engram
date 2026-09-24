@@ -110,12 +110,14 @@ impl EmulatorSession for GBASession {
         while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
             self.tick(volume);
 
-            if self.gba.cpu.breakpoint_hit.is_some() {
+            if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
                 break;
             }
         }
 
-        let state = if let Some(address) = self.gba.cpu.breakpoint_hit {
+        let state = if self.gba.take_watchpoint_pause() {
+            Ok(EmulatorState::Paused)
+        } else if let Some(address) = self.gba.cpu.breakpoint_hit {
             let breakpoint_action = self
                 .gba
                 .cpu
@@ -130,6 +132,11 @@ impl EmulatorSession for GBASession {
             }
 
             Ok(breakpoint_action)
+        } else if !self.gba.bus.watchpoint_hits.is_empty() {
+            self.script_engine
+                .execute(&mut self.gba, EmulatorId::Gba, self.frame_ready);
+
+            Ok(EmulatorState::Running)
         } else {
             Ok(EmulatorState::Running)
         };
@@ -199,6 +206,7 @@ impl EmulatorSession for GBASession {
 
     fn step_instruction(&mut self, volume: u8) {
         self.tick(volume);
+        self.gba.take_watchpoint_pause();
         self.update_screen();
     }
 

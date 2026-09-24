@@ -14,8 +14,15 @@ MemoryMap
 - 160 bytes of oam - sprites
 */
 
-use shared::traits::BitOps;
-use std::mem::take;
+use shared::{
+    script::{WatchpointAccess, WatchpointArgs, WatchpointHit, WatchpointType},
+    traits::BitOps,
+};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+    mem::take,
+};
 
 use crate::components::{
     apu::APU,
@@ -49,9 +56,9 @@ pub struct VRAMDMAState {
 }
 
 pub trait AddressBus {
-    fn read(&self, address: u16) -> u8;
+    fn read(&self, address: u16, accessor: MemoryAccessor) -> u8;
 
-    fn write(&mut self, address: u16, value: u8);
+    fn write(&mut self, address: u16, value: u8, accessor: MemoryAccessor);
 
     fn pending_interrupt(&self) -> u8 {
         0
@@ -60,6 +67,13 @@ pub trait AddressBus {
     fn perform_speed_switch(&mut self) -> bool {
         false
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MemoryAccessor {
+    Cpu,
+    Dma, // for organization but may do something wiht it later
+    Lua,
 }
 
 //http://gameboy.mongenel.com/dmg/asmmemmap.html
@@ -82,6 +96,9 @@ pub struct Bus {
     pub key_register: u8,
     pub svbk_register: u8,
     pub hdma_registers: [u8; 5],
+    pub watchpoint_queue: RefCell<HashMap<u32, WatchpointArgs>>,
+    pub watchpoint_hits: RefCell<Vec<WatchpointHit>>,
+    pub watchpoint_pause: Cell<bool>,
 }
 
 impl Bus {
@@ -123,6 +140,9 @@ impl Bus {
             key_register: 0,
             svbk_register: 0,
             hdma_registers: [0; 5],
+            watchpoint_queue: RefCell::new(HashMap::new()),
+            watchpoint_hits: RefCell::new(Vec::new()),
+            watchpoint_pause: Cell::new(false),
         }
     }
 
@@ -252,7 +272,10 @@ impl Bus {
                 return;
             }
 
-            let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16));
+            let byte = self.read(
+                self.vram_dma.source_address.wrapping_add(i as u16),
+                MemoryAccessor::Dma,
+            );
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
             self.ppu.vram.write(destination_address, byte);
         }
@@ -273,7 +296,10 @@ impl Bus {
                 return;
             }
 
-            let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16));
+            let byte = self.read(
+                self.vram_dma.source_address.wrapping_add(i as u16),
+                MemoryAccessor::Dma,
+            );
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
             self.ppu.vram.write(destination_address, byte);
         }
@@ -288,8 +314,73 @@ impl Bus {
     }
 }
 
+impl Bus {
+    fn check_read_watchpoint(&self, address: u16, accessor: MemoryAccessor, value: u8) {
+        if accessor == MemoryAccessor::Lua {
+            return;
+        }
+
+        let queue = self.watchpoint_queue.borrow();
+        if queue.is_empty() {
+            return;
+        }
+
+        if let Some(args) = queue.get(&(address as u32))
+            && args.fires_on_read(value as u32)
+        {
+            self.push_watchpoint_hit(address, value, args.pause, WatchpointType::Read);
+        }
+    }
+
+    fn check_write_watchpoint(&self, address: u16, accessor: MemoryAccessor, value: u8) {
+        if accessor == MemoryAccessor::Lua {
+            return;
+        }
+
+        let mut queue = self.watchpoint_queue.borrow_mut();
+        if queue.is_empty() {
+            return;
+        }
+
+        let Some(args) = queue.get_mut(&(address as u32)) else {
+            return;
+        };
+
+        let pause = args.pause;
+        let on = if args.on == WatchpointType::Change {
+            WatchpointType::Change
+        } else {
+            WatchpointType::Write
+        };
+
+        if args.should_fire_on_write(value as u32) {
+            self.push_watchpoint_hit(address, value, pause, on);
+        }
+    }
+
+    fn push_watchpoint_hit(&self, address: u16, value: u8, pause: bool, on: WatchpointType) {
+        if pause {
+            self.watchpoint_pause.set(true);
+        }
+
+        let mut hits = self.watchpoint_hits.borrow_mut();
+        if hits.len() >= WatchpointHit::MAX_PENDING {
+            return;
+        }
+
+        hits.push(WatchpointHit {
+            address: address as u32,
+            value: value as u32,
+            pause,
+            access: WatchpointAccess::Byte,
+            on,
+            pc: 0,
+        });
+    }
+}
+
 impl AddressBus for Bus {
-    fn read(&self, address: u16) -> u8 {
+    fn read(&self, address: u16, accessor: MemoryAccessor) -> u8 {
         if self.oam_dma.in_progress && self.oam_dma.delay == 0 && address < 0xFF00 {
             return 0xFF;
         }
@@ -298,7 +389,7 @@ impl AddressBus for Bus {
             return byte;
         }
 
-        match address {
+        let value = match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.read(address),
             0x8000..=0x9FFF => self.ppu.vram.read(address),
             0xC000..=0xCFFF | 0xD000..=0xDFFF | 0xE000..=0xFDFF => {
@@ -328,13 +419,19 @@ impl AddressBus for Bus {
             0xFF80..=0xFFFE => self.hram[(address - 0xFF80) as usize],
             0xFFFF => self.interrupt_enable,
             _ => 0xFF,
-        }
+        };
+
+        self.check_read_watchpoint(address, accessor, value);
+
+        value
     }
 
-    fn write(&mut self, address: u16, value: u8) {
+    fn write(&mut self, address: u16, value: u8, accessor: MemoryAccessor) {
         if self.oam_dma.in_progress && self.oam_dma.delay == 0 && address < 0xFF00 {
             return;
         }
+
+        self.check_write_watchpoint(address, accessor, value);
 
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.write(address, value),
@@ -385,7 +482,7 @@ impl AddressBus for Bus {
     }
 
     fn pending_interrupt(&self) -> u8 {
-        (self.read(0xFF0F) & self.read(0xFFFF)).get_bit_range(0..5)
+        (self.interrupt_flag & self.interrupt_enable).get_bit_range(0..5)
     }
 
     fn perform_speed_switch(&mut self) -> bool {

@@ -15,7 +15,7 @@ use std::{io::Error, path::PathBuf};
 use crate::{
     debug::DebugPage,
     render::Frame,
-    script::{CpuError, DomainError, ScriptEngine},
+    script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -47,6 +47,16 @@ pub trait Emulator {
     fn clear_all_breakpoints(&mut self);
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)>;
+
+    fn remove_watchpoint(&mut self, address: u32);
+
+    fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool;
+
+    fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit>;
+
+    fn clear_all_watchpoints(&mut self);
+
+    fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)>;
 }
 
 pub trait DebugInterface {

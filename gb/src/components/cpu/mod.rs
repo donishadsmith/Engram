@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use shared::EmulatorState;
 
 use crate::components::{
-    bus::AddressBus,
+    bus::{AddressBus, MemoryAccessor},
     cpu::{interrupts::InterruptMode, registers::Registers},
     gamepak::CGBFlag,
     utils::{ByteOps8, MergeByteOps},
@@ -213,7 +213,8 @@ where
         };
 
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
-        cpu.registers.instruction_register = Some(cpu.bus.read(opcode_address));
+        cpu.registers.instruction_register =
+            Some(cpu.bus.read(opcode_address, MemoryAccessor::Cpu));
 
         cpu
     }
@@ -240,17 +241,28 @@ where
     pub fn push(&mut self, address: u16) {
         // High byte stored first, stack grows down
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
-        self.bus
-            .write(self.registers.stack_pointer, (address >> 8) as u8);
+        self.bus.write(
+            self.registers.stack_pointer,
+            (address >> 8) as u8,
+            MemoryAccessor::Cpu,
+        );
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
-        self.bus.write(self.registers.stack_pointer, address as u8);
+        self.bus.write(
+            self.registers.stack_pointer,
+            address as u8,
+            MemoryAccessor::Cpu,
+        );
     }
 
     pub fn pop(&mut self) -> (u8, u8) {
         // Low byte poppped first
-        let low_byte = self.bus.read(self.registers.stack_pointer);
+        let low_byte = self
+            .bus
+            .read(self.registers.stack_pointer, MemoryAccessor::Cpu);
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_add(1);
-        let high_byte = self.bus.read(self.registers.stack_pointer);
+        let high_byte = self
+            .bus
+            .read(self.registers.stack_pointer, MemoryAccessor::Cpu);
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_add(1);
 
         (low_byte, high_byte)
@@ -326,8 +338,10 @@ where
     }
 
     pub fn fetch(&mut self) {
-        self.registers.instruction_register =
-            Some(self.bus.read(self.registers.program_counter.address));
+        self.registers.instruction_register = Some(
+            self.bus
+                .read(self.registers.program_counter.address, MemoryAccessor::Cpu),
+        );
 
         if self.halt_bug {
             self.halt_bug = false;
@@ -341,7 +355,7 @@ where
             return false;
         }
 
-        let mut interrupt_flag = self.bus.read(0xFF0F);
+        let mut interrupt_flag = self.bus.read(0xFF0F, MemoryAccessor::Cpu);
         let service = self.bus.pending_interrupt();
         if service == 0 {
             return false;
@@ -351,7 +365,7 @@ where
         self.interrupt.master_enable = false;
 
         interrupt_flag &= !interrupt_mode.mask();
-        self.bus.write(0xFF0F, interrupt_flag);
+        self.bus.write(0xFF0F, interrupt_flag, MemoryAccessor::Cpu);
 
         if self.halt_bug {
             self.halt_bug = false;

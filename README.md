@@ -40,14 +40,14 @@ A Gameboy Advance & Game Boy Color emulator (supports DMG games too).
   <tr>
     <td align="center">
       <img src="assets/audio.png" width="500">
-      <br>GBA Audio Debugger
+      <br>Audio Debugger (GBA)
     </td>
     <td align="center">
       <img src="assets/video.png" width="500">
-      <br>GBA Video Debugger
+      <br>Video Debugger (GBA)
     <td align="center">
       <img src="assets/lua.png" width="500">
-      <br>Lua Editor
+      <br>Lua Editor (GB/GBA)
   </tr>
 </table>
 

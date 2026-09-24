@@ -1,5 +1,5 @@
 use crate::components::{
-    bus::{AddressBus, Bus},
+    bus::{AddressBus, Bus, MemoryAccessor},
     cpu::{
         CPU,
         registers::{Register8Bits, Register16Bits},
@@ -9,7 +9,7 @@ use crate::components::{
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::{PixelFormat, to_rbg_single},
-    script::{CpuError, DomainError},
+    script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
 };
 use std::{io::Error, mem::take};
 
@@ -39,6 +39,9 @@ impl GameBoy {
     }
 
     pub fn step(&mut self, apu_sample_cycles: u32) -> u32 {
+        let pc = self.cpu.registers.program_counter.address.wrapping_sub(1) as u32;
+        let hits_before = self.cpu.bus.watchpoint_hits.borrow().len();
+
         let machine_cycles = self.cpu.cycle() as u32;
         if self.cpu.breakpoint_hit.is_some() {
             return 0;
@@ -74,6 +77,11 @@ impl GameBoy {
             .apu
             .tick(ppu_t_cycles, apu_sample_cycles, div_apu);
 
+        let mut hits = self.cpu.bus.watchpoint_hits.borrow_mut();
+        for hit in &mut hits[hits_before..] {
+            hit.pc = pc;
+        }
+
         cpu_t_cycles
     }
 
@@ -84,7 +92,7 @@ impl GameBoy {
                 .remaining_cycles
                 .saturating_sub(self.step(apu_sample_cycles));
 
-            if self.cpu.breakpoint_hit.is_some() {
+            if self.cpu.breakpoint_hit.is_some() || self.cpu.bus.watchpoint_pause.get() {
                 return;
             }
         }
@@ -94,6 +102,10 @@ impl GameBoy {
             .joypad
             .poll(self.keypad, &mut self.cpu.bus.interrupt_flag);
         self.cpu.bus.gamepak.mbc.tick();
+    }
+
+    pub fn take_watchpoint_pause(&mut self) -> bool {
+        self.cpu.bus.watchpoint_pause.replace(false)
     }
 
     pub fn replenish_remaining_cycles(&mut self) {
@@ -172,6 +184,39 @@ impl Emulator for GameBoy {
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
         self.cpu.breakpoint_action.clone().into_iter().collect()
     }
+
+    fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)> {
+        self.cpu
+            .bus
+            .watchpoint_queue
+            .borrow()
+            .iter()
+            .map(|(&address, &args)| (address, args))
+            .collect()
+    }
+
+    fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool {
+        let mut queue = self.cpu.bus.watchpoint_queue.borrow_mut();
+        if queue.contains_key(&address) {
+            return false;
+        }
+
+        queue.insert(address, watchpoint_args);
+
+        true
+    }
+
+    fn clear_all_watchpoints(&mut self) {
+        self.cpu.bus.watchpoint_queue.borrow_mut().clear();
+    }
+
+    fn remove_watchpoint(&mut self, address: u32) {
+        self.cpu.bus.watchpoint_queue.borrow_mut().remove(&address);
+    }
+
+    fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
+        take(&mut self.cpu.bus.watchpoint_hits.borrow_mut())
+    }
 }
 
 impl Drop for GameBoy {
@@ -183,7 +228,7 @@ impl Drop for GameBoy {
 impl ScriptTarget for GameBoy {
     fn read_u8(&mut self, address: u32) -> u8 {
         match u16::try_from(address) {
-            Ok(address) => self.cpu.bus.read(address),
+            Ok(address) => self.cpu.bus.read(address, MemoryAccessor::Lua),
             Err(_) => 0xFF,
         }
     }
@@ -203,7 +248,7 @@ impl ScriptTarget for GameBoy {
 
     fn write_u8(&mut self, address: u32, value: u8) {
         match u16::try_from(address) {
-            Ok(address) => self.cpu.bus.write(address, value),
+            Ok(address) => self.cpu.bus.write(address, value, MemoryAccessor::Lua),
             Err(_) => {}
         }
     }
@@ -350,6 +395,7 @@ impl ScriptTarget for GameBoy {
         let address = u16::try_from(address).ok()?;
 
         let (domain, base) = match address {
+            0x0000..=0x3FFF => ("rom", address as usize),
             0x4000..=0x7FFF => (
                 "rom",
                 self.cpu.bus.gamepak.mbc.rom_bank() * 0x4000 + (address - 0x4000) as usize,

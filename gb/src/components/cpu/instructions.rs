@@ -1,7 +1,7 @@
 use shared::traits::BitOps;
 
 use crate::components::{
-    bus::AddressBus,
+    bus::{AddressBus, MemoryAccessor},
     cpu::{
         CPU, FlagDelta, FlagType, StatusFlag,
         alu::{ArithmeticOperation, BitwiseOperation, half_carry_add, half_carry_sub},
@@ -66,9 +66,10 @@ where
                 };
 
                 if q == 0 {
-                    self.bus.write(address, self.registers.a);
+                    self.bus
+                        .write(address, self.registers.a, MemoryAccessor::Cpu);
                 } else {
-                    self.registers.a = self.bus.read(address);
+                    self.registers.a = self.bus.read(address, MemoryAccessor::Cpu);
                 }
 
                 match p {
@@ -127,9 +128,11 @@ where
                     0x06 => self.registers.set_8bit(Register8Bits::B, value),
                     0x16 => self.registers.set_8bit(Register8Bits::D, value),
                     0x26 => self.registers.set_8bit(Register8Bits::H, value),
-                    _ => self
-                        .bus
-                        .write(self.registers.get_16bit(Register16Bits::HL), value),
+                    _ => self.bus.write(
+                        self.registers.get_16bit(Register16Bits::HL),
+                        value,
+                        MemoryAccessor::Cpu,
+                    ),
                 }
             }
             0x07 | 0x0F | 0x17 | 0x1F => {
@@ -155,8 +158,9 @@ where
                 let high_byte = (value >> 8) as u8;
                 let address = self.fetch_2bytes();
 
-                self.bus.write(address, low_byte);
-                self.bus.write(address.wrapping_add(1), high_byte);
+                self.bus.write(address, low_byte, MemoryAccessor::Cpu);
+                self.bus
+                    .write(address.wrapping_add(1), high_byte, MemoryAccessor::Cpu);
             }
             0x09 | 0x19 | 0x29 | 0x39 => {
                 let (_, _, _, p, _) = opcode_decoder(opcode);
@@ -249,9 +253,11 @@ where
                     3 => self.registers.set_8bit(Register8Bits::E, value),
                     4 => self.registers.set_8bit(Register8Bits::H, value),
                     5 => self.registers.set_8bit(Register8Bits::L, value),
-                    6 => self
-                        .bus
-                        .write(self.registers.get_16bit(Register16Bits::HL), value),
+                    6 => self.bus.write(
+                        self.registers.get_16bit(Register16Bits::HL),
+                        value,
+                        MemoryAccessor::Cpu,
+                    ),
                     7 => self.registers.set_8bit(Register8Bits::A, value),
                     _ => unreachable!(),
                 }
@@ -412,10 +418,10 @@ where
                     match y {
                         4 => {
                             let value = self.registers.get_8bit(Register8Bits::A);
-                            self.bus.write(address, value);
+                            self.bus.write(address, value, MemoryAccessor::Cpu);
                         }
                         _ => {
-                            let value = self.bus.read(address);
+                            let value = self.bus.read(address, MemoryAccessor::Cpu);
                             self.registers.set_8bit(Register8Bits::A, value);
                         }
                     }
@@ -427,22 +433,23 @@ where
                     4 => {
                         let a = self.registers.get_8bit(Register8Bits::A);
                         let c = self.registers.get_8bit(Register8Bits::C) as u16;
-                        self.bus.write(0xFF00u16.wrapping_add(c), a);
+                        self.bus
+                            .write(0xFF00u16.wrapping_add(c), a, MemoryAccessor::Cpu);
                     }
                     5 => {
                         let value = self.registers.get_8bit(Register8Bits::A);
                         let address = self.fetch_2bytes();
-                        self.bus.write(address, value);
+                        self.bus.write(address, value, MemoryAccessor::Cpu);
                     }
                     6 => {
                         let c = self.registers.get_8bit(Register8Bits::C) as u16;
                         let address = 0xFF00u16.wrapping_add(c);
-                        let value = self.bus.read(address);
+                        let value = self.bus.read(address, MemoryAccessor::Cpu);
                         self.registers.set_8bit(Register8Bits::A, value);
                     }
                     _ => {
                         let address = self.fetch_2bytes();
-                        let value = self.bus.read(address);
+                        let value = self.bus.read(address, MemoryAccessor::Cpu);
                         self.registers.set_8bit(Register8Bits::A, value);
                     }
                 };
@@ -518,7 +525,9 @@ where
     }
 
     fn fetch_byte(&mut self) -> u8 {
-        let byte = self.bus.read(self.registers.program_counter.address);
+        let byte = self
+            .bus
+            .read(self.registers.program_counter.address, MemoryAccessor::Cpu);
         self.registers.program_counter.increment(1);
 
         byte
@@ -538,7 +547,10 @@ where
             3 => self.registers.e,
             4 => self.registers.h,
             5 => self.registers.l,
-            6 => self.bus.read(self.registers.get_16bit(Register16Bits::HL)),
+            6 => self.bus.read(
+                self.registers.get_16bit(Register16Bits::HL),
+                MemoryAccessor::Cpu,
+            ),
             7 => self.registers.a,
             _ => unreachable!(),
         }
@@ -804,12 +816,12 @@ where
 
     fn read_from_hl_address(&self) -> u8 {
         let address = self.registers.get_16bit(Register16Bits::HL);
-        self.bus.read(address)
+        self.bus.read(address, MemoryAccessor::Cpu)
     }
 
     fn write_to_hl_address(&mut self, value: u8) {
         let address = self.registers.get_16bit(Register16Bits::HL);
-        self.bus.write(address, value);
+        self.bus.write(address, value, MemoryAccessor::Cpu);
     }
 
     fn get_value_for_cb_op(&mut self, z: u8) -> u8 {
@@ -902,11 +914,11 @@ impl TestBus {
 }
 
 impl AddressBus for TestBus {
-    fn read(&self, address: u16) -> u8 {
+    fn read(&self, address: u16, _accessor: MemoryAccessor) -> u8 {
         self.ram[address as usize]
     }
 
-    fn write(&mut self, address: u16, value: u8) {
+    fn write(&mut self, address: u16, value: u8, _accessor: MemoryAccessor) {
         self.ram[address as usize] = value;
     }
 }
@@ -946,7 +958,7 @@ mod tests {
     fn add_a_b_runs() {
         let registers = Registers::from_state(255, 0, 2, 0, 0, 0, 0, 0, 0xC001, 0xFFFE);
         let mut bus = TestBus::new();
-        bus.write(0xC000, 0x80);
+        bus.write(0xC000, 0x80, MemoryAccessor::Cpu);
         let mut cpu = CPU::from_state(registers, bus);
 
         cpu.cycle();
@@ -976,7 +988,7 @@ mod tests {
             for case in &cases {
                 let mut bus = TestBus::new();
                 for (address, value) in &case.initial.ram {
-                    bus.write(*address, *value);
+                    bus.write(*address, *value, MemoryAccessor::Cpu);
                 }
 
                 let registers = Registers::from_state(
@@ -1024,7 +1036,7 @@ mod tests {
 
                 for (address, value) in &final_state.ram {
                     assert_eq!(
-                        cpu.bus.read(*address),
+                        cpu.bus.read(*address, MemoryAccessor::Cpu),
                         *value,
                         "{}: mem[{:#06x}]",
                         case.name,

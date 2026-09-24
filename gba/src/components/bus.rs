@@ -16,6 +16,7 @@
 // https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
 
 use std::{
+    collections::HashMap,
     env::var,
     fmt::Arguments,
     fs::File,
@@ -33,7 +34,10 @@ use crate::components::{
     timer::Timers,
 };
 
-use shared::traits::{BitOps, zero_arr};
+use shared::{
+    script::{WatchpointAccess, WatchpointArgs, WatchpointHit, WatchpointType},
+    traits::{BitOps, zero_arr},
+};
 
 const WAIT_STATE_NONSEQUENTIAL: [u8; 4] = [4, 3, 2, 8];
 const WAIT_STATE0_SEQUENTIAL: [u8; 2] = [2, 1];
@@ -119,6 +123,9 @@ pub struct Bus {
     pub interrupt_flag_copy: u16,
     pub interrupt_enable_copy: u16,
     pub interrupt_master_enable_copy: u32,
+    pub watchpoint_queue: HashMap<u32, WatchpointArgs>,
+    pub watchpoint_hits: Vec<WatchpointHit>,
+    pub watchpoint_pause: bool,
 }
 
 impl Bus {
@@ -157,6 +164,9 @@ impl Bus {
             interrupt_flag_copy: 0,
             interrupt_enable_copy: 0,
             interrupt_master_enable_copy: 0,
+            watchpoint_queue: HashMap::new(),
+            watchpoint_hits: Vec::new(),
+            watchpoint_pause: false,
         }
     }
 
@@ -213,39 +223,46 @@ impl Bus {
     pub fn read_u8(&mut self, address: u32, access_type: AccessType) -> u8 {
         self.cost(address, 8, access_type);
 
-        if address & !1 == 0x4000300 {
+        let value = if address & !1 == 0x4000300 {
             if address.is_clear(0) {
-                return self.postflg;
+                self.postflg
             } else {
                 // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
                 // technically not read but just in case
-                return 0;
+                0
             }
-        }
-
-        match address >> 24 {
-            0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u8,
-            0x02 => self.ewram[Bus::ewram_index(address)],
-            0x03 => self.iwram[Bus::iwram_index(address)],
-            0x04 => {
-                let half_word = self.read_register(address & !1);
-                if address.is_clear(0) {
-                    half_word as u8
-                } else {
-                    (half_word >> 8) as u8
+        } else {
+            match address >> 24 {
+                0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u8,
+                0x02 => self.ewram[Bus::ewram_index(address)],
+                0x03 => self.iwram[Bus::iwram_index(address)],
+                0x04 => {
+                    let half_word = self.read_register(address & !1);
+                    if address.is_clear(0) {
+                        half_word as u8
+                    } else {
+                        (half_word >> 8) as u8
+                    }
                 }
+                0x05 => self.ppu.palette_ram[Bus::palette_index(address)],
+                0x06 => self.ppu.vram[Bus::vram_index(address)],
+                0x07 => self.ppu.oam[Bus::oam_index(address)],
+                0x08..=0x0D => self.gamepak.read_rom_region(address),
+                0x0E | 0x0F => self.read_backup_byte(address),
+                _ => (self.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u8,
             }
-            0x05 => self.ppu.palette_ram[Bus::palette_index(address)],
-            0x06 => self.ppu.vram[Bus::vram_index(address)],
-            0x07 => self.ppu.oam[Bus::oam_index(address)],
-            0x08..=0x0D => self.gamepak.read_rom_region(address),
-            0x0E | 0x0F => self.read_backup_byte(address),
-            _ => (self.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u8,
-        }
+        };
+
+        self.check_read_watchpoint(address, access_type, WatchpointAccess::Byte, value as u32);
+
+        value
     }
 
     pub fn write_u8(&mut self, address: u32, value: u8, access_type: AccessType) {
         self.cost(address, 8, access_type);
+
+        self.check_write_watchpoint(address, access_type, WatchpointAccess::Byte, value as u32);
+
         // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
         /*
@@ -333,49 +350,63 @@ impl Bus {
     pub fn read_u16(&mut self, mut address: u32, access_type: AccessType) -> u16 {
         self.cost(address, 16, access_type);
 
-        if self.is_eeprom_address(address) {
-            return self.eeprom_read_u16(access_type);
-        }
-
-        if address & !1 == 0x4000300 {
+        let value = if self.is_eeprom_address(address) {
+            self.eeprom_read_u16(access_type)
+        } else if address & !1 == 0x4000300 {
             if address.is_clear(0) {
-                return self.postflg as u16;
+                self.postflg as u16
             } else {
-                return 0;
+                0
             }
-        }
-
-        let shifted_address = address >> 24;
-        if !matches!(shifted_address, 0x0E | 0x0F) {
-            address.clear_bit(0);
-        }
-
-        let little_endian =
-            |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
-
-        match shifted_address {
-            0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
-            0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
-            0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
-            0x04 => self.read_register(address),
-            0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
-            0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
-            0x07 => little_endian(&*self.ppu.oam, Bus::oam_index(address)),
-            0x08..=0x0D => u16::from_le_bytes([
-                self.gamepak.read_rom_region(address),
-                self.gamepak.read_rom_region(address + 1),
-            ]),
-
-            0x0E | 0x0F => {
-                let byte = self.read_backup_byte(address) as u16;
-                (byte << 8) | byte
+        } else {
+            let shifted_address = address >> 24;
+            if !matches!(shifted_address, 0x0E | 0x0F) {
+                address.clear_bit(0);
             }
-            _ => (self.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u16,
-        }
+
+            let little_endian =
+                |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
+
+            match shifted_address {
+                0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
+                0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
+                0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
+                0x04 => self.read_register(address),
+                0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
+                0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
+                0x07 => little_endian(&*self.ppu.oam, Bus::oam_index(address)),
+                0x08..=0x0D => u16::from_le_bytes([
+                    self.gamepak.read_rom_region(address),
+                    self.gamepak.read_rom_region(address + 1),
+                ]),
+
+                0x0E | 0x0F => {
+                    let byte = self.read_backup_byte(address) as u16;
+                    (byte << 8) | byte
+                }
+                _ => (self.last_instruction_read >> (8 * (address.get_bit_range(0..2)))) as u16,
+            }
+        };
+
+        self.check_read_watchpoint(
+            address,
+            access_type,
+            WatchpointAccess::Halfword,
+            value as u32,
+        );
+
+        value
     }
 
     pub fn write_u16(&mut self, mut address: u32, value: u16, access_type: AccessType) {
         self.cost(address, 16, access_type);
+
+        self.check_write_watchpoint(
+            address,
+            access_type,
+            WatchpointAccess::Halfword,
+            value as u32,
+        );
 
         if self.is_eeprom_address(address) {
             self.eeprom_write_u16(value);
@@ -442,52 +473,58 @@ impl Bus {
     pub fn read_u32(&mut self, mut address: u32, access_type: AccessType) -> u32 {
         self.cost(address, 32, access_type);
 
-        if address & !1 == 0x4000300 {
+        let value = if address & !1 == 0x4000300 {
             if address.is_clear(0) {
-                return self.postflg as u32;
+                self.postflg as u32
             } else {
-                return 0;
+                0
             }
-        }
+        } else {
+            let shifted_address = address >> 24;
+            if !matches!(shifted_address, 0x0E | 0x0F) {
+                address.clear_bit_range(0..2);
+            }
 
-        let shifted_address = address >> 24;
-        if !matches!(shifted_address, 0x0E | 0x0F) {
-            address.clear_bit_range(0..2);
-        }
+            let little_endian = |arr: &[u8], index: usize| {
+                u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
+            };
 
-        let little_endian = |arr: &[u8], index: usize| {
-            u32::from_le_bytes([arr[index], arr[index + 1], arr[index + 2], arr[index + 3]])
+            match shifted_address {
+                0x00 => self.last_bios_fetch,
+                0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
+                0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
+                0x04 => {
+                    let low_half_word = self.read_register(address);
+                    let high_half_word = self.read_register(address + 2);
+
+                    (high_half_word as u32) << 16 | low_half_word as u32
+                }
+                0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
+                0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
+                0x07 => little_endian(&*self.ppu.oam, Bus::oam_index(address)),
+                0x08..=0x0D => u32::from_le_bytes([
+                    self.gamepak.read_rom_region(address),
+                    self.gamepak.read_rom_region(address + 1),
+                    self.gamepak.read_rom_region(address + 2),
+                    self.gamepak.read_rom_region(address + 3),
+                ]),
+                0x0E | 0x0F => {
+                    let byte = self.read_backup_byte(address) as u32;
+                    (byte << 24) | (byte << 16) | (byte << 8) | byte
+                }
+                _ => self.last_instruction_read,
+            }
         };
 
-        match shifted_address {
-            0x00 => self.last_bios_fetch,
-            0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
-            0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
-            0x04 => {
-                let low_half_word = self.read_register(address);
-                let high_half_word = self.read_register(address + 2);
+        self.check_read_watchpoint(address, access_type, WatchpointAccess::Word, value);
 
-                (high_half_word as u32) << 16 | low_half_word as u32
-            }
-            0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
-            0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
-            0x07 => little_endian(&*self.ppu.oam, Bus::oam_index(address)),
-            0x08..=0x0D => u32::from_le_bytes([
-                self.gamepak.read_rom_region(address),
-                self.gamepak.read_rom_region(address + 1),
-                self.gamepak.read_rom_region(address + 2),
-                self.gamepak.read_rom_region(address + 3),
-            ]),
-            0x0E | 0x0F => {
-                let byte = self.read_backup_byte(address) as u32;
-                (byte << 24) | (byte << 16) | (byte << 8) | byte
-            }
-            _ => self.last_instruction_read,
-        }
+        value
     }
 
     pub fn write_u32(&mut self, mut address: u32, value: u32, access_type: AccessType) {
         self.cost(address, 32, access_type);
+
+        self.check_write_watchpoint(address, access_type, WatchpointAccess::Word, value);
         let bytes = value.to_le_bytes();
         if address & !1 == 0x4000300 {
             if address.is_clear(0) {
@@ -1047,6 +1084,88 @@ impl Bus {
         self.interrupt_flag_copy = self.interrupt_flag;
         self.interrupt_enable_copy = self.interrupt_enable;
         self.interrupt_master_enable_copy = self.interrupt_master_enable;
+    }
+
+    #[inline]
+    fn check_read_watchpoint(
+        &mut self,
+        address: u32,
+        access_type: AccessType,
+        access: WatchpointAccess,
+        value: u32,
+    ) {
+        if access_type == AccessType::Lua || self.watchpoint_queue.is_empty() {
+            return;
+        }
+
+        let address = access.align(address);
+        let Some(args) = self.watchpoint_queue.get(&address) else {
+            return;
+        };
+
+        if args.access == access && args.fires_on_read(value) {
+            let pause = args.pause;
+            self.push_watchpoint_hit(address, value, pause, access, WatchpointType::Read);
+        }
+    }
+
+    #[inline]
+    fn check_write_watchpoint(
+        &mut self,
+        address: u32,
+        access_type: AccessType,
+        access: WatchpointAccess,
+        value: u32,
+    ) {
+        if access_type == AccessType::Lua || self.watchpoint_queue.is_empty() {
+            return;
+        }
+
+        let address = access.align(address);
+        let Some(args) = self.watchpoint_queue.get_mut(&address) else {
+            return;
+        };
+
+        if args.access != access {
+            return;
+        }
+
+        let pause = args.pause;
+        let on = if args.on == WatchpointType::Change {
+            WatchpointType::Change
+        } else {
+            WatchpointType::Write
+        };
+
+        if args.should_fire_on_write(value) {
+            self.push_watchpoint_hit(address, value, pause, access, on);
+        }
+    }
+
+    fn push_watchpoint_hit(
+        &mut self,
+        address: u32,
+        value: u32,
+        pause: bool,
+        access: WatchpointAccess,
+        on: WatchpointType,
+    ) {
+        if pause {
+            self.watchpoint_pause = true;
+        }
+
+        if self.watchpoint_hits.len() >= WatchpointHit::MAX_PENDING {
+            return;
+        }
+
+        self.watchpoint_hits.push(WatchpointHit {
+            address,
+            value,
+            pause,
+            access,
+            on,
+            pc: 0,
+        });
     }
 }
 

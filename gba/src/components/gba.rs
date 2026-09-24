@@ -9,7 +9,7 @@ use crate::components::{
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::to_rbg_single,
-    script::{CpuError, DomainError},
+    script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
     traits::BitOps,
 };
 use std::{io::Error, mem::take};
@@ -40,6 +40,9 @@ impl GBA {
     pub fn run(&mut self) {
         let bus = &mut self.bus;
 
+        let pc = self.cpu.next_executing_address();
+        let hits_before = bus.watchpoint_hits.len();
+
         if self.cpu.is_halted() {
             bus.scheduler.skip_to_next_event();
         } else {
@@ -68,6 +71,10 @@ impl GBA {
         // technically serviced by the time it shows on ui + plus will just be a flash on ui when enabled but looks cool
         self.bus.copy_interrupt_info();
         self.check_interrupts();
+
+        for hit in &mut self.bus.watchpoint_hits[hits_before..] {
+            hit.pc = pc;
+        }
     }
 
     fn handle_events(&mut self) {
@@ -152,6 +159,10 @@ impl GBA {
             }
         }
     }
+
+    pub fn take_watchpoint_pause(&mut self) -> bool {
+        take(&mut self.bus.watchpoint_pause)
+    }
 }
 
 impl Emulator for GBA {
@@ -179,6 +190,31 @@ impl Emulator for GBA {
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
         self.cpu.breakpoint_action.clone().into_iter().collect()
+    }
+
+    fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)> {
+        self.bus.watchpoint_queue.clone().into_iter().collect()
+    }
+
+    fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool {
+        if self.bus.watchpoint_queue.contains_key(&address) {
+            return false;
+        }
+
+        self.bus.watchpoint_queue.insert(address, watchpoint_args);
+        true
+    }
+
+    fn clear_all_watchpoints(&mut self) {
+        self.bus.watchpoint_queue.clear();
+    }
+
+    fn remove_watchpoint(&mut self, address: u32) {
+        self.bus.watchpoint_queue.remove(&address);
+    }
+
+    fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
+        take(&mut self.bus.watchpoint_hits)
     }
 }
 

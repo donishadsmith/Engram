@@ -91,9 +91,15 @@ impl EmulatorSession for GameBoySession {
                 self.set_resume();
                 break;
             }
+
+            if self.gameboy.cpu.bus.watchpoint_pause.get() {
+                break;
+            }
         }
 
-        let state = if let Some(address) = self.gameboy.cpu.breakpoint_hit {
+        let state = if self.gameboy.take_watchpoint_pause() {
+            Ok(EmulatorState::Paused)
+        } else if let Some(address) = self.gameboy.cpu.breakpoint_hit {
             let breakpoint_action = self
                 .gameboy
                 .cpu
@@ -108,6 +114,11 @@ impl EmulatorSession for GameBoySession {
             }
 
             Ok(breakpoint_action)
+        } else if !self.gameboy.cpu.bus.watchpoint_hits.borrow().is_empty() {
+            self.script_engine
+                .execute(&mut self.gameboy, EmulatorId::Gb, self.frame_ready);
+
+            Ok(EmulatorState::Running)
         } else {
             Ok(EmulatorState::Running)
         };
@@ -164,6 +175,7 @@ impl EmulatorSession for GameBoySession {
         self.drain_audio(volume);
 
         self.gameboy.replenish_remaining_cycles();
+        self.gameboy.take_watchpoint_pause();
 
         self.update_screen();
 

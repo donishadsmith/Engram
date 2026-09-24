@@ -1,10 +1,9 @@
 pub mod arm;
 pub mod thumb;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use arm::{decode::*, execute::*};
-use egui::ahash::{HashMap, HashMapExt};
 use thumb::decode::*;
 
 use crate::components::{
