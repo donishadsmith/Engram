@@ -4,6 +4,8 @@ use std::{
     io::Error,
 };
 
+// TODO: figure out how to map Pico button board presses to keybindings
+
 use crate::{EmulatorId, config::Config};
 
 // taken straight from miniquad and used regex because no way could i type this all out
