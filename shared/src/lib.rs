@@ -3,6 +3,7 @@ pub mod config;
 pub mod debug;
 pub mod editor;
 pub mod keybind;
+pub mod psg;
 pub mod render;
 pub mod script;
 pub mod traits;

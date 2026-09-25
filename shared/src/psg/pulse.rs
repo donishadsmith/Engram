@@ -3,9 +3,14 @@
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence?utm_source
+use crate::psg::sound_control::{Envelope, Length};
+use crate::traits::BitOps;
 
-use crate::components::apu::sound_control::{Envelope, Length};
-use shared::traits::BitOps;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PulseChannelId {
+    Channel1,
+    Channel2,
+}
 
 #[derive(Clone, Copy)]
 #[repr(u8)]
@@ -98,7 +103,7 @@ pub struct PulseChannel {
 }
 
 impl PulseChannel {
-    fn base() -> Self {
+    fn base(channel_id: PulseChannelId) -> Self {
         Self {
             enabled: false,
             duty: DutyCycle::Duty12,
@@ -107,25 +112,31 @@ impl PulseChannel {
             length: Length::new(),
             frequency_period: 0,
             envelope: Envelope::new(),
-            sweep: None,
+            sweep: match channel_id {
+                PulseChannelId::Channel1 => Some(Sweep::new()),
+                PulseChannelId::Channel2 => None,
+            },
         }
     }
 
     pub fn new_channel1() -> Self {
-        let mut channel = Self::base();
-        channel.sweep = Some(Sweep::new());
-        channel.write_nrx1(0xBF);
-        channel.write_nrx2(0xF3);
-
-        channel
+        Self::base(PulseChannelId::Channel1)
     }
 
     pub fn new_channel2() -> Self {
-        let mut channel = Self::base();
-        channel.write_nrx1(0x3F);
-        channel.write_nrx2(0x00);
+        Self::base(PulseChannelId::Channel2)
+    }
 
-        channel
+    pub fn read_nrx0(&self) -> u8 {
+        let sweep = self.sweep.as_ref().unwrap();
+        0x80 | (sweep.pace << 4) | ((sweep.direction as u8) << 3) | sweep.shift
+    }
+
+    pub fn write_nrx0(&mut self, value: u8) {
+        let sweep = self.sweep.as_mut().unwrap();
+        sweep.pace = value.get_bit_range(4..7);
+        sweep.direction = SweepDirection::from_register(value);
+        sweep.shift = value.get_bit_range(0..3);
     }
 
     pub fn read_nrx1(&self) -> u8 {
@@ -138,7 +149,7 @@ impl PulseChannel {
     }
 
     pub fn read_nrx2(&self) -> u8 {
-        (self.envelope.initial_volume << 4) | self.envelope.direction as u8 | self.envelope.period
+        self.envelope.read()
     }
 
     pub fn write_nrx2(&mut self, value: u8) {
@@ -187,20 +198,6 @@ impl PulseChannel {
                 }
             }
         }
-    }
-
-    // Should only be used for channel 1 which should be set
-    pub fn read_nr10(&self) -> u8 {
-        let sweep = self.sweep.as_ref().unwrap();
-        0x80 | (sweep.pace << 4) | ((sweep.direction as u8) << 3) | sweep.shift
-    }
-
-    // Same here
-    pub fn write_nr10(&mut self, value: u8) {
-        let sweep = self.sweep.as_mut().unwrap();
-        sweep.pace = value.get_bit_range(4..7);
-        sweep.direction = SweepDirection::from_register(value);
-        sweep.shift = value.get_bit_range(0..3);
     }
 
     pub fn tick(&mut self) {

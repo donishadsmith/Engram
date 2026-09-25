@@ -128,6 +128,7 @@ impl GlobalControl {
             Volume::for_psg(self.soundcnt_h.get_bit_range(0..2)).to_float()
         }
     }
+
     pub fn reset(&mut self) {
         self.soundcnt_l = 0;
         self.soundcnt_h = 0;

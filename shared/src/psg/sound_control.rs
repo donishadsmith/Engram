@@ -1,4 +1,4 @@
-use shared::traits::BitOps;
+use crate::traits::BitOps;
 
 #[derive(Clone, Copy)]
 #[repr(u8)]

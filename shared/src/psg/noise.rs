@@ -1,9 +1,9 @@
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 
-use shared::traits::BitOps;
+use crate::traits::BitOps;
 
-use crate::components::apu::sound_control::{Envelope, Length};
+use crate::psg::sound_control::{Envelope, Length};
 
 struct LFSR {
     width: u8,
@@ -53,37 +53,41 @@ impl NoiseChannel {
         }
     }
 
-    pub fn read_nr41(&self) -> u8 {
+    pub fn read_nrx1(&self) -> u8 {
         0xFF
     }
 
-    pub fn write_nr41(&mut self, value: u8) {
+    pub fn write_nrx1(&mut self, value: u8) {
         self.length.write(value);
     }
 
-    pub fn read_nr42(&self) -> u8 {
+    pub fn read_nrx2(&self) -> u8 {
         self.envelope.read()
     }
 
-    pub fn write_nr42(&mut self, value: u8) {
+    pub fn write_nrx2(&mut self, value: u8) {
         self.envelope.set(value);
+
+        if value.get_bit_range(3..8) == 0 {
+            self.enabled = false;
+        }
     }
 
-    pub fn read_nr43(&self) -> u8 {
+    pub fn read_nrx3(&self) -> u8 {
         (self.clock_shift << 4) | (self.lfsr.width << 3) | self.clock_divider
     }
 
-    pub fn write_nr43(&mut self, value: u8) {
+    pub fn write_nrx3(&mut self, value: u8) {
         self.clock_shift = value.get_bit_range(4..8);
         self.lfsr.width = value.get_bit(3);
         self.clock_divider = value.get_bit_range(0..3);
     }
 
-    pub fn read_nr44(&self) -> u8 {
+    pub fn read_nrx4(&self) -> u8 {
         self.length.read()
     }
 
-    pub fn write_nr44(&mut self, value: u8) {
+    pub fn write_nrx4(&mut self, value: u8) {
         self.length.enabled = value.is_set(6);
 
         if value.is_set(7) {

@@ -402,8 +402,7 @@ impl AddressBus for Bus {
             0xFE00..=0xFE9F => self.ppu.oam[(address - 0xFE00) as usize],
             0xFEA0..=0xFEFF => 0xFF,
             0xFF0F => self.interrupt_flag | 0xE0,
-            0xFF10..=0xFF26 => self.apu.read_register(address),
-            0xFF30..=0xFF3F => self.apu.read_wram(address),
+            0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.read_register(address),
             0xFF40..=0xFF4B | 0xFF68..=0xFF6C => self.ppu.read_register(address),
             0xFF4D if self.is_cgb() => self.key_register,
             0xFF4F if self.is_cgb() => self.ppu.vram.bank | 0xFE,
@@ -451,8 +450,7 @@ impl AddressBus for Bus {
             0xFF04..=0xFF07 => self.timer.write_register(address, value),
             0xFE00..=0xFE9F => self.ppu.oam[(address - 0xFE00) as usize] = value,
             0xFF0F => self.interrupt_flag = value.get_bit_range(0..5),
-            0xFF10..=0xFF26 => self.apu.write_register(address, value),
-            0xFF30..=0xFF3F => self.apu.write_wram(address, value),
+            0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.write_register(address, value),
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF68..=0xFF6C => {
                 self.ppu
                     .write_register(address, value, &mut self.interrupt_flag)

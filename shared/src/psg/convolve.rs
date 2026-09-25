@@ -10,6 +10,9 @@ Low-pass filtering solution from JS Groth by convolving the samples over
 a FIR kernel to remove high frequencies that cause ringing. Changed
 parameter to the GB clock speed
 */
+
+use std::collections::VecDeque;
+
 #[allow(clippy::excessive_precision)]
 pub const FIR_KERNEL: [f64; 46] = [
     3.0340257031444750e-03,
@@ -59,3 +62,31 @@ pub const FIR_KERNEL: [f64; 46] = [
     3.2303458884755006e-03,
     3.0340257031444750e-03,
 ];
+
+pub struct LowPassFilter {
+    samples: VecDeque<f64>,
+}
+
+impl LowPassFilter {
+    pub fn new() -> Self {
+        Self {
+            samples: VecDeque::with_capacity(FIR_KERNEL.len()),
+        }
+    }
+
+    pub fn collect_sample(&mut self, sample: f64) {
+        self.samples.push_back(sample);
+        if self.samples.len() > FIR_KERNEL.len() {
+            self.samples.pop_front();
+        }
+    }
+
+    pub fn convolve(&self) -> f64 {
+        self.samples
+            .iter()
+            .copied()
+            .zip(FIR_KERNEL.iter().copied())
+            .map(|(a, b)| a * b)
+            .sum()
+    }
+}
