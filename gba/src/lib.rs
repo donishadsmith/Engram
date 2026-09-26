@@ -24,13 +24,15 @@ use shared::{
     keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
+    utils::fps_lock,
 };
-use std::{io::Error, path::PathBuf};
+use std::{io::Error, path::PathBuf, time::Instant};
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
+const CYCLES_PER_FRAME: u64 = 280896;
 
 pub struct GBASession {
-    audio: AudioOutput,
+    audio: Option<AudioOutput>,
     audio_debugger: AudioDebugger,
     ppu_debugger: PpuDebugger,
     gba: GBA,
@@ -46,7 +48,10 @@ impl GBASession {
         let ppu_debugger = PpuDebugger::new();
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let apu_sample_cycles = GBA_CLOCK_SPEED / audio.sample_rate;
+        let apu_sample_cycles = match &audio {
+            Some(audio) => GBA_CLOCK_SPEED / audio.sample_rate,
+            None => 44100,
+        };
         let gba = GBA::boot(gamepak, apu_sample_cycles);
         let screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
 
@@ -75,8 +80,17 @@ impl GBASession {
 
     fn drain_audio(&mut self, volume: u8) {
         for sample in self.gba.bus.apu.sample_buffer.drain(..) {
-            let _ = self.audio.play(sample, volume);
+            match &mut self.audio {
+                Some(audio) => audio.play(sample, volume),
+                None => {}
+            }
         }
+    }
+
+    fn audio_needs_samples(&self) -> bool {
+        self.audio.as_ref().is_some_and(|audio| {
+            AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY
+        })
     }
 
     fn tick(&mut self, volume: u8) {
@@ -102,12 +116,25 @@ impl EmulatorSession for GBASession {
         input_blocked: bool,
         volume: u8,
     ) -> Result<EmulatorState, Error> {
+        let frame_start_time = Instant::now();
+        let frame_start_cycle = self.gba.bus.scheduler.current;
+
         self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
             .as_slice()
             .try_into()
             .unwrap();
 
-        while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
+        loop {
+            let break_loop = if self.audio.is_some() {
+                !self.audio_needs_samples()
+            } else {
+                self.gba.bus.scheduler.current - frame_start_cycle >= CYCLES_PER_FRAME
+            };
+
+            if break_loop {
+                break;
+            }
+
             self.tick(volume);
 
             if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
@@ -143,6 +170,10 @@ impl EmulatorSession for GBASession {
 
         self.update_screen();
 
+        if self.audio.is_none() {
+            fps_lock(frame_start_time);
+        }
+
         return state;
     }
 
@@ -170,7 +201,10 @@ impl EmulatorSession for GBASession {
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
         self.audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let apu_sample_cycles = GBA_CLOCK_SPEED / self.audio.sample_rate;
+        let apu_sample_cycles = match &self.audio {
+            Some(audio) => GBA_CLOCK_SPEED / audio.sample_rate,
+            None => 44100,
+        };
         self.gba = GBA::boot(gamepak, apu_sample_cycles);
         self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
         self.frame_ready = false;

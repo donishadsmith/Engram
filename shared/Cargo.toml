@@ -18,3 +18,4 @@ toml.workspace = true
 serde.workspace = true
 egui_code_editor.workspace = true
 mlua.workspace = true
+spin_sleep.workspace = true

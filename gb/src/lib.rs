@@ -17,13 +17,14 @@ use shared::{
     keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
+    utils::fps_lock,
 };
-use std::{io::Error, path::PathBuf};
+use std::{io::Error, path::PathBuf, time::Instant};
 
 const GB_CLOCK_SPEED: u32 = 4194304;
 
 pub struct GameBoySession {
-    audio: AudioOutput,
+    audio: Option<AudioOutput>,
     gameboy: GameBoy,
     screen: Screen,
     apu_sample_cycles: u32,
@@ -35,7 +36,11 @@ impl GameBoySession {
     pub fn new_session(rom_path: PathBuf) -> Result<Self, Error> {
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let apu_sample_cycles = GB_CLOCK_SPEED / audio.sample_rate;
+        let sample_rate = match &audio {
+            Some(audio) => audio.sample_rate,
+            None => 44100,
+        };
+        let apu_sample_cycles = GB_CLOCK_SPEED / sample_rate;
         let gameboy = GameBoy::boot(gamepak);
         let screen = Screen::new(
             gameboy.cpu.bus.ppu.frame.width,
@@ -65,8 +70,17 @@ impl GameBoySession {
 
     fn drain_audio(&mut self, volume: u8) {
         for sample in self.gameboy.cpu.bus.apu.sample_buffer.drain(..) {
-            let _ = self.audio.play(sample, volume);
+            match &mut self.audio {
+                Some(audio) => audio.play(sample, volume),
+                None => {}
+            };
         }
+    }
+
+    fn audio_needs_samples(&self) -> bool {
+        self.audio.as_ref().is_some_and(|audio| {
+            AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY
+        })
     }
 }
 
@@ -77,13 +91,18 @@ impl EmulatorSession for GameBoySession {
         input_blocked: bool,
         volume: u8,
     ) -> Result<EmulatorState, Error> {
+        let frame_start_time = Instant::now();
         self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
             .as_slice()
             .try_into()
             .unwrap();
 
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
-        while AUDIO_BUFFER_CAPACITY - self.audio.producer.slots() < AUDIO_TARGET_OCCUPANCY {
+        loop {
+            if !self.audio_needs_samples() {
+                break;
+            }
+
             self.gameboy.run(self.apu_sample_cycles);
             self.drain_audio(volume);
 
@@ -125,6 +144,10 @@ impl EmulatorSession for GameBoySession {
 
         self.update_screen();
 
+        if self.audio.is_none() {
+            fps_lock(frame_start_time);
+        }
+
         return state;
     }
 
@@ -142,7 +165,11 @@ impl EmulatorSession for GameBoySession {
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
         self.audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        self.apu_sample_cycles = GB_CLOCK_SPEED / self.audio.sample_rate;
+        let sample_rate = match &self.audio {
+            Some(audio) => audio.sample_rate,
+            None => 44100,
+        };
+        self.apu_sample_cycles = GB_CLOCK_SPEED / sample_rate;
         self.gameboy = GameBoy::boot(gamepak);
         self.screen = Screen::new(
             self.gameboy.cpu.bus.ppu.frame.width,
@@ -185,13 +212,13 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn set_resume(&mut self) {
-        let pc = self
-            .gameboy
-            .cpu
-            .registers
-            .program_counter
-            .address
-            .wrapping_sub(1);
-        self.gameboy.cpu.resume_from = Some(pc);
+        self.gameboy.cpu.resume_from = Some(
+            self.gameboy
+                .cpu
+                .registers
+                .program_counter
+                .address
+                .wrapping_sub(1),
+        );
     }
 }

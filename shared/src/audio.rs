@@ -1,7 +1,10 @@
 // https://www.codeslow.com/2019/02/mod-player-in-rust-part-3-audio-and.html?m=1
 // https://users.rust-lang.org/t/data-access-in-audio-callback/82701
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{
+    Stream, default_host,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+};
 use rtrb::{Producer, RingBuffer};
 
 // Audibly tested constants that don't result in popping
@@ -11,13 +14,13 @@ pub const AUDIO_BUFFER_CAPACITY: usize = AUDIO_TARGET_OCCUPANCY * 2;
 
 pub struct AudioOutput {
     pub producer: Producer<f32>,
-    _stream: cpal::Stream,
+    _stream: Stream,
     pub sample_rate: u32,
 }
 
 impl AudioOutput {
-    pub fn new() -> Self {
-        let host = cpal::default_host();
+    pub fn new() -> Option<Self> {
+        let host = default_host();
         let device = host
             .default_output_device()
             .expect("Output device unavailable");
@@ -51,15 +54,15 @@ impl AudioOutput {
                 |error| eprintln!("Some audio-related error occured: {error}"),
                 None,
             )
-            .unwrap();
+            .ok()?;
 
-        stream.play().unwrap();
+        stream.play().ok()?;
 
-        Self {
+        Some(Self {
             producer,
             _stream: stream,
             sample_rate: config.sample_rate(),
-        }
+        })
     }
 
     pub fn play(&mut self, sample: f32, volume: u8) {
