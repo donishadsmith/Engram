@@ -2,11 +2,24 @@ use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
 use std::collections::VecDeque;
 
-use crate::components::{
-    apu::global_control::{AudioChannel, PanDirection},
-    gba::GBA,
-};
+use crate::components::{apu::APU, dma::FifoChannel, gba::GBA};
 use shared::debug::create_game_screen;
+
+#[derive(Clone, Copy)]
+enum AudioChannel {
+    Channel1,
+    Channel2,
+    Channel3,
+    Channel4,
+    FifoA,
+    FifoB,
+}
+
+#[derive(Clone, Copy)]
+enum PanDirection {
+    Left,
+    Right,
+}
 
 const CHANNELS: [AudioChannel; 6] = [
     AudioChannel::Channel1,
@@ -254,7 +267,7 @@ impl AudioDebugger {
                 self.occupancy.fifo_b.push_back(occupancy as u8);
             }
 
-            for sample in gba.bus.apu.channel1.history.drain(..) {
+            for sample in gba.bus.apu.psg_history[0].drain(..) {
                 if self.samples.channel1.len() == 2048 {
                     self.samples.channel1.pop_front();
                 }
@@ -262,7 +275,7 @@ impl AudioDebugger {
                 self.samples.channel1.push_back(sample as i8);
             }
 
-            for sample in gba.bus.apu.channel2.history.drain(..) {
+            for sample in gba.bus.apu.psg_history[1].drain(..) {
                 if self.samples.channel2.len() == 2048 {
                     self.samples.channel2.pop_front();
                 }
@@ -270,7 +283,7 @@ impl AudioDebugger {
                 self.samples.channel2.push_back(sample as i8);
             }
 
-            for sample in gba.bus.apu.channel3.history.drain(..) {
+            for sample in gba.bus.apu.psg_history[2].drain(..) {
                 if self.samples.channel3.len() == 2048 {
                     self.samples.channel3.pop_front();
                 }
@@ -278,7 +291,7 @@ impl AudioDebugger {
                 self.samples.channel3.push_back(sample as i8);
             }
 
-            for sample in gba.bus.apu.channel4.history.drain(..) {
+            for sample in gba.bus.apu.psg_history[3].drain(..) {
                 if self.samples.channel4.len() == 2048 {
                     self.samples.channel4.pop_front();
                 }
@@ -286,43 +299,33 @@ impl AudioDebugger {
                 self.samples.channel4.push_back(sample as i8);
             }
 
+            let registers = &gba.bus.apu.psg_registers;
             self.registers.channel1 = [
-                gba.bus.apu.channel1.soundcnt.from_index(0),
-                gba.bus.apu.channel1.soundcnt.from_index(1),
-                gba.bus.apu.channel1.soundcnt.from_index(2),
+                registers.read_u16(0x4000060),
+                registers.read_u16(0x4000062),
+                registers.read_u16(0x4000064),
             ];
-
-            self.registers.channel2 = [
-                gba.bus.apu.channel2.soundcnt.from_index(0),
-                gba.bus.apu.channel2.soundcnt.from_index(2),
-            ];
-
+            self.registers.channel2 =
+                [registers.read_u16(0x4000068), registers.read_u16(0x400006C)];
             self.registers.channel3 = [
-                gba.bus.apu.channel3.soundcnt.from_index(0),
-                gba.bus.apu.channel3.soundcnt.from_index(1),
-                gba.bus.apu.channel3.soundcnt.from_index(2),
+                registers.read_u16(0x4000070),
+                registers.read_u16(0x4000072),
+                registers.read_u16(0x4000074),
             ];
-
-            self.registers.channel4 = [
-                gba.bus.apu.channel4.soundcnt_l,
-                gba.bus.apu.channel4.soundcnt_h,
-            ];
+            self.registers.channel4 =
+                [registers.read_u16(0x4000078), registers.read_u16(0x400007C)];
 
             self.volume.fifo_a = gba
                 .bus
                 .apu
                 .global_control
-                .volume_control(AudioChannel::FifoA);
+                .volume_control_fifo(FifoChannel::A);
             self.volume.fifo_b = gba
                 .bus
                 .apu
                 .global_control
-                .volume_control(AudioChannel::FifoB);
-            self.volume.psg = gba
-                .bus
-                .apu
-                .global_control
-                .volume_control(AudioChannel::Channel1);
+                .volume_control_fifo(FifoChannel::B);
+            self.volume.psg = gba.bus.apu.global_control.psg_volume();
         }
 
         SidePanel::right("FIFO Audio").show(egui_ctx, |ui| {
@@ -572,7 +575,7 @@ impl AudioDebugger {
                                 self.pan_settings.update(
                                     channel_id,
                                     direction,
-                                    gba.bus.apu.global_control.sound_on(channel_id, direction),
+                                    sound_on(&gba.bus.apu, channel_id, direction),
                                 );
                                 self.pan_settings.status(channel_id, direction)
                             } else {
@@ -633,11 +636,33 @@ impl AudioDebugger {
     }
 
     fn mute_channels(&self, gba: &mut GBA) {
-        gba.bus.apu.channel1.mute = self.mute[0];
-        gba.bus.apu.channel2.mute = self.mute[1];
-        gba.bus.apu.channel3.mute = self.mute[2];
-        gba.bus.apu.channel4.mute = self.mute[3];
+        gba.bus.apu.psg_mute.copy_from_slice(&self.mute[0..4]);
         gba.bus.apu.fifo_a.mute = self.mute[4];
         gba.bus.apu.fifo_b.mute = self.mute[5];
+    }
+}
+
+fn sound_on(apu: &APU, channel_id: AudioChannel, direction: PanDirection) -> bool {
+    match (channel_id, direction) {
+        (AudioChannel::Channel1, PanDirection::Left) => apu.psg_mixer.panned_left(0),
+        (AudioChannel::Channel1, PanDirection::Right) => apu.psg_mixer.panned_right(0),
+        (AudioChannel::Channel2, PanDirection::Left) => apu.psg_mixer.panned_left(1),
+        (AudioChannel::Channel2, PanDirection::Right) => apu.psg_mixer.panned_right(1),
+        (AudioChannel::Channel3, PanDirection::Left) => apu.psg_mixer.panned_left(2),
+        (AudioChannel::Channel3, PanDirection::Right) => apu.psg_mixer.panned_right(2),
+        (AudioChannel::Channel4, PanDirection::Left) => apu.psg_mixer.panned_left(3),
+        (AudioChannel::Channel4, PanDirection::Right) => apu.psg_mixer.panned_right(3),
+        (AudioChannel::FifoA, PanDirection::Left) => {
+            apu.global_control.panned_left_fifo(FifoChannel::A)
+        }
+        (AudioChannel::FifoA, PanDirection::Right) => {
+            apu.global_control.panned_right_fifo(FifoChannel::A)
+        }
+        (AudioChannel::FifoB, PanDirection::Left) => {
+            apu.global_control.panned_left_fifo(FifoChannel::B)
+        }
+        (AudioChannel::FifoB, PanDirection::Right) => {
+            apu.global_control.panned_right_fifo(FifoChannel::B)
+        }
     }
 }

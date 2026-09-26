@@ -1,224 +1,176 @@
 // https://gbadev.net/gbadoc/audio/introduction.html
 mod fifo;
 pub mod global_control;
-mod noise;
-mod pulse;
-mod sound_control;
-mod wave;
 
-use crate::components::{
-    apu::{
-        global_control::AudioChannel, noise::NoiseChannel, pulse::PulseChannel, wave::WaveChannel,
-    },
-    dma::FifoChannel,
-};
+use std::array::from_fn;
+
+use crate::components::dma::FifoChannel;
 use fifo::Fifo;
 use global_control::GlobalControl;
-use shared::traits::BitOps;
-
-struct SequencerStep {
-    length: bool,
-    sweep: bool,
-    envelope: bool,
-}
-
-pub struct Sequencer {
-    step: u8,
-}
-
-impl Sequencer {
-    fn new() -> Self {
-        Self { step: 0 }
-    }
-
-    fn tick(&mut self) -> SequencerStep {
-        let step = self.step;
-        self.step = (self.step + 1).get_bit_range(0..3);
-
-        SequencerStep {
-            length: step.is_clear(0),
-            sweep: step == 0x02 || step == 0x06,
-            envelope: step == 0x07,
-        }
-    }
-}
+use shared::{
+    EmulatorId,
+    psg::{PsgChannel, PsgMixer, convolve::LowPassFilter},
+    traits::{BitOps, GroupedRegisters},
+};
 
 pub struct APU {
     pub global_control: GlobalControl,
-    pub channel1: PulseChannel,
-    pub channel2: PulseChannel,
-    pub channel3: WaveChannel,
-    pub channel4: NoiseChannel,
+    pub psg_mixer: PsgMixer,
+    pub psg: PsgChannel,
     pub fifo_a: Fifo,
     pub fifo_b: Fifo,
+    pub psg_history: [Vec<u8>; 4],
+    pub psg_registers: GroupedRegisters<u16>,
     pub sample_buffer: Vec<f32>,
     last_psg_update: u64,
-    sequencer: Sequencer,
+    psg_prescaler: u8,
+    pub psg_mute: [bool; 4],
+    low_pass_left: LowPassFilter,
+    low_pass_right: LowPassFilter,
 }
 
 impl APU {
     pub fn new() -> Self {
         Self {
             global_control: GlobalControl::new(),
-            channel1: PulseChannel::new_channel1(),
-            channel2: PulseChannel::new_channel2(),
-            channel3: WaveChannel::new(),
-            channel4: NoiseChannel::new(),
+            psg: PsgChannel::new(EmulatorId::Gba),
             fifo_a: Fifo::new(FifoChannel::A),
             fifo_b: Fifo::new(FifoChannel::B),
             sample_buffer: Vec::new(),
             last_psg_update: 0,
-            sequencer: Sequencer::new(),
+            psg_history: from_fn(|_| Vec::with_capacity(2048)),
+            psg_mixer: PsgMixer::new(),
+            psg_registers: GroupedRegisters::new(16, 0x4000060),
+            psg_mute: from_fn(|_| false),
+            psg_prescaler: 0,
+            low_pass_left: LowPassFilter::new(),
+            low_pass_right: LowPassFilter::new(),
+        }
+    }
+
+    // just gonna mask instead of recreate
+    pub fn read_psg_halfword(&self, address: u32) -> u16 {
+        let mask = match address & !1 {
+            0x4000060 => 0x007F,
+            0x4000062 | 0x4000068 => 0xFFC0,
+            0x4000064 | 0x400006C | 0x4000074 => 0x4000,
+            0x4000070 => 0x00E0,
+            0x4000072 => 0xE000,
+            0x4000078 => 0xFF00,
+            0x400007C => 0x40FF,
+            _ => 0,
+        };
+
+        self.psg_registers.read_u16(address) & mask
+    }
+
+    pub fn write_psg_halfword(&mut self, address: u32, value: u16) {
+        self.psg_registers.write_u16(address, value);
+
+        let bytes = value.to_le_bytes();
+        self.write_psg_byte(address, bytes[0]);
+        self.write_psg_byte(address + 1, bytes[1]);
+    }
+
+    pub fn write_psg_byte(&mut self, address: u32, value: u8) {
+        match address {
+            0x4000060 => self.psg.channel1.write_nrx0(value),
+            0x4000062 => self.psg.channel1.write_nrx1(value),
+            0x4000063 => self.psg.channel1.write_nrx2(value),
+            0x4000064 => self.psg.channel1.write_nrx3(value),
+            0x4000065 => self.psg.channel1.write_nrx4(value),
+            0x4000068 => self.psg.channel2.write_nrx1(value),
+            0x4000069 => self.psg.channel2.write_nrx2(value),
+            0x400006C => self.psg.channel2.write_nrx3(value),
+            0x400006D => self.psg.channel2.write_nrx4(value),
+            0x4000070 => self.psg.channel3.write_nrx0(value),
+            0x4000072 => self.psg.channel3.write_nrx1(value),
+            0x4000073 => self.psg.channel3.write_nrx2(value),
+            0x4000074 => self.psg.channel3.write_nrx3(value),
+            0x4000075 => self.psg.channel3.write_nrx4(value),
+            0x4000078 => self.psg.channel4.write_nrx1(value),
+            0x4000079 => self.psg.channel4.write_nrx2(value),
+            0x400007C => self.psg.channel4.write_nrx3(value),
+            0x400007D => self.psg.channel4.write_nrx4(value),
+            _ => {}
         }
     }
 
     pub fn enable_channels(&mut self) {
-        if self.global_control.soundcnt_x.is_set(7) {
-            self.fifo_a.enabled = true;
-            self.fifo_b.enabled = true;
-        } else {
-            self.fifo_a.enabled = false;
-            self.fifo_b.enabled = false;
-        }
+        self.fifo_a.enabled = self.psg_mixer.on;
+        self.fifo_b.enabled = self.psg_mixer.on;
     }
 
     pub fn advance_psg(&mut self, timestamp: u64) {
         let elapsed_cycles = timestamp - self.last_psg_update;
 
         for _ in 0..elapsed_cycles {
-            self.channel1.tick();
-            self.channel2.tick();
-            self.channel3.tick();
-            self.channel4.tick();
+            self.psg_prescaler = (self.psg_prescaler + 1).get_bit_range(0..2);
+            if self.psg_prescaler == 0 {
+                self.psg.tick();
+
+                let (left_sample, right_sample) = self.psg_mixer.mix(self.psg.samples());
+                self.low_pass_left.collect_sample(left_sample as f64);
+                self.low_pass_right.collect_sample(right_sample as f64);
+            }
         }
 
         self.last_psg_update = timestamp;
     }
 
     pub fn produce_sample(&mut self) {
-        if !self.global_control.master_enabled() {
+        if !self.psg_mixer.on {
             self.sample_buffer.push(0.0);
             self.sample_buffer.push(0.0);
 
             return;
         }
 
-        let fifo_a_volume = self.global_control.volume_control(AudioChannel::FifoA);
-        let fifo_b_volume = self.global_control.volume_control(AudioChannel::FifoB);
-        let psg_volume = self.global_control.volume_control(AudioChannel::Channel1);
+        let mut psg_samples = self.psg.samples();
 
-        let psg1 = f32::from(self.channel1.get_sample())
-            * 8.0
-            * psg_volume
-            * (!self.channel1.mute as u8 as f32);
-
-        let psg2 = f32::from(self.channel2.get_sample())
-            * 8.0
-            * psg_volume
-            * (!self.channel2.mute as u8 as f32);
-
-        let psg3 = f32::from(self.channel3.get_sample())
-            * 8.0
-            * psg_volume
-            * (!self.channel3.mute as u8 as f32);
-
-        let psg4 = f32::from(self.channel4.get_sample())
-            * 8.0
-            * psg_volume
-            * (!self.channel4.mute as u8 as f32);
-
-        let fifo_a = if self.fifo_a.mute {
-            0.0
-        } else {
-            f32::from(self.fifo_a.latched as i8)
-        } * 4.0
-            * fifo_a_volume;
-
-        let fifo_b = if self.fifo_a.mute {
-            0.0
-        } else {
-            f32::from(self.fifo_b.latched as i8)
-        } * 4.0
-            * fifo_b_volume;
-
-        let mixed_left = self.global_control.panned_left(AudioChannel::FifoA, fifo_a)
-            + self.global_control.panned_left(AudioChannel::FifoB, fifo_b)
-            + self
-                .global_control
-                .panned_left(AudioChannel::Channel1, psg1)
-            + self
-                .global_control
-                .panned_left(AudioChannel::Channel2, psg2)
-            + self
-                .global_control
-                .panned_left(AudioChannel::Channel3, psg3)
-            + self
-                .global_control
-                .panned_left(AudioChannel::Channel4, psg4);
-
-        let mixed_right = self
-            .global_control
-            .panned_right(AudioChannel::FifoA, fifo_a)
-            + self
-                .global_control
-                .panned_right(AudioChannel::FifoB, fifo_b)
-            + self
-                .global_control
-                .panned_right(AudioChannel::Channel1, psg1)
-            + self
-                .global_control
-                .panned_right(AudioChannel::Channel2, psg2)
-            + self
-                .global_control
-                .panned_right(AudioChannel::Channel3, psg3)
-            + self
-                .global_control
-                .panned_right(AudioChannel::Channel4, psg4);
-
-        self.sample_buffer
-            .push(mixed_left.clamp(-512.0, 511.0) / 512.0);
-        self.sample_buffer
-            .push(mixed_right.clamp(-512.0, 511.0) / 512.0);
-    }
-
-    pub fn frame_sequencer_step(&mut self) {
-        let sequencer_step = self.sequencer.tick();
-
-        if sequencer_step.length {
-            if self.channel1.length.tick() {
-                self.channel1.enabled = false;
-            }
-
-            if self.channel2.length.tick() {
-                self.channel2.enabled = false;
-            }
-
-            if self.channel3.length.tick() {
-                self.channel3.enabled = false;
-            }
-
-            if self.channel4.length.tick() {
-                self.channel4.enabled = false;
+        for (index, sample) in psg_samples.iter_mut().enumerate() {
+            self.psg_history[index].push(*sample);
+            if self.psg_mute[index] {
+                *sample = 0;
             }
         }
 
-        if sequencer_step.envelope {
-            self.channel1.envelope.tick();
-            self.channel2.envelope.tick();
-            self.channel4.envelope.tick();
+        let psg_scale = 8.0 * self.global_control.psg_volume();
+        let psg_left = self.low_pass_left.convolve() as f32;
+        let psg_right = self.low_pass_right.convolve() as f32;
+        let mut left = psg_left * psg_scale;
+        let mut right = psg_right * psg_scale;
+
+        for (fifo, channel) in [
+            (&self.fifo_a, FifoChannel::A),
+            (&self.fifo_b, FifoChannel::B),
+        ] {
+            let sample = if fifo.mute {
+                0.0
+            } else {
+                f32::from(fifo.latched as i8)
+                    * 4.0
+                    * self.global_control.volume_control_fifo(channel)
+            };
+
+            if self.global_control.panned_left_fifo(channel) {
+                left += sample;
+            }
+            if self.global_control.panned_right_fifo(channel) {
+                right += sample;
+            }
         }
 
-        if sequencer_step.sweep {
-            self.channel1.tick_sweep();
-        }
+        self.sample_buffer.push(left.clamp(-512.0, 511.0) / 512.0);
+        self.sample_buffer.push(right.clamp(-512.0, 511.0) / 512.0);
     }
 
     pub fn reset_sound_registers(&mut self) {
-        self.channel1 = PulseChannel::new_channel1();
-        self.channel2 = PulseChannel::new_channel2();
-        self.channel3 = WaveChannel::new();
-        self.channel4 = NoiseChannel::new();
-        self.global_control.reset();
+        self.psg = PsgChannel::new(EmulatorId::Gba);
+        self.psg_mixer = PsgMixer::new();
+        self.psg_registers = GroupedRegisters::new(16, 0x4000060);
+        self.psg_prescaler = 0;
+        self.global_control = GlobalControl::new();
         self.fifo_a.reset();
         self.fifo_b.reset();
     }

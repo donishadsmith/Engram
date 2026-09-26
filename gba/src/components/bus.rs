@@ -35,6 +35,7 @@ use crate::components::{
 };
 
 use shared::{
+    psg::PsgMixerRegister,
     script::{WatchpointAccess, WatchpointArgs, WatchpointHit, WatchpointType},
     traits::{BitOps, zero_arr},
 };
@@ -95,6 +96,18 @@ pub struct Trace {
     file: BufWriter<File>,
     limit: u64,
     pub count: u64,
+}
+
+fn write_u8_modify_halfword(address: u32, mut halfword: u16, value: u8) -> u16 {
+    if address.is_clear(0) {
+        halfword.clear_bit_range(0..8);
+        halfword |= value as u16
+    } else {
+        halfword.clear_bit_range(8..16);
+        halfword |= (value as u16) << 8
+    }
+
+    halfword
 }
 
 pub struct Bus {
@@ -237,11 +250,11 @@ impl Bus {
                 0x02 => self.ewram[Bus::ewram_index(address)],
                 0x03 => self.iwram[Bus::iwram_index(address)],
                 0x04 => {
-                    let half_word = self.read_register(address & !1);
+                    let halfword = self.read_register(address & !1);
                     if address.is_clear(0) {
-                        half_word as u8
+                        halfword as u8
                     } else {
-                        (half_word >> 8) as u8
+                        (halfword >> 8) as u8
                     }
                 }
                 0x05 => self.ppu.palette_ram[Bus::palette_index(address)],
@@ -308,17 +321,19 @@ impl Bus {
             0x00 => {}
             0x02 => self.ewram[Bus::ewram_index(address)] = value,
             0x03 => self.iwram[Bus::iwram_index(address)] = value,
+            0x04 if (0x4000060..=0x400007F).contains(&address) => {
+                let halfword = write_u8_modify_halfword(
+                    address,
+                    self.apu.psg_registers.read_u16(address),
+                    value,
+                );
+                self.apu.psg_registers.write_u16(address, halfword);
+                self.apu.write_psg_byte(address, value);
+            }
             0x04 => {
-                let mut half_word = self.read_halfword(address);
-                let new_half_word = if address.is_clear(0) {
-                    half_word.clear_bit_range(0..8);
-                    half_word | value as u16
-                } else {
-                    half_word.clear_bit_range(8..16);
-                    half_word | (value as u16) << 8
-                };
-
-                self.write_register(address & !1, new_half_word);
+                let halfword =
+                    write_u8_modify_halfword(address, self.read_halfword(address), value);
+                self.write_register(address & !1, halfword);
             }
             0x05 => {
                 let index = Bus::palette_index(address) & !1;
@@ -494,10 +509,10 @@ impl Bus {
                 0x02 => little_endian(&*self.ewram, Bus::ewram_index(address)),
                 0x03 => little_endian(&*self.iwram, Bus::iwram_index(address)),
                 0x04 => {
-                    let low_half_word = self.read_register(address);
-                    let high_half_word = self.read_register(address + 2);
+                    let low_halfword = self.read_register(address);
+                    let high_halfword = self.read_register(address + 2);
 
-                    (high_half_word as u32) << 16 | low_half_word as u32
+                    (high_halfword as u32) << 16 | low_halfword as u32
                 }
                 0x05 => little_endian(&*self.ppu.palette_ram, Bus::palette_index(address)),
                 0x06 => little_endian(&*self.ppu.vram, Bus::vram_index(address)),
@@ -653,18 +668,16 @@ impl Bus {
             0x4000050 | 0x4000052 => self.ppu.color_special_effects.read_u16(address),
 
             // Sound Registers
-            0x4000060 | 0x4000062 | 0x4000064 => self.apu.channel1.read_from_register(address),
-            0x4000068 | 0x400006C => self.apu.channel2.read_from_register(address),
-            0x4000070 | 0x4000072 | 0x4000074 => self.apu.channel3.read_from_register(address),
-            0x4000078 | 0x400007C => self.apu.channel4.read_from_register(address),
-            0x4000080 => self.apu.global_control.soundcnt_l,
+            0x4000060..=0x400007F => self.apu.read_psg_halfword(address),
+            0x4000080 => (self.apu.psg_mixer.nr51 as u16) << 8 | self.apu.psg_mixer.nr50 as u16,
             0x4000082 => self.apu.global_control.soundcnt_h,
-            0x4000084 => self.apu.global_control.soundcnt_x,
+            0x4000084 => self.apu.psg_mixer.status(self.apu.psg.enabled()) as u16,
             0x4000088 => self.apu.global_control.soundbias,
             0x4000090..=0x400009F => self
                 .apu
+                .psg
                 .channel3
-                .read_wave_ram(address, self.apu.global_control.master_enabled()),
+                .read_wave_ram(address, self.apu.psg_mixer.on),
 
             // DMA Transfer Channels
             0x40000BA => self.dma.channels[0].control_register,
@@ -719,9 +732,8 @@ impl Bus {
 
             // https://github.com/mgba-emu/mgba/blob/master/src/gba/io.c
             // https://codeberg.org/nba-emu/NanoBoyAdvance/src/branch/master/src/nba/src/bus/io.cc
-            0x4000002 | 0x4000066 | 0x400006A | 0x400006E | 0x4000076 | 0x400007A | 0x400007E
-            | 0x4000086 | 0x400008A | 0x4000136 | 0x4000142 | 0x400015A | 0x4000206 | 0x4000302
-            | 0x40000B8 | 0x40000C4 | 0x40000D0 | 0x40000DC | 0x400020A => 0,
+            0x4000002 | 0x4000086 | 0x400008A | 0x4000136 | 0x4000142 | 0x400015A | 0x4000206
+            | 0x4000302 | 0x40000B8 | 0x40000C4 | 0x40000D0 | 0x40000DC | 0x400020A => 0,
 
             _ => (self.last_instruction_read >> (8 * (address & 2))) as u16,
         }
@@ -783,30 +795,14 @@ impl Bus {
             }
 
             // Sound Registers
-            0x4000060 | 0x4000062 | 0x4000064 => {
-                self.apu.channel1.soundcnt.write_u16(address, value);
-                self.apu.channel1.update_from_register(address);
+            0x4000060..=0x400007F => self.apu.write_psg_halfword(address, value),
+            0x4000080 => {
+                let bytes = value.to_le_bytes();
+                self.apu.psg_mixer.write(PsgMixerRegister::Nr50, bytes[0]);
+                self.apu.psg_mixer.write(PsgMixerRegister::Nr51, bytes[1]);
             }
-            0x4000068 | 0x400006C => {
-                self.apu.channel2.soundcnt.write_u16(address, value);
-                self.apu.channel2.update_from_register(address);
-            }
-            0x4000070 | 0x4000072 | 0x4000074 => {
-                self.apu.channel3.soundcnt.write_u16(address, value);
-                self.apu.channel3.update_from_register(address);
-            }
-            0x4000078 => {
-                self.apu.channel4.soundcnt_l = value;
-                self.apu.channel4.update_from_register(address);
-            }
-            0x400007C => {
-                self.apu.channel4.soundcnt_h = value;
-                self.apu.channel4.update_from_register(address);
-            }
-            0x4000080 => self.apu.global_control.soundcnt_l = value,
             0x4000082 => {
                 self.apu.global_control.soundcnt_h = value;
-
                 if self.apu.global_control.reset_fifo(FifoChannel::A) {
                     self.apu.fifo_a.reset();
                 }
@@ -814,24 +810,24 @@ impl Bus {
                 if self.apu.global_control.reset_fifo(FifoChannel::B) {
                     self.apu.fifo_b.reset();
                 }
+
+                self.apu.global_control.soundcnt_h &= !0x8800;
             }
             0x4000084 => {
-                self.apu.global_control.soundcnt_x = value;
-
+                self.apu
+                    .psg_mixer
+                    .write(PsgMixerRegister::Nr52, value as u8);
                 self.apu.enable_channels();
             }
             0x4000088 => self.apu.global_control.soundbias = value,
-            0x4000090..=0x400009F => self.apu.channel3.write_wave_ram(
-                address,
-                value,
-                self.apu.global_control.master_enabled(),
-            ),
-            0x40000A0 | 0x40000A2 => {
-                self.apu.fifo_a.push_samples(value);
+            0x4000090..=0x400009F => {
+                self.apu
+                    .psg
+                    .channel3
+                    .write_wave_ram(address, value, self.apu.psg_mixer.on)
             }
-            0x40000A4 | 0x40000A6 => {
-                self.apu.fifo_b.push_samples(value);
-            }
+            0x40000A0 | 0x40000A2 => self.apu.fifo_a.push_samples(value),
+            0x40000A4 | 0x40000A6 => self.apu.fifo_b.push_samples(value),
 
             // DMA Transfer Channels
             0x40000B0 | 0x40000B2 => self.dma.channels[0].write_source_address(address, value),
@@ -1033,11 +1029,7 @@ impl Bus {
     fn read_halfword(&mut self, address: u32) -> u16 {
         let address = address & !1;
         match address {
-            0x4000060 | 0x4000062 | 0x4000064 => self.apu.channel1.soundcnt.read_u16(address),
-            0x4000068 | 0x400006C => self.apu.channel2.soundcnt.read_u16(address),
-            0x4000070 | 0x4000072 | 0x4000074 => self.apu.channel3.soundcnt.read_u16(address),
-            0x4000078 => self.apu.channel4.soundcnt_l,
-            0x400007C => self.apu.channel4.soundcnt_h,
+            0x4000060..=0x400007F => self.apu.psg_registers.read_u16(address),
             _ => self.read_register(address),
         }
     }

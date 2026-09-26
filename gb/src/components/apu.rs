@@ -50,7 +50,7 @@ impl APU {
 
     pub fn tick(&mut self, t_cycles: u32, cycles_per_sample: u32, increase_apu_div_counter: bool) {
         if increase_apu_div_counter {
-            self.psg.clock_sequencer();
+            self.psg.sequencer();
         };
 
         for _ in 0..t_cycles {

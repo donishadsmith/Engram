@@ -110,7 +110,7 @@ impl GBA {
                         }
                         Event::ApuSequencer => {
                             self.bus.apu.advance_psg(deadline);
-                            self.bus.apu.frame_sequencer_step();
+                            self.bus.apu.psg.sequencer();
                         }
                         _ => unreachable!(),
                     }

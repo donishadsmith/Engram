@@ -26,26 +26,26 @@ pub enum PsgMixerRegister {
     Nr52,
 }
 
-struct FrameSequencerStep {
+struct SequencerStep {
     length: bool,
     sweep: bool,
     envelope: bool,
 }
 
-pub struct FrameSequencer {
+pub struct Sequencer {
     step: u8,
 }
 
-impl FrameSequencer {
+impl Sequencer {
     fn new() -> Self {
         Self { step: 0 }
     }
 
-    fn tick(&mut self) -> FrameSequencerStep {
+    fn tick(&mut self) -> SequencerStep {
         let step = self.step;
         self.step = (self.step + 1).get_bit_range(0..3);
 
-        FrameSequencerStep {
+        SequencerStep {
             length: step.is_clear(0),
             sweep: step == 0x02 || step == 0x06,
             envelope: step == 0x07,
@@ -58,7 +58,7 @@ pub struct PsgChannel {
     pub channel2: PulseChannel,
     pub channel3: WaveChannel,
     pub channel4: NoiseChannel,
-    pub frame_sequencer: FrameSequencer,
+    pub sequencer: Sequencer,
 }
 
 impl PsgChannel {
@@ -68,7 +68,7 @@ impl PsgChannel {
             channel2: PulseChannel::new_channel2(),
             channel3: WaveChannel::new(emulator_id),
             channel4: NoiseChannel::new(),
-            frame_sequencer: FrameSequencer::new(),
+            sequencer: Sequencer::new(),
         }
     }
 
@@ -79,8 +79,8 @@ impl PsgChannel {
         self.channel4.tick();
     }
 
-    pub fn clock_sequencer(&mut self) {
-        let step = self.frame_sequencer.tick();
+    pub fn sequencer(&mut self) {
+        let step = self.sequencer.tick();
 
         if self.channel1.length.tick(step.length) {
             self.channel1.enabled = false;
@@ -173,5 +173,12 @@ impl PsgMixer {
             left * (volume_left + 1.0) / 8.0,
             right * (volume_right + 1.0) / 8.0,
         )
+    }
+
+    pub fn panned_left(&self, channel: usize) -> bool {
+        self.nr51.is_set(4 + channel)
+    }
+    pub fn panned_right(&self, channel: usize) -> bool {
+        self.nr51.is_set(channel)
     }
 }

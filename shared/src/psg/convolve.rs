@@ -9,6 +9,8 @@ In Octave: https://octave.org/
 Low-pass filtering solution from JS Groth by convolving the samples over
 a FIR kernel to remove high frequencies that cause ringing. Changed
 parameter to the GB clock speed
+
+when neuro/signal processing helps!
 */
 
 use std::collections::VecDeque;
