@@ -97,6 +97,10 @@ impl GameBoy {
             }
         }
 
+        self.end_of_frame();
+    }
+
+    pub fn end_of_frame(&mut self) {
         self.cpu
             .bus
             .joypad

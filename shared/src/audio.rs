@@ -21,10 +21,8 @@ pub struct AudioOutput {
 impl AudioOutput {
     pub fn new() -> Option<Self> {
         let host = default_host();
-        let device = host
-            .default_output_device()
-            .expect("Output device unavailable");
-        let config = device.default_output_config().unwrap();
+        let device = host.default_output_device()?;
+        let config = device.default_output_config().ok()?;
         let channels = config.channels() as usize;
 
         let (producer, mut consumer) = RingBuffer::<f32>::new(AUDIO_BUFFER_CAPACITY);

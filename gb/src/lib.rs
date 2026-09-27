@@ -80,12 +80,6 @@ impl GameBoySession {
         }
     }
 
-    fn audio_needs_samples(&self) -> bool {
-        self.audio.as_ref().is_some_and(|audio| {
-            AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY
-        })
-    }
-
     fn step_end(&mut self, volume: u8) {
         self.drain_audio(volume);
 
@@ -114,22 +108,35 @@ impl EmulatorSession for GameBoySession {
             .unwrap();
 
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
-        loop {
-            if !self.audio_needs_samples() {
-                break;
+        if self.audio.is_some() {
+            while AUDIO_BUFFER_CAPACITY - self.audio.as_mut().unwrap().producer.slots()
+                < AUDIO_TARGET_OCCUPANCY
+            {
+                self.gameboy.run(self.apu_sample_cycles);
+                self.drain_audio(volume);
+
+                if self.gameboy.cpu.breakpoint_hit.is_some() {
+                    self.set_resume();
+                    break;
+                }
+
+                if self.gameboy.cpu.bus.watchpoint_pause.get() {
+                    break;
+                }
+            }
+        } else {
+            let mut cycles = 0;
+            while !self.gameboy.cpu.bus.ppu.frame_ready && cycles < T_CYCLES_PER_FRAME_DOUBLE {
+                cycles += self.gameboy.step(self.apu_sample_cycles);
+
+                if self.gameboy.cpu.breakpoint_hit.is_some()
+                    || self.gameboy.cpu.bus.watchpoint_pause.get()
+                {
+                    break;
+                }
             }
 
-            self.gameboy.run(self.apu_sample_cycles);
-            self.drain_audio(volume);
-
-            if self.gameboy.cpu.breakpoint_hit.is_some() {
-                self.set_resume();
-                break;
-            }
-
-            if self.gameboy.cpu.bus.watchpoint_pause.get() {
-                break;
-            }
+            self.gameboy.end_of_frame();
         }
 
         let state = if self.gameboy.take_watchpoint_pause() {
