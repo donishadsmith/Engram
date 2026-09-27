@@ -9,7 +9,10 @@
 
 pub mod components;
 
-use crate::components::{gameboy::GameBoy, gamepak::GamePak};
+use crate::components::{
+    gameboy::{GameBoy, T_CYCLES_PER_FRAME_DOUBLE},
+    gamepak::GamePak,
+};
 use macroquad::input::KeyCode;
 use shared::{
     Emulator, EmulatorId, EmulatorSession, EmulatorState,
@@ -81,6 +84,19 @@ impl GameBoySession {
         self.audio.as_ref().is_some_and(|audio| {
             AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY
         })
+    }
+
+    fn step_end(&mut self, volume: u8) {
+        self.drain_audio(volume);
+
+        self.gameboy.replenish_remaining_cycles();
+        self.gameboy.take_watchpoint_pause();
+
+        self.update_screen();
+
+        if self.gameboy.cpu.breakpoint_hit.is_some() {
+            self.set_resume();
+        }
     }
 }
 
@@ -199,16 +215,24 @@ impl EmulatorSession for GameBoySession {
 
     fn step_instruction(&mut self, volume: u8) {
         self.gameboy.step(self.apu_sample_cycles);
-        self.drain_audio(volume);
+        self.step_end(volume);
+    }
 
-        self.gameboy.replenish_remaining_cycles();
-        self.gameboy.take_watchpoint_pause();
+    fn step_frame(&mut self, volume: u8) {
+        self.gameboy.take_frame();
 
-        self.update_screen();
+        let mut cycles = 0;
+        while !self.gameboy.cpu.bus.ppu.frame_ready && cycles < T_CYCLES_PER_FRAME_DOUBLE {
+            cycles += self.gameboy.step(self.apu_sample_cycles);
 
-        if self.gameboy.cpu.breakpoint_hit.is_some() {
-            self.set_resume();
+            if self.gameboy.cpu.breakpoint_hit.is_some()
+                || self.gameboy.cpu.bus.watchpoint_pause.get()
+            {
+                break;
+            }
         }
+
+        self.step_end(volume);
     }
 
     fn set_resume(&mut self) {

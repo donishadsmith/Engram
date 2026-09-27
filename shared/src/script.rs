@@ -41,13 +41,14 @@ set_watchpoint(address, {pause = true, on = "rw", access = "byte", target=None})
     a watchpoint only fires for specified access width
   - target: on writes its the incoming value being written to address and on reads its the current value
     at the address being accessed; watchpoint only fires for specified target
-remove_watchpoint(address)
+
+    remove_watchpoint(address)
 clear_all_watchpoints()
 check_watchpoints()
 
 Emulator controls:
-pause()  resume()  step()  reset()
-screenshot()  start_gif()  stop_gif()
+pause()  resume()  step_instruction()  step_frame()
+reset() screenshot()  start_gif()  stop_gif()
 
 Hooks:
 function on_frame(): runs once per frame
@@ -66,13 +67,15 @@ pub enum CpuError {
     ReadOnly,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ScriptRequest {
     Pause,
     Screenshot,
     StartGif,
     StopGif,
     Reset,
-    Step,
+    StepInstruction,
+    StepFrame,
     Resume,
 }
 
@@ -566,7 +569,8 @@ impl ScriptEngine {
 
             control("pause", || ScriptRequest::Pause, "emulator paused")?;
             control("resume", || ScriptRequest::Resume, "emulator resumed")?;
-            control("step", || ScriptRequest::Step, "")?;
+            control("step_instruction", || ScriptRequest::StepInstruction, "")?;
+            control("step_frame", || ScriptRequest::StepFrame, "")?;
             control("reset", || ScriptRequest::Reset, "")?;
             control(
                 "screenshot",

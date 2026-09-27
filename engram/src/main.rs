@@ -54,6 +54,7 @@ struct Session {
     last_debug_page: HashMap<EmulatorId, DebugPage>,
     lua_editor: LuaEditor,
     emulator_paused: bool,
+    pending_steps: VecDeque<ScriptRequest>,
 }
 
 impl Session {
@@ -83,6 +84,7 @@ impl Session {
             last_debug_page: initialize_debug_hashmap(),
             lua_editor: LuaEditor::new(),
             emulator_paused: false,
+            pending_steps: VecDeque::new(),
         }
     }
 
@@ -849,16 +851,43 @@ async fn main() -> Result<(), Error> {
                                     }
                                 }
                                 ScriptRequest::Reset => session.state = EmulatorState::Reset,
-                                ScriptRequest::Step => {
-                                    if session.emulator_paused {
-                                        emulator.step_instruction(session.master_volume)
-                                    } else {
-                                        session.lua_editor.push_output(vec![
-                                            "emulator must be paused to step".to_string(),
-                                        ]);
-                                    }
+                                ScriptRequest::StepInstruction | ScriptRequest::StepFrame => {
+                                    session.pending_steps.push_back(request)
                                 }
                                 ScriptRequest::Resume => should_resume = true,
+                            }
+                        }
+
+                        // executed outside for loop for one step per next frame await
+                        if let Some(request) = session.pending_steps.pop_front() {
+                            if !session.emulator_paused {
+                                session.pending_steps.clear();
+                                session.lua_editor.push_output(vec![
+                                    "emulator must be paused to step".to_string(),
+                                ])
+                            } else {
+                                let final_step_request = |target: ScriptRequest| {
+                                    !session.pending_steps.contains(&target)
+                                };
+                                match request {
+                                    ScriptRequest::StepInstruction => {
+                                        emulator.step_instruction(session.master_volume);
+                                        if final_step_request(request) {
+                                            session.lua_editor.push_output(vec![
+                                                "final `step_instruction` reached".to_string(),
+                                            ]);
+                                        }
+                                    }
+                                    ScriptRequest::StepFrame => {
+                                        emulator.step_frame(session.master_volume);
+                                        if final_step_request(request) {
+                                            session.lua_editor.push_output(vec![
+                                                "final `step_frame` reached".to_string(),
+                                            ]);
+                                        }
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                     }

@@ -115,6 +115,8 @@ pub trait EmulatorSession {
 
     fn step_instruction(&mut self, volume: u8);
 
+    fn step_frame(&mut self, volume: u8);
+
     fn set_resume(&mut self);
 }
 

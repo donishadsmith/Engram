@@ -244,6 +244,21 @@ impl EmulatorSession for GBASession {
         self.update_screen();
     }
 
+    fn step_frame(&mut self, volume: u8) {
+        self.gba.take_frame();
+
+        while !self.gba.bus.ppu.frame_ready {
+            self.tick(volume);
+
+            if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
+                break;
+            }
+        }
+
+        self.gba.take_watchpoint_pause();
+        self.update_screen();
+    }
+
     fn set_resume(&mut self) {
         self.gba.cpu.resume_from = Some(self.gba.cpu.next_executing_address());
     }

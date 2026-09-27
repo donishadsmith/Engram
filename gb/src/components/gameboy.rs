@@ -13,7 +13,7 @@ use shared::{
 };
 use std::{io::Error, mem::take};
 
-const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
+pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
 // https://gekkio.fi/files/gb-docs/gbctr.pdf
