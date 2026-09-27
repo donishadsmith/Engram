@@ -10,8 +10,6 @@ gb/tests/vendored/blargg/**/*source*
 gb/tests/vendored/blargg/*/source/
 mooneye/
 acid/
-*ppu_registers.txt*
-*hexdump.txt*
 *.txt
 *.bin
 *.sav

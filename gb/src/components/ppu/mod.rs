@@ -210,7 +210,7 @@ impl PPU {
 
         self.update_mode(interrupt_flag);
 
-        while self.dots >= DOTS_PER_SCANLINE {
+        if self.dots >= DOTS_PER_SCANLINE {
             self.dots -= DOTS_PER_SCANLINE;
 
             if self.ly < 144 {

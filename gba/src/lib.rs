@@ -67,15 +67,36 @@ impl GBASession {
         })
     }
 
-    fn update_screen(&mut self) {
-        self.frame_ready = self.gba.take_frame();
-        if self.frame_ready && self.active_debug.is_none() {
+    fn on_frame(&mut self) {
+        self.frame_ready = true;
+        self.gba.take_frame();
+
+        self.script_engine
+            .execute(&mut self.gba, EmulatorId::Gba, true);
+
+        if self.active_debug.is_none() {
             self.screen.update(&self.gba.bus.ppu.frontend);
         }
+    }
 
+    fn draw(&mut self) {
         if self.active_debug.is_none() {
             self.screen.draw(&self.gba.bus.ppu.frontend);
         }
+    }
+
+    fn step_end(&mut self) {
+        self.gba.take_watchpoint_pause();
+        self.script_engine.step_completed();
+
+        if self.gba.bus.ppu.frame_ready {
+            self.on_frame();
+        } else {
+            self.script_engine
+                .execute(&mut self.gba, EmulatorId::Gba, false);
+        }
+
+        self.draw();
     }
 
     fn drain_audio(&mut self, volume: u8) {
@@ -96,11 +117,6 @@ impl GBASession {
     fn tick(&mut self, volume: u8) {
         self.gba.run();
 
-        if self.gba.take_frame_start() {
-            self.script_engine
-                .execute(&mut self.gba, EmulatorId::Gba, true);
-        }
-
         self.drain_audio(volume);
 
         if self.gba.cpu.breakpoint_hit.is_some() {
@@ -118,7 +134,7 @@ impl EmulatorSession for GBASession {
     ) -> Result<EmulatorState, Error> {
         let frame_start_time = Instant::now();
         let frame_start_cycle = self.gba.bus.scheduler.current;
-
+        self.frame_ready = false;
         self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
             .as_slice()
             .try_into()
@@ -137,44 +153,38 @@ impl EmulatorSession for GBASession {
 
             self.tick(volume);
 
+            if self.gba.bus.ppu.frame_ready {
+                self.on_frame();
+            }
+
             if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
                 break;
             }
         }
 
+        self.script_engine
+            .execute(&mut self.gba, EmulatorId::Gba, false);
+
         let state = if self.gba.take_watchpoint_pause() {
-            Ok(EmulatorState::Paused)
+            EmulatorState::Paused
         } else if let Some(address) = self.gba.cpu.breakpoint_hit {
-            let breakpoint_action = self
-                .gba
+            self.gba
                 .cpu
                 .breakpoint_action
                 .get(&address)
                 .unwrap()
-                .clone();
-
-            if breakpoint_action == EmulatorState::Running {
-                self.script_engine
-                    .execute(&mut self.gba, EmulatorId::Gba, self.frame_ready);
-            }
-
-            Ok(breakpoint_action)
-        } else if !self.gba.bus.watchpoint_hits.is_empty() {
-            self.script_engine
-                .execute(&mut self.gba, EmulatorId::Gba, self.frame_ready);
-
-            Ok(EmulatorState::Running)
+                .clone()
         } else {
-            Ok(EmulatorState::Running)
+            EmulatorState::Running
         };
 
-        self.update_screen();
+        self.draw();
 
         if self.audio.is_none() {
             fps_lock(frame_start_time);
         }
 
-        return state;
+        Ok(state)
     }
 
     fn pause(&mut self) {
@@ -240,13 +250,11 @@ impl EmulatorSession for GBASession {
 
     fn step_instruction(&mut self, volume: u8) {
         self.tick(volume);
-        self.gba.take_watchpoint_pause();
-        self.update_screen();
+        self.step_end();
     }
 
     fn step_frame(&mut self, volume: u8) {
         self.gba.take_frame();
-
         while !self.gba.bus.ppu.frame_ready {
             self.tick(volume);
 
@@ -255,8 +263,7 @@ impl EmulatorSession for GBASession {
             }
         }
 
-        self.gba.take_watchpoint_pause();
-        self.update_screen();
+        self.step_end();
     }
 
     fn set_resume(&mut self) {

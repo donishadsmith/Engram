@@ -148,10 +148,6 @@ impl GBA {
         take(&mut self.bus.ppu.frame_ready)
     }
 
-    pub fn take_frame_start(&mut self) -> bool {
-        take(&mut self.bus.ppu.frame_start)
-    }
-
     pub fn trigger_dma(&mut self, trigger: Option<Trigger>) {
         if let Some(trigger) = trigger {
             for channel in 0..4 {

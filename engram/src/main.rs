@@ -816,8 +816,6 @@ async fn main() -> Result<(), Error> {
                         }
                     };
 
-                    let mut should_pause = false;
-                    let mut should_resume = false;
                     if let Some(emulator) = &mut session.emulator
                         && let Some(script_engine) = emulator.script_engine()
                     {
@@ -828,7 +826,11 @@ async fn main() -> Result<(), Error> {
 
                         for request in script_engine.take_requests() {
                             match request {
-                                ScriptRequest::Pause => should_pause = true,
+                                ScriptRequest::Pause => {
+                                    // cant reuse functions for pause and running due to a classic borrow checker no no
+                                    session.state = EmulatorState::Paused;
+                                    session.emulator_paused = true;
+                                }
                                 ScriptRequest::Screenshot => screenshot(session.image_dir.clone()),
                                 ScriptRequest::StartGif => {
                                     if !session.gif.is_recording() {
@@ -854,7 +856,10 @@ async fn main() -> Result<(), Error> {
                                 ScriptRequest::StepInstruction | ScriptRequest::StepFrame => {
                                     session.pending_steps.push_back(request)
                                 }
-                                ScriptRequest::Resume => should_resume = true,
+                                ScriptRequest::Resume => {
+                                    session.state = EmulatorState::Running;
+                                    session.emulator_paused = false;
+                                }
                             }
                         }
 
@@ -866,38 +871,17 @@ async fn main() -> Result<(), Error> {
                                     "emulator must be paused to step".to_string(),
                                 ])
                             } else {
-                                let final_step_request = |target: ScriptRequest| {
-                                    !session.pending_steps.contains(&target)
-                                };
                                 match request {
                                     ScriptRequest::StepInstruction => {
                                         emulator.step_instruction(session.master_volume);
-                                        if final_step_request(request) {
-                                            session.lua_editor.push_output(vec![
-                                                "final `step_instruction` reached".to_string(),
-                                            ]);
-                                        }
                                     }
                                     ScriptRequest::StepFrame => {
                                         emulator.step_frame(session.master_volume);
-                                        if final_step_request(request) {
-                                            session.lua_editor.push_output(vec![
-                                                "final `step_frame` reached".to_string(),
-                                            ]);
-                                        }
                                     }
                                     _ => {}
                                 }
                             }
                         }
-                    }
-
-                    if should_pause {
-                        session.set_paused();
-                    }
-
-                    if should_resume {
-                        session.set_running();
                     }
                 });
             });

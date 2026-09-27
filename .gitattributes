@@ -1,4 +1,3 @@
-gb/tests/vendored/sm83/** linguist-vendored
-gb/tests/vendored/blargg/** linguist-vendored
-gb/tests/vendored/acid/** linguist-vendored
-gb/tests/vendored/mooneye/** linguist-vendored
+gb/tests/vendored/** linguist-vendored
+gba/tests/vendored/** linguist-vendored
+utils/vendored/** linguist-vendored

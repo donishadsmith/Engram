@@ -60,17 +60,6 @@ impl GameBoySession {
         })
     }
 
-    fn update_screen(&mut self) {
-        self.frame_ready = self.gameboy.take_frame();
-        if self.frame_ready {
-            self.script_engine
-                .execute(&mut self.gameboy, EmulatorId::Gb, true);
-            self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
-        }
-
-        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
-    }
-
     fn drain_audio(&mut self, volume: u8) {
         for sample in self.gameboy.cpu.bus.apu.sample_buffer.drain(..) {
             match &mut self.audio {
@@ -80,13 +69,32 @@ impl GameBoySession {
         }
     }
 
+    fn on_frame(&mut self) {
+        self.frame_ready = true;
+        self.gameboy.take_frame();
+        self.script_engine
+            .execute(&mut self.gameboy, EmulatorId::Gb, true);
+        self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
+    }
+
+    fn draw(&mut self) {
+        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
+    }
+
     fn step_end(&mut self, volume: u8) {
         self.drain_audio(volume);
-
         self.gameboy.replenish_remaining_cycles();
         self.gameboy.take_watchpoint_pause();
+        self.script_engine.step_completed();
 
-        self.update_screen();
+        if self.gameboy.cpu.bus.ppu.frame_ready {
+            self.on_frame();
+        } else {
+            self.script_engine
+                .execute(&mut self.gameboy, EmulatorId::Gb, false);
+        }
+
+        self.draw();
 
         if self.gameboy.cpu.breakpoint_hit.is_some() {
             self.set_resume();
@@ -102,6 +110,7 @@ impl EmulatorSession for GameBoySession {
         volume: u8,
     ) -> Result<EmulatorState, Error> {
         let frame_start_time = Instant::now();
+        self.frame_ready = false;
         self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
             .as_slice()
             .try_into()
@@ -115,63 +124,61 @@ impl EmulatorSession for GameBoySession {
                 self.gameboy.run(self.apu_sample_cycles);
                 self.drain_audio(volume);
 
+                if self.gameboy.cpu.bus.ppu.frame_ready {
+                    self.on_frame();
+                }
+
                 if self.gameboy.cpu.breakpoint_hit.is_some() {
                     self.set_resume();
                     break;
                 }
-
                 if self.gameboy.cpu.bus.watchpoint_pause.get() {
                     break;
                 }
             }
         } else {
             let mut cycles = 0;
-            while !self.gameboy.cpu.bus.ppu.frame_ready && cycles < T_CYCLES_PER_FRAME_DOUBLE {
+            while cycles < T_CYCLES_PER_FRAME_DOUBLE {
                 cycles += self.gameboy.step(self.apu_sample_cycles);
 
-                if self.gameboy.cpu.breakpoint_hit.is_some()
-                    || self.gameboy.cpu.bus.watchpoint_pause.get()
-                {
+                if self.gameboy.cpu.bus.ppu.frame_ready {
+                    self.on_frame();
+                }
+
+                if self.gameboy.cpu.breakpoint_hit.is_some() {
+                    self.set_resume();
+                    break;
+                }
+                if self.gameboy.cpu.bus.watchpoint_pause.get() {
                     break;
                 }
             }
-
             self.gameboy.end_of_frame();
         }
 
+        self.script_engine
+            .execute(&mut self.gameboy, EmulatorId::Gb, false);
+
         let state = if self.gameboy.take_watchpoint_pause() {
-            Ok(EmulatorState::Paused)
+            EmulatorState::Paused
         } else if let Some(address) = self.gameboy.cpu.breakpoint_hit {
-            let breakpoint_action = self
-                .gameboy
+            self.gameboy
                 .cpu
                 .breakpoint_action
                 .get(&address)
                 .unwrap()
-                .clone();
-
-            if breakpoint_action == EmulatorState::Running {
-                self.script_engine
-                    .execute(&mut self.gameboy, EmulatorId::Gb, self.frame_ready);
-            }
-
-            Ok(breakpoint_action)
-        } else if !self.gameboy.cpu.bus.watchpoint_hits.borrow().is_empty() {
-            self.script_engine
-                .execute(&mut self.gameboy, EmulatorId::Gb, self.frame_ready);
-
-            Ok(EmulatorState::Running)
+                .clone()
         } else {
-            Ok(EmulatorState::Running)
+            EmulatorState::Running
         };
 
-        self.update_screen();
+        self.draw();
 
         if self.audio.is_none() {
             fps_lock(frame_start_time);
         }
 
-        return state;
+        Ok(state)
     }
 
     fn pause(&mut self) {

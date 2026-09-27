@@ -1,7 +1,9 @@
 use crate::{EmulatorId, EmulatorState, ScriptTarget};
-use mlua::{Function, HookTriggers, Lua, Table, Value, Variadic, VmState};
+use mlua::{
+    Function, HookTriggers, Lua, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus,
+};
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     collections::VecDeque,
     mem::take,
     time::{Duration, Instant},
@@ -270,16 +272,39 @@ pub struct ScriptEngine {
     lua: Lua,
     pending: VecDeque<String>,
     output: Vec<String>,
+    running: Option<Thread>,
     requests: Vec<ScriptRequest>,
+    step_done: bool,
 }
 
 impl ScriptEngine {
     pub fn new() -> Self {
+        //https://docs.rs/mlua/latest/mlua/struct.Thread.html
+        let lua = Lua::new();
+        let _ = lua
+            .load(
+                r#"
+            function step_instruction()
+                _step_instruction()
+                coroutine.yield()
+            end
+
+            function step_frame()
+                _step_frame()
+                coroutine.yield()
+            end
+        "#,
+            )
+            .exec()
+            .unwrap();
+
         Self {
-            lua: Lua::new(),
+            lua,
             pending: VecDeque::new(),
             output: Vec::new(),
+            running: None,
             requests: Vec::new(),
+            step_done: false,
         }
     }
 
@@ -299,6 +324,15 @@ impl ScriptEngine {
         take(&mut self.requests)
     }
 
+    pub fn step_completed(&mut self) {
+        self.step_done = true;
+    }
+
+    pub fn cancel(&mut self) {
+        self.running = None;
+        self.step_done = false;
+    }
+
     pub fn execute(
         &mut self,
         target: &mut dyn ScriptTarget,
@@ -309,23 +343,17 @@ impl ScriptEngine {
             lua,
             pending,
             output,
+            running,
             requests,
+            step_done,
         } = self;
 
         let target = RefCell::new(target);
         let output = RefCell::new(output);
         let requests = RefCell::new(requests);
-        let printed = Cell::new(0u32);
 
         let result = lua.scope(|scope| {
             let print = scope.create_function(|_, vals: Variadic<Value>| {
-                printed.set(printed.get() + 1);
-                if printed.get() > 1000 {
-                    return Err(mlua::Error::runtime(
-                        "script terminated due to too much output",
-                    ));
-                }
-
                 let line = vals
                     .iter()
                     .map(|val| val.to_string())
@@ -383,7 +411,7 @@ impl ScriptEngine {
             let read_domain = scope.create_function(|_, (domain, offset): (String, usize)| {
                 let result = target.borrow().read_domain(&domain, offset);
                 result.map_err(|err| {
-                    domain_error(&domain, offset, err, target.borrow().memory_domain_names())
+                    domain_error(&domain.to_lowercase(), offset, err, target.borrow().memory_domain_names())
                 })
             })?;
             lua.globals().set("read_domain", read_domain)?;
@@ -401,7 +429,7 @@ impl ScriptEngine {
                 scope.create_function(|_, (domain, offset, value): (String, usize, u8)| {
                     let result = target.borrow_mut().write_domain(&domain, offset, value);
                     result.map_err(|err| {
-                        domain_error(&domain, offset, err, target.borrow().memory_domain_names())
+                        domain_error(&domain.to_lowercase(), offset, err, target.borrow().memory_domain_names())
                     })
                 })?;
             lua.globals().set("write_domain", write_domain)?;
@@ -412,12 +440,14 @@ impl ScriptEngine {
                 .set("cpu_register_names", cpu_register_names)?;
 
             let read_cpu_register = scope.create_function(|_, name: String| {
+                let name = name.to_lowercase();
                 let result = target.borrow().read_cpu_register(name.clone());
                 result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
             })?;
             lua.globals().set("read_cpu_register", read_cpu_register)?;
 
             let write_cpu_register = scope.create_function(|_, (name, value): (String, u32)| {
+                let name = name.to_lowercase();
                 let result = target.borrow_mut().write_cpu_register(name.clone(), value);
                 result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
             })?;
@@ -569,8 +599,8 @@ impl ScriptEngine {
 
             control("pause", || ScriptRequest::Pause, "emulator paused")?;
             control("resume", || ScriptRequest::Resume, "emulator resumed")?;
-            control("step_instruction", || ScriptRequest::StepInstruction, "")?;
-            control("step_frame", || ScriptRequest::StepFrame, "")?;
+            control("_step_instruction", || ScriptRequest::StepInstruction, "")?;
+            control("_step_frame", || ScriptRequest::StepFrame, "")?;
             control("reset", || ScriptRequest::Reset, "")?;
             control(
                 "screenshot",
@@ -588,20 +618,36 @@ impl ScriptEngine {
                 "stopped gif recording",
             )?;
 
-            while let Some(code) = pending.pop_front() {
+            if *step_done && let Some(thread) = running.take() {
+                *step_done = false;
                 time_limit(lua, Duration::from_millis(100));
-                match lua.load(&code).eval::<mlua::MultiValue>() {
-                    Ok(values) if !values.is_empty() => output.borrow_mut().push(
+                match thread.resume::<mlua::MultiValue>(()) {
+                    Ok(_) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
+                    Ok(values) => output.borrow_mut().push(
+                        values
+                            .iter()
+                            .map(display_value)
+                            .collect::<Vec<_>>()
+                            .join("\t")),
+                    Err(err) => output.borrow_mut().push(format!("{err}")),
+                }
+            }
+
+            while running.is_none() && let Some(code) = pending.pop_front() {
+                time_limit(lua, Duration::from_millis(100));
+                let start = lua.load(&code).into_function().and_then(|function| lua.create_thread(function));
+                match start.and_then(|thread| thread.resume::<mlua::MultiValue>(()).map(|value| (thread, value))) {
+                    Ok((thread, _)) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
+                    Ok((_, values))=> output.borrow_mut().push(
                         values
                             .iter()
                             .map(display_value)
                             .collect::<Vec<_>>()
                             .join("\t"),
                     ),
-                    Ok(_) => {}
                     Err(err) => output.borrow_mut().push(format!("{err}")),
                 }
-            }
+            };
 
             if frame_boundary && let Ok(hook) = lua.globals().get::<Function>("on_frame") {
                 time_limit(lua, Duration::from_millis(5));
@@ -629,10 +675,8 @@ impl ScriptEngine {
             if !hits.is_empty() {
                 let hook = lua.globals().get::<Function>("on_watchpoint").ok();
 
-                let mut printed_hits = 0;
                 for hit in hits {
-                    if hit.pause || (hook.is_none() && printed_hits < 10) {
-                        printed_hits += 1;
+                    if hit.pause || hook.is_none() {
                         output.borrow_mut().push(format!(
                             "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}",
                             hit.address,

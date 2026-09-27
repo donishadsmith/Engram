@@ -19,6 +19,7 @@ pub const DMG_BOOTIX: [u8; 256] = [
 /*
     Replaced logo from SameBoy: https://github.com/LIJI32/SameBoy/
     TODO: logo updated vut still lokks terrible try again later, find better photoshop font
+    maybe find photoshop alternative that is less overwhelming
 */
 pub const CGB_BOOT: [u8; 2304] = [
     0x31, 0xfe, 0xff, 0xcd, 0xf3, 0x05, 0x26, 0xfe, 0x0e, 0xa0, 0x22, 0x0d, 0x20, 0xfc, 0x0e, 0x10,

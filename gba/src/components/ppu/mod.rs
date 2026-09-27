@@ -177,7 +177,6 @@ pub struct PPU {
     pub transparant_sprite_background: bool,
     pub transparant_background: bool,
     pub bg_debug_info: [BgDebugInfo; 4],
-    pub frame_start: bool,
 }
 
 impl PPU {
@@ -231,7 +230,6 @@ impl PPU {
             transparant_sprite_background: true,
             transparant_background: false,
             bg_debug_info: from_fn(|_| BgDebugInfo::new()),
-            frame_start: false,
         }
     }
 
@@ -1066,12 +1064,6 @@ impl PPU {
         };
 
         self.vcount = (self.vcount + 1) % 228;
-        if self.vcount == 0 {
-            self.frame_start = true;
-
-            self.update_oam_debug_data();
-            self.sprites_ready = true;
-        }
 
         self.dispstat.clear_bit(DispstatBit::HblankFlag as usize);
 
@@ -1090,6 +1082,9 @@ impl PPU {
             swap(&mut self.frame, &mut self.frontend);
             swap(&mut self.debug_frame, &mut self.debug_frontend);
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
+
+            self.update_oam_debug_data();
+            self.sprites_ready = true;
 
             scanline_event.vblank = true;
         }

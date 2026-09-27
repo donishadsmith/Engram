@@ -5,8 +5,8 @@ from pathlib import Path
 BOOTLOADER_FILE_PATH = (
     Path(__file__).parent.parent / "gb" / "src" / "components" / "bootloader.rs"
 )
-BIN_PATH = Path("vendor/build/bin/BootROMs/cgb_boot.bin")
-DELETE_DIR = Path("vendor/build")
+BIN_PATH = Path("vendored/build/bin/BootROMs/cgb_boot.bin")
+DELETE_DIR = Path("vendored/build")
 
 bytes = BIN_PATH.read_bytes()
 
