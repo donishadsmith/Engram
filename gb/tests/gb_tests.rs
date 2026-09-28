@@ -12,7 +12,7 @@ fn blargg_cpu_path(rom: &str) -> PathBuf {
 fn run_blargg_rom(path: PathBuf) {
     let mut gameboy = GameBoy::boot(GamePak::load(path.clone()).unwrap());
 
-    for _ in 0..1000 {
+    for _ in 0..2000 {
         gameboy.run(87);
         gameboy.take_frame();
 
