@@ -136,7 +136,6 @@ impl EmulatorSession for GBASession {
         let frame_start_cycle = self.gba.bus.scheduler.current;
         self.frame_ready = false;
         self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
-            .as_slice()
             .try_into()
             .unwrap();
 

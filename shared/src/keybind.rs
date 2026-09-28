@@ -137,8 +137,8 @@ pub struct SaveKeys {
 
 #[derive(Clone, Copy)]
 pub struct Bindings {
-    label: &'static str,
-    key: KeyCode,
+    pub label: &'static str,
+    pub key: KeyCode,
 }
 
 pub const DEFAULT_HOT_KEYS: [Bindings; 4] = [

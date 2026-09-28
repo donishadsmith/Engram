@@ -21,6 +21,7 @@ pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 pub struct GameBoy {
     pub cpu: CPU<Bus>,
+    pub scripted_keypad: Option<[bool; 8]>,
     pub keypad: [bool; 8],
     pub remaining_cycles: u32,
 }
@@ -33,6 +34,7 @@ impl GameBoy {
 
         Self {
             cpu: CPU::start(cgb_flag, checksum, bus),
+            scripted_keypad: None,
             keypad: [false; 8],
             remaining_cycles: 0,
         }
@@ -92,7 +94,10 @@ impl GameBoy {
                 .remaining_cycles
                 .saturating_sub(self.step(apu_sample_cycles));
 
-            if self.cpu.breakpoint_hit.is_some() || self.cpu.bus.watchpoint_pause.get() {
+            if self.cpu.breakpoint_hit.is_some()
+                || self.cpu.bus.watchpoint_pause.get()
+                || self.cpu.bus.ppu.frame_ready
+            {
                 return;
             }
         }
@@ -101,10 +106,10 @@ impl GameBoy {
     }
 
     pub fn end_of_frame(&mut self) {
-        self.cpu
-            .bus
-            .joypad
-            .poll(self.keypad, &mut self.cpu.bus.interrupt_flag);
+        self.cpu.bus.joypad.poll(
+            self.scripted_keypad.unwrap_or(self.keypad),
+            &mut self.cpu.bus.interrupt_flag,
+        );
         self.cpu.bus.gamepak.mbc.tick();
     }
 
@@ -420,5 +425,28 @@ impl ScriptTarget for GameBoy {
         };
 
         Some((domain, base))
+    }
+
+    fn set_scripted_inputs(&mut self, keys: Option<Vec<bool>>) {
+        if keys.is_none() {
+            self.scripted_keypad = None;
+
+            return;
+        }
+
+        let keys = keys.unwrap();
+        if !keys.contains(&true) {
+            self.scripted_keypad = None;
+        } else {
+            self.scripted_keypad = keys.try_into().ok();
+        }
+    }
+
+    fn check_scripted_inputs(&self) -> Option<&[bool]> {
+        if let Some(arr) = &self.scripted_keypad {
+            Some(arr)
+        } else {
+            None
+        }
     }
 }

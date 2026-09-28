@@ -112,7 +112,6 @@ impl EmulatorSession for GameBoySession {
         let frame_start_time = Instant::now();
         self.frame_ready = false;
         self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
-            .as_slice()
             .try_into()
             .unwrap();
 

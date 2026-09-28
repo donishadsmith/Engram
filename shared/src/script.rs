@@ -1,4 +1,4 @@
-use crate::{EmulatorId, EmulatorState, ScriptTarget};
+use crate::{EmulatorId, EmulatorState, ScriptTarget, keybind::DEFAULT_GBA_KEYS};
 use mlua::{
     Function, HookTriggers, Lua, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus,
 };
@@ -44,13 +44,19 @@ set_watchpoint(address, {pause = true, on = "rw", access = "byte", target=None})
   - target: on writes its the incoming value being written to address and on reads its the current value
     at the address being accessed; watchpoint only fires for specified target
 
-    remove_watchpoint(address)
+remove_watchpoint(address)
 clear_all_watchpoints()
 check_watchpoints()
 
 Emulator controls:
 pause()  resume()  step_instruction()  step_frame()
 reset() screenshot()  start_gif()  stop_gif()
+
+Input:
+available_inputs(): table of input buttons
+set_inputs({a = true, up = true}): buttons held permanantly until released, keyboard is ignored;
+  set_inputs({}), set_inputs(nil), or set_inputs() to return control to keyboard
+check_inputs(): prints buttons currently held
 
 Hooks:
 function on_frame(): runs once per frame
@@ -268,6 +274,48 @@ fn parse_watchpoint_args(
     Ok((access.align(address), watchpoint_args))
 }
 
+fn get_available_inputs(emulator_id: EmulatorId) -> Vec<String> {
+    match emulator_id {
+        EmulatorId::Gb | EmulatorId::Gba => {
+            let keys = DEFAULT_GBA_KEYS
+                .iter()
+                .map(|&binding| binding.label.to_string().to_lowercase())
+                .collect::<Vec<String>>();
+
+            if emulator_id == EmulatorId::Gb {
+                keys[..8].to_vec()
+            } else {
+                keys
+            }
+        }
+    }
+}
+
+fn map_inputs(emulator_id: EmulatorId, kwargs: Option<Table>) -> Option<Vec<bool>> {
+    match kwargs {
+        Some(table) => {
+            let mut key_mask: Vec<bool> = Vec::new();
+            let keys = get_available_inputs(emulator_id);
+            for key in keys.into_iter() {
+                let value = table.get::<Option<bool>>(key.as_str()).ok()?;
+                key_mask.push(value.unwrap_or(false))
+            }
+
+            Some(key_mask)
+        }
+        None => None,
+    }
+}
+
+fn bool_to_keys(emulator_id: EmulatorId, key_mask: &[bool]) -> Vec<String> {
+    let keys = get_available_inputs(emulator_id);
+
+    keys.iter()
+        .zip(key_mask)
+        .filter_map(|(key, &bool)| if bool { Some(key.clone()) } else { None })
+        .collect()
+}
+
 pub struct ScriptEngine {
     lua: Lua,
     pending: VecDeque<String>,
@@ -460,6 +508,31 @@ impl ScriptEngine {
             })?;
             lua.globals().set("to_rgb_hex", to_rgb_hex)?;
 
+            let available_inputs = scope.create_function(|_,  (): ()| {
+                Ok(get_available_inputs(emulator_id))
+            })?;
+            lua.globals().set("available_inputs", available_inputs)?;
+
+            let set_inputs = scope.create_function(|_, kwargs: Option<Table>| {
+                let mask = map_inputs(emulator_id, kwargs);
+                target.borrow_mut().set_scripted_inputs(mask);
+
+                Ok(())
+            })?;
+            lua.globals().set("set_inputs", set_inputs)?;
+
+            let check_inputs = scope.create_function(|_,  (): ()| {
+                let message = match target.borrow().check_scripted_inputs() {
+                    Some(key_mask) => format!("The following keys are set: {}", bool_to_keys(emulator_id, key_mask).join(", ")),
+                    None => "No keys set".to_string()
+                };
+
+                output.borrow_mut().push(message);
+
+                Ok(())
+            })?;
+            lua.globals().set("check_inputs", check_inputs)?;
+
             let set_breakpoint =
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     let pause = match kwargs {
@@ -623,12 +696,13 @@ impl ScriptEngine {
                 time_limit(lua, Duration::from_millis(100));
                 match thread.resume::<mlua::MultiValue>(()) {
                     Ok(_) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
-                    Ok(values) => output.borrow_mut().push(
+                    Ok(values) if !values.is_empty() => output.borrow_mut().push(
                         values
                             .iter()
                             .map(display_value)
                             .collect::<Vec<_>>()
                             .join("\t")),
+                    Ok(_) => {},
                     Err(err) => output.borrow_mut().push(format!("{err}")),
                 }
             }
@@ -638,13 +712,14 @@ impl ScriptEngine {
                 let start = lua.load(&code).into_function().and_then(|function| lua.create_thread(function));
                 match start.and_then(|thread| thread.resume::<mlua::MultiValue>(()).map(|value| (thread, value))) {
                     Ok((thread, _)) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
-                    Ok((_, values))=> output.borrow_mut().push(
+                    Ok((_, values)) if !values.is_empty() => output.borrow_mut().push(
                         values
                             .iter()
                             .map(display_value)
                             .collect::<Vec<_>>()
                             .join("\t"),
                     ),
+                    Ok((_, _)) => {},
                     Err(err) => output.borrow_mut().push(format!("{err}")),
                 }
             };

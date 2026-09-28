@@ -151,4 +151,8 @@ pub trait ScriptTarget: Emulator {
     fn write_domain(&mut self, domain: &str, offset: usize, value: u8) -> Result<(), DomainError>;
 
     fn address_to_domain(&self, address: u32) -> Option<(&'static str, usize)>;
+
+    fn set_scripted_inputs(&mut self, keys: Option<Vec<bool>>);
+
+    fn check_scripted_inputs(&self) -> Option<&[bool]>;
 }

@@ -17,6 +17,7 @@ use std::{io::Error, mem::take};
 pub struct GBA {
     pub bus: Bus,
     pub cpu: Arm7tdmi,
+    pub scripted_keypad: Option<[bool; 10]>,
     pub keypad: [bool; 10],
 }
 
@@ -33,6 +34,7 @@ impl GBA {
         Self {
             bus,
             cpu,
+            scripted_keypad: None,
             keypad: [false; 10],
         }
     }
@@ -91,9 +93,10 @@ impl GBA {
                                 self.bus.ppu.handle_hblank_end(&mut self.bus.interrupt_flag);
 
                             if scanline_event.vblank {
-                                self.bus
-                                    .keypad
-                                    .poll(self.keypad, &mut self.bus.interrupt_flag);
+                                self.bus.keypad.poll(
+                                    self.scripted_keypad.unwrap_or(self.keypad),
+                                    &mut self.bus.interrupt_flag,
+                                );
                             }
 
                             if scanline_event.vblank {
@@ -359,5 +362,28 @@ impl ScriptTarget for GBA {
         };
 
         Some((domain, base))
+    }
+
+    fn set_scripted_inputs(&mut self, keys: Option<Vec<bool>>) {
+        if keys.is_none() {
+            self.scripted_keypad = None;
+
+            return;
+        }
+
+        let keys = keys.unwrap();
+        if !keys.contains(&true) {
+            self.scripted_keypad = None;
+        } else {
+            self.scripted_keypad = keys.try_into().ok();
+        }
+    }
+
+    fn check_scripted_inputs(&self) -> Option<&[bool]> {
+        if let Some(arr) = &self.scripted_keypad {
+            Some(arr)
+        } else {
+            None
+        }
     }
 }
