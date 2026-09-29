@@ -16,7 +16,7 @@ use crate::components::{
     utils::ByteOps8,
 };
 use shared::{
-    render::{Frame, PixelFormat},
+    render::{Frame, PixelFormat, ScalingMethod},
     traits::BitOps,
 };
 /*
@@ -191,12 +191,14 @@ impl PPU {
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             },
             frontend: Frame {
                 pixels: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             },
         }
     }

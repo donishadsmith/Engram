@@ -5,7 +5,7 @@ use crate::components::{
 use egui::{Color32, RichText, Sense, TextureHandle, Window, vec2};
 use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
-    render::{Frame, PixelFormat, rgb555_to_rgb888},
+    render::{Frame, PixelFormat, ScalingMethod, rgb555_to_rgb888},
     traits::BitOps,
 };
 use std::{
@@ -138,6 +138,7 @@ impl PpuDebugger {
                 width: 240,
                 height: 160,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             }),
             background_textures: vec![None; 4],
             sprites: Vec::with_capacity(128),

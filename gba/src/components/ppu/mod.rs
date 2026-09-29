@@ -5,7 +5,7 @@ pub mod sprites;
 use crate::components::ppu::sprites::DisplayMode;
 use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 use affine::{AffineMatrix, AffineState};
-use shared::render::{Frame, PixelFormat};
+use shared::render::{Frame, PixelFormat, ScalingMethod};
 use shared::traits::{BitOps, GroupedRegisters, zero_arr};
 use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
 use std::{
@@ -204,24 +204,28 @@ impl PPU {
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             },
             frame: Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             },
             debug_frontend: from_fn(|_| Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             }),
             debug_frame: from_fn(|_| Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             }),
             frame_ready: false,
             debug_frame_ready: false,

@@ -10,11 +10,18 @@ pub enum PixelFormat {
     Rgb888,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ScalingMethod {
+    Integer,
+    Aspect(u8, u8),
+}
+
 pub struct Frame {
     pub pixels: Box<[u32]>,
     pub width: usize,
     pub height: usize,
     pub pixel_format: PixelFormat,
+    pub scaling_method: ScalingMethod,
 }
 
 pub struct Screen {
@@ -37,6 +44,17 @@ impl Screen {
     }
 
     pub fn update(&mut self, frame: &Frame) {
+        if self.image.width as usize != frame.width || self.image.height as usize != frame.height {
+            self.image = Image {
+                bytes: vec![0; frame.width * frame.height * RGBA_BYTES_PER_PIXEL],
+                width: frame.width as u16,
+                height: frame.height as u16,
+            };
+
+            self.texture = Texture2D::from_image(&self.image);
+            self.texture.set_filter(FilterMode::Nearest);
+        }
+
         for (pixel, out) in frame
             .pixels
             .iter()
@@ -50,17 +68,33 @@ impl Screen {
     }
 
     pub fn draw(&self, frame: &Frame) {
-        let scale = (screen_width() / frame.width as f32)
-            .min(screen_height() / frame.height as f32)
-            .floor()
-            .max(1.0);
+        let screen_width = screen_width();
+        let screen_height = screen_height();
 
-        let (width, height) = (frame.width as f32 * scale, frame.height as f32 * scale);
+        let (width, height) = match frame.scaling_method {
+            ScalingMethod::Integer => {
+                let scale = (screen_width / frame.width as f32)
+                    .min(screen_height / frame.height as f32)
+                    .floor()
+                    .max(1.0);
+
+                (frame.width as f32 * scale, frame.height as f32 * scale)
+            }
+            ScalingMethod::Aspect(aspect_width, aspect_heigth) => {
+                let aspect_ratio = aspect_width as f32 / aspect_heigth as f32;
+
+                if (screen_width / screen_height) > aspect_ratio {
+                    (screen_height * aspect_ratio, screen_height)
+                } else {
+                    (screen_width, screen_width / aspect_ratio)
+                }
+            }
+        };
 
         draw_texture_ex(
             &self.texture,
-            (screen_width() - width) / 2.0,
-            (screen_height() - height) / 2.0,
+            (screen_width - width) / 2.0,
+            (screen_height - height) / 2.0,
             WHITE,
             DrawTextureParams {
                 dest_size: Some(vec2(width, height)),

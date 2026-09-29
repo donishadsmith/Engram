@@ -1,6 +1,6 @@
 use crate::components::ppu::{AffineMatrix, Bpp};
 use shared::{
-    render::{Frame, PixelFormat},
+    render::{Frame, PixelFormat, ScalingMethod},
     traits::BitOps,
 };
 
@@ -118,6 +118,7 @@ impl SpriteAttributes {
                 width: dimension.0,
                 height: dimension.1,
                 pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
             })
         } else {
             None
