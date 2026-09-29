@@ -1,12 +1,12 @@
 [package]
-name = "engram"
-version = "0.1.17"
+name = "frontend"
+version = "0.1.18"
 edition = "2024"
 
 [dependencies]
 shared.workspace = true
-engram_gb.workspace = true
-engram_gba.workspace = true
+gb.workspace = true
+gba.workspace = true
 egui.workspace = true
 egui-macroquad.workspace = true
 rfd.workspace = true

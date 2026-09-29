@@ -1,4 +1,4 @@
-use engram_gba::components::{cpu::HaltState, gamepak::GamePak, gba::GBA};
+use gba::components::{cpu::HaltState, gamepak::GamePak, gba::GBA};
 use std::path::PathBuf;
 
 fn get_custom_rom_path(filename: &str) -> PathBuf {

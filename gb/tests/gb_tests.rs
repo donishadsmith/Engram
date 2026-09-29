@@ -1,4 +1,4 @@
-use engram_gb::components::{gameboy::GameBoy, gamepak::GamePak};
+use gb::components::{gameboy::GameBoy, gamepak::GamePak};
 use std::path::PathBuf;
 
 fn blargg_cpu_path(rom: &str) -> PathBuf {

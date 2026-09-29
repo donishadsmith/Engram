@@ -4,8 +4,8 @@ resolver = "3"
 
 [workspace.dependencies]
 shared = { path = "shared" }
-engram_gb = { path = "gb" }
-engram_gba = { path = "gba" }
+gb = { path = "gb" }
+gba = { path = "gba" }
 egui = "0.31.1"
 egui-macroquad = { version = "0.17.3", default-features = false }
 macroquad = "0.4.16"

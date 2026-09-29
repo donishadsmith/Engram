@@ -1,6 +1,6 @@
 [package]
-name = "engram_gba"
-version = "0.1.17"
+name = "gba"
+version = "0.1.18"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"

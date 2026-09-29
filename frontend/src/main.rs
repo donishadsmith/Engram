@@ -344,10 +344,10 @@ async fn main() -> Result<(), Error> {
 
                 match ext.as_str() {
                     "gb" | "gbc" => {
-                        session.set_emulator(engram_gb::GameBoySession::new_session(rom_path)?)
+                        session.set_emulator(gb::GameBoySession::new_session(rom_path)?)
                     }
                     "gba" => {
-                        session.set_emulator(engram_gba::GBASession::new_session(rom_path)?);
+                        session.set_emulator(gba::GBASession::new_session(rom_path)?);
                         session.set_solar_sensor();
                     }
                     _ => continue,
