@@ -554,6 +554,7 @@ impl AudioDebugger {
                 .striped(true)
                 .show(ui, |ui| {
                     for channel_id in [
+                        "",
                         "Channel 1",
                         "Channel 2",
                         "Channel 3",

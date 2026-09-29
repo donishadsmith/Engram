@@ -1,5 +1,5 @@
 [workspace]
-members = ["engram", "gb", "gba", "shared"]
+members = ["frontend", "gb", "gba", "shared"]
 resolver = "3"
 
 [workspace.dependencies]
