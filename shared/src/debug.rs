@@ -1,5 +1,21 @@
 use crate::render::{Frame, to_rgba};
 use egui::{CentralPanel, TextureHandle, TextureId, TextureOptions, Vec2};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
+
+pub struct Trace {
+    pub file: BufWriter<File>,
+    pub limit: u64,
+    pub count: u64,
+}
+
+impl Drop for Trace {
+    fn drop(&mut self) {
+        let _ = self.file.flush();
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum DebugPage {

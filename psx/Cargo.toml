@@ -1,0 +1,13 @@
+[package]
+name = "psx"
+version = "0.1.0"
+edition = "2024"
+authors = ["Donisha Smith <donishasmith@outlook.com>"]
+license-file = "LICENSE"
+
+[dependencies]
+egui.workspace = true
+egui-macroquad.workspace = true
+egui_plot.workspace = true
+macroquad.workspace = true
+shared.workspace = true

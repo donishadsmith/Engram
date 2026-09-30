@@ -35,6 +35,7 @@ use crate::components::{
 };
 
 use shared::{
+    debug::Trace,
     psg::PsgMixerRegister,
     script::{WatchpointAccess, WatchpointArgs, WatchpointHit, WatchpointType},
     traits::{BitOps, zero_arr},
@@ -90,12 +91,6 @@ impl WaitState {
             WaitState::WaitState2 => WAIT_STATE2_SEQUENTIAL[waitcnt.get_bit(10) as usize],
         }
     }
-}
-
-pub struct Trace {
-    file: BufWriter<File>,
-    limit: u64,
-    pub count: u64,
 }
 
 fn write_u8_modify_halfword(address: u32, mut halfword: u16, value: u8) -> u16 {
@@ -1158,14 +1153,6 @@ impl Bus {
             on,
             pc: 0,
         });
-    }
-}
-
-impl Drop for Bus {
-    fn drop(&mut self) {
-        if let Some(trace) = &mut self.trace {
-            let _ = trace.file.flush();
-        }
     }
 }
 
