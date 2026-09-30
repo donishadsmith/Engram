@@ -222,9 +222,11 @@ impl AudioDebugger {
         self.frozen = false;
         self.mute = [false; 6];
         self.mute_channels(gba);
+        gba.bus.apu.debugger_status(false);
     }
 
     pub fn freeze(&mut self) {
+        // same unbound growth issue when frozen
         self.frozen = match self.frozen {
             true => false,
             false => true,
@@ -634,6 +636,7 @@ impl AudioDebugger {
         );
 
         self.mute_channels(gba);
+        gba.bus.apu.debugger_status(!self.frozen);
     }
 
     fn mute_channels(&self, gba: &mut GBA) {

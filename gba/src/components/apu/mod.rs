@@ -27,6 +27,7 @@ pub struct APU {
     pub psg_mute: [bool; 4],
     low_pass_left: LowPassFilter,
     low_pass_right: LowPassFilter,
+    pub debugger_visible: bool,
 }
 
 impl APU {
@@ -45,6 +46,7 @@ impl APU {
             psg_prescaler: 0,
             low_pass_left: LowPassFilter::new(),
             low_pass_right: LowPassFilter::new(),
+            debugger_visible: false,
         }
     }
 
@@ -128,10 +130,12 @@ impl APU {
 
         let mut psg_samples = self.psg.samples();
 
-        for (index, sample) in psg_samples.iter_mut().enumerate() {
-            self.psg_history[index].push(*sample);
-            if self.psg_mute[index] {
-                *sample = 0;
+        if self.debugger_visible {
+            for (index, sample) in psg_samples.iter_mut().enumerate() {
+                self.psg_history[index].push(*sample);
+                if self.psg_mute[index] {
+                    *sample = 0;
+                }
             }
         }
 
@@ -163,6 +167,13 @@ impl APU {
 
         self.sample_buffer.push(left.clamp(-512.0, 511.0) / 512.0);
         self.sample_buffer.push(right.clamp(-512.0, 511.0) / 512.0);
+    }
+
+    // huge oopsie, i believe not gating this resulted in many vectors growing without bounds
+    pub fn debugger_status(&mut self, on: bool) {
+        self.debugger_visible = on;
+        self.fifo_a.debugger_visible = on;
+        self.fifo_b.debugger_visible = on;
     }
 
     pub fn reset_sound_registers(&mut self) {

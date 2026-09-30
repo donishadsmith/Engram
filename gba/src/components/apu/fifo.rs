@@ -10,6 +10,7 @@ pub struct Fifo {
     pub history: Vec<u8>,
     pub occupancy: Vec<u8>,
     pub mute: bool,
+    pub debugger_visible: bool,
 }
 
 impl Fifo {
@@ -22,6 +23,7 @@ impl Fifo {
             history: Vec::with_capacity(2048),
             occupancy: Vec::with_capacity(2048),
             mute: false,
+            debugger_visible: false,
         }
     }
 
@@ -30,8 +32,8 @@ impl Fifo {
             return;
         }
 
-        for i in 0..2 {
-            let start_index = (i * 8) as usize;
+        for index in 0..2 {
+            let start_index = (index * 8) as usize;
             let data = value.get_bit_range(start_index..(start_index + 8)) as u8;
             self.queue.push_back(data);
             if self.queue_full() {
@@ -53,8 +55,10 @@ impl Fifo {
             self.latched = data;
         }
 
-        self.history.push(self.latched);
-        self.occupancy.push(self.queue.len() as u8);
+        if self.debugger_visible {
+            self.history.push(self.latched);
+            self.occupancy.push(self.queue.len() as u8);
+        }
     }
 
     pub fn transfer_request(&self) -> Option<Trigger> {

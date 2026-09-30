@@ -172,6 +172,7 @@ pub struct PPU {
     pub transparant_sprite_background: bool,
     pub transparant_background: bool,
     pub bg_debug_info: [BgDebugInfo; 4],
+    pub debugger_visible: bool,
 }
 
 impl PPU {
@@ -235,6 +236,7 @@ impl PPU {
             transparant_sprite_background: true,
             transparant_background: false,
             bg_debug_info: from_fn(|_| BgDebugInfo::new()),
+            debugger_visible: false,
         }
     }
 
@@ -1106,7 +1108,9 @@ impl PPU {
             }
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
-            self.update_oam_debug_data();
+            if self.debugger_visible {
+                self.update_oam_debug_data();
+            }
 
             scanline_event.vblank = true;
         }

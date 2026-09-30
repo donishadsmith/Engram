@@ -165,6 +165,7 @@ impl PpuDebugger {
         self.dispstat = 0;
         self.bg_debug_info = from_fn(|_| BgDebugInfo::new());
         self.mosaic = 0;
+        gba.bus.ppu.debugger_visible = false;
     }
 
     // TODO: continue improving this and improving accuracy, vra palette
@@ -281,6 +282,8 @@ impl PpuDebugger {
             &mut gba.bus.ppu.frontend,
             "Game Screen".to_string(),
         );
+
+        gba.bus.ppu.debugger_visible = !self.frozen;
     }
 
     fn get_pallete(&self, palette_type: PaletteType) -> Vec<Color32> {

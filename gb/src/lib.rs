@@ -140,6 +140,7 @@ impl EmulatorSession for GameBoySession {
                     self.set_resume();
                     break;
                 }
+
                 if self.gameboy.cpu.bus.watchpoint_pause.get() {
                     break;
                 }
@@ -157,6 +158,7 @@ impl EmulatorSession for GameBoySession {
                     self.set_resume();
                     break;
                 }
+
                 if self.gameboy.cpu.bus.watchpoint_pause.get() {
                     break;
                 }
