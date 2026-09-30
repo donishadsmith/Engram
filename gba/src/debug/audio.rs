@@ -1,3 +1,4 @@
+// TODO: Debugger slow on pi, cpu performance fine, check gpu issue with less texture updating
 use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
 use std::collections::VecDeque;

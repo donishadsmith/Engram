@@ -2,13 +2,11 @@ use crate::render::to_rgb;
 use chrono::Local;
 use gif::{Encoder, Frame, Repeat};
 use macroquad::prelude::*;
-use spin_sleep::sleep;
 use std::{
     collections::BTreeMap,
     fs::File,
     io::{Error, ErrorKind},
     path::PathBuf,
-    time::{Duration, Instant},
 };
 
 pub struct GifRecorder {
@@ -119,15 +117,4 @@ pub fn screenshot(image_dir: PathBuf) {
 
 pub fn error_message(message: String) -> Error {
     Error::new(ErrorKind::InvalidData, message)
-}
-
-// https://github.com/not-fl3/macroquad/issues/749
-// bring back old fps lock for cases where no audio output available
-pub fn fps_lock(frame_start_time: Instant) {
-    let frame_duration = Duration::from_secs_f64(1.0 / 67.0);
-
-    let elapsed_time = frame_start_time.elapsed();
-    if elapsed_time < frame_duration {
-        sleep(frame_duration - elapsed_time);
-    }
 }

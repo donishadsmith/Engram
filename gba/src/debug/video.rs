@@ -1,3 +1,4 @@
+// TODO: Debugger slow on pi, cpu performance fine, check gpu issue with less texture updating
 use crate::components::{
     gba::GBA,
     ppu::{BgDebugInfo, sprites::SpriteAttributes},

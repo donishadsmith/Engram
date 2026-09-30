@@ -20,9 +20,13 @@ use shared::{
     keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
-    utils::fps_lock,
 };
-use std::{io::Error, path::PathBuf, time::Instant};
+use spin_sleep::sleep_until;
+use std::{
+    io::Error,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 const GB_CLOCK_SPEED: u32 = 4194304;
 
@@ -33,6 +37,8 @@ pub struct GameBoySession {
     apu_sample_cycles: u32,
     frame_ready: bool,
     script_engine: ScriptEngine,
+    frame_period: Duration,
+    frame_deadline: Instant,
 }
 
 impl GameBoySession {
@@ -49,6 +55,8 @@ impl GameBoySession {
             gameboy.cpu.bus.ppu.frame.width,
             gameboy.cpu.bus.ppu.frame.height,
         );
+        let frame_period = Duration::from_secs_f64(1.0 / 59.73);
+        let frame_deadline = Instant::now() + frame_period;
 
         Ok(Self {
             audio,
@@ -57,6 +65,8 @@ impl GameBoySession {
             apu_sample_cycles,
             frame_ready: false,
             script_engine: ScriptEngine::new(),
+            frame_period,
+            frame_deadline,
         })
     }
 
@@ -109,7 +119,6 @@ impl EmulatorSession for GameBoySession {
         input_blocked: bool,
         volume: u8,
     ) -> Result<EmulatorState, Error> {
-        let frame_start_time = Instant::now();
         self.frame_ready = false;
         self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
             .try_into()
@@ -174,7 +183,8 @@ impl EmulatorSession for GameBoySession {
         self.draw();
 
         if self.audio.is_none() {
-            fps_lock(frame_start_time);
+            sleep_until(self.frame_deadline);
+            self.frame_deadline += self.frame_period;
         }
 
         Ok(state)
@@ -206,6 +216,7 @@ impl EmulatorSession for GameBoySession {
         );
         self.frame_ready = false;
         self.script_engine = ScriptEngine::new();
+        self.frame_deadline = Instant::now() + self.frame_period;
 
         Ok(())
     }

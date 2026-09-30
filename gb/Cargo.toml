@@ -1,6 +1,6 @@
 [package]
 name = "gb"
-version = "0.1.18"
+version = "0.1.19"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
@@ -9,6 +9,7 @@ license-file = "LICENSE"
 shared.workspace = true
 chrono.workspace = true
 macroquad.workspace = true
+spin_sleep.workspace = true
 
 [dev-dependencies]
 serde.workspace = true

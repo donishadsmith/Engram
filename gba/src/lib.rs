@@ -24,9 +24,13 @@ use shared::{
     keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
-    utils::fps_lock,
 };
-use std::{io::Error, path::PathBuf, time::Instant};
+use spin_sleep::sleep_until;
+use std::{
+    io::Error,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
 const CYCLES_PER_FRAME: u64 = 280896;
@@ -40,6 +44,8 @@ pub struct GBASession {
     frame_ready: bool,
     active_debug: Option<DebugPage>,
     script_engine: ScriptEngine,
+    frame_period: Duration,
+    frame_deadline: Instant,
 }
 
 impl GBASession {
@@ -54,6 +60,8 @@ impl GBASession {
         };
         let gba = GBA::boot(gamepak, apu_sample_cycles);
         let screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
+        let frame_period = Duration::from_secs_f64(1.0 / 59.73);
+        let frame_deadline = Instant::now() + frame_period;
 
         Ok(Self {
             audio,
@@ -64,6 +72,8 @@ impl GBASession {
             frame_ready: false,
             active_debug: None,
             script_engine: ScriptEngine::new(),
+            frame_deadline,
+            frame_period,
         })
     }
 
@@ -132,7 +142,6 @@ impl EmulatorSession for GBASession {
         input_blocked: bool,
         volume: u8,
     ) -> Result<EmulatorState, Error> {
-        let frame_start_time = Instant::now();
         let frame_start_cycle = self.gba.bus.scheduler.current;
         self.frame_ready = false;
         self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
@@ -180,7 +189,8 @@ impl EmulatorSession for GBASession {
         self.draw();
 
         if self.audio.is_none() {
-            fps_lock(frame_start_time);
+            sleep_until(self.frame_deadline);
+            self.frame_deadline += self.frame_period;
         }
 
         Ok(state)
@@ -219,6 +229,7 @@ impl EmulatorSession for GBASession {
         self.frame_ready = false;
         self.active_debug = None;
         self.script_engine = ScriptEngine::new();
+        self.frame_deadline = Instant::now() + self.frame_period;
 
         Ok(())
     }

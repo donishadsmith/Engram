@@ -1,6 +1,6 @@
 [package]
 name = "gba"
-version = "0.1.18"
+version = "0.1.19"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
@@ -11,4 +11,5 @@ egui.workspace = true
 egui-macroquad.workspace = true
 egui_plot.workspace = true
 macroquad.workspace = true
+spin_sleep.workspace = true
 shared.workspace = true
