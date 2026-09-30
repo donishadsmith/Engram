@@ -85,7 +85,7 @@ impl GBASession {
             .execute(&mut self.gba, EmulatorId::Gba, true);
 
         if self.active_debug.is_none() {
-            self.screen.update(&self.gba.bus.ppu.frontend);
+            self.screen.update(&mut self.gba.bus.ppu.frontend);
         }
     }
 
@@ -297,7 +297,7 @@ impl DebugInterface for GBASession {
             None => {}
         }
 
-        self.screen.update(&self.gba.bus.ppu.frontend);
+        self.screen.update(&mut self.gba.bus.ppu.frontend);
 
         self.active_debug = if self.active_debug == debug_page {
             None

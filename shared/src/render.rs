@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use std::mem::swap;
 
 use crate::traits::BitOps;
 
@@ -16,12 +17,32 @@ pub enum ScalingMethod {
     Aspect(u8, u8),
 }
 
+#[derive(Clone)]
 pub struct Frame {
     pub pixels: Box<[u32]>,
     pub width: usize,
     pub height: usize,
     pub pixel_format: PixelFormat,
     pub scaling_method: ScalingMethod,
+    pub buffer_changed: bool,
+    pub dimensions_changed: bool,
+}
+
+impl Frame {
+    pub fn swap(&mut self, frame: &mut Frame) {
+        let dims_differ = self.width != frame.width || self.height != frame.height;
+
+        if dims_differ {
+            self.dimensions_changed = true;
+            swap(&mut self.width, &mut frame.width);
+            swap(&mut self.height, &mut frame.height);
+        }
+
+        if dims_differ || self.pixels != frame.pixels {
+            self.buffer_changed = true;
+            swap(&mut self.pixels, &mut frame.pixels);
+        }
+    }
 }
 
 pub struct Screen {
@@ -43,8 +64,12 @@ impl Screen {
         Self { texture, image }
     }
 
-    pub fn update(&mut self, frame: &Frame) {
-        if self.image.width as usize != frame.width || self.image.height as usize != frame.height {
+    pub fn update(&mut self, frame: &mut Frame) {
+        if !(frame.dimensions_changed || frame.buffer_changed) {
+            return;
+        }
+
+        if frame.dimensions_changed {
             self.image = Image {
                 bytes: vec![0; frame.width * frame.height * RGBA_BYTES_PER_PIXEL],
                 width: frame.width as u16,
@@ -55,19 +80,24 @@ impl Screen {
             self.texture.set_filter(FilterMode::Nearest);
         }
 
-        for (pixel, out) in frame
-            .pixels
-            .iter()
-            .zip(self.image.bytes.chunks_exact_mut(RGBA_BYTES_PER_PIXEL))
-        {
-            let [r, g, b] = to_rbg_single(*pixel, frame.pixel_format);
-            out.copy_from_slice(&[r, g, b, 255]);
+        if frame.buffer_changed {
+            for (pixel, out) in frame
+                .pixels
+                .iter()
+                .zip(self.image.bytes.chunks_exact_mut(RGBA_BYTES_PER_PIXEL))
+            {
+                let [r, g, b] = to_rbg_single(*pixel, frame.pixel_format);
+                out.copy_from_slice(&[r, g, b, 255]);
+            }
         }
 
         self.texture.update(&self.image);
+
+        frame.dimensions_changed = false;
+        frame.buffer_changed = false;
     }
 
-    pub fn draw(&self, frame: &Frame) {
+    pub fn draw(&mut self, frame: &Frame) {
         let screen_width = screen_width();
         let screen_height = screen_height();
 

@@ -1,4 +1,3 @@
-// TODO: Debugger slow on pi, cpu performance fine, check gpu issue with less texture updating
 use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
 use std::collections::VecDeque;
@@ -630,7 +629,7 @@ impl AudioDebugger {
         create_game_screen(
             &mut self.texture,
             egui_ctx,
-            &gba.bus.ppu.frontend,
+            &mut gba.bus.ppu.frontend,
             "Game Screen".to_string(),
         );
 

@@ -8,10 +8,7 @@ use affine::{AffineMatrix, AffineState};
 use shared::render::{Frame, PixelFormat, ScalingMethod};
 use shared::traits::{BitOps, GroupedRegisters, zero_arr};
 use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
-use std::{
-    array::from_fn,
-    mem::{swap, take},
-};
+use std::{array::from_fn, mem::take};
 // https://www.patater.com/gbaguy/gba/ch5.htm
 // https://gbadev.net/tonc/
 // https://github.com/gbadev-org/awesome-gbadev/blob/master/README.md#tutorials
@@ -171,9 +168,7 @@ pub struct PPU {
     pub debug_frontend: [Frame; 4],
     pub debug_frame: [Frame; 4],
     pub frame_ready: bool,
-    pub debug_frame_ready: bool,
     pub sprites_data: Vec<SpriteAttributes>,
-    pub sprites_ready: bool,
     pub transparant_sprite_background: bool,
     pub transparant_background: bool,
     pub bg_debug_info: [BgDebugInfo; 4],
@@ -205,6 +200,8 @@ impl PPU {
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
                 scaling_method: ScalingMethod::Integer,
+                dimensions_changed: false,
+                buffer_changed: true,
             },
             frame: Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
@@ -212,6 +209,8 @@ impl PPU {
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
                 scaling_method: ScalingMethod::Integer,
+                dimensions_changed: false,
+                buffer_changed: true,
             },
             debug_frontend: from_fn(|_| Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
@@ -219,6 +218,8 @@ impl PPU {
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
                 scaling_method: ScalingMethod::Integer,
+                dimensions_changed: false,
+                buffer_changed: true,
             }),
             debug_frame: from_fn(|_| Frame {
                 pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
@@ -226,11 +227,11 @@ impl PPU {
                 height: SCREEN_HEIGHT,
                 pixel_format: PixelFormat::Rgb555,
                 scaling_method: ScalingMethod::Integer,
+                dimensions_changed: false,
+                buffer_changed: true,
             }),
             frame_ready: false,
-            debug_frame_ready: false,
             sprites_data: Vec::with_capacity(128),
-            sprites_ready: false,
             transparant_sprite_background: true,
             transparant_background: false,
             bg_debug_info: from_fn(|_| BgDebugInfo::new()),
@@ -1018,11 +1019,10 @@ impl PPU {
     // not perfect but this is the minimum amount of code i could come with to add sprites
     // to debugger
     pub fn update_oam_debug_data(&mut self) {
-        self.sprites_data = Vec::with_capacity(128);
+        let mut sprites_data: Vec<SpriteAttributes> = Vec::with_capacity(128);
 
         for index in 0..128 {
             let mut sprite = SpriteAttributes::from_bytes(index, &self.oam, DisplayMode::Debug);
-
             let (mosaic_h, mosaic_v) = if sprite.mosaic && sprite.mosaic {
                 (
                     self.mosaic.get_bit_range(8..12) as i32 + 1,
@@ -1052,13 +1052,31 @@ impl PPU {
                             palette_index + 256,
                             LayerId::Sprite,
                             self.transparant_sprite_background,
-                        )
+                        );
                     }
                 }
             }
 
-            self.sprites_data.push(sprite);
+            // Technically, the same sprite can change position in oam but gonna make a strict
+            // assumption here
+            if let Some(frame) = sprite.frame.as_mut()
+                && let Some(old_frame) = self
+                    .sprites_data
+                    .get(index)
+                    .and_then(|old_frame| old_frame.frame.as_ref())
+            {
+                let dims_differ =
+                    old_frame.width != frame.width || old_frame.height != frame.height;
+
+                frame.dimensions_changed = dims_differ || old_frame.dimensions_changed;
+                frame.buffer_changed =
+                    dims_differ || old_frame.pixels != frame.pixels || old_frame.buffer_changed;
+            }
+
+            sprites_data.push(sprite);
         }
+
+        self.sprites_data = sprites_data;
     }
 
     pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> ScanlineEvent {
@@ -1082,13 +1100,13 @@ impl PPU {
 
         if self.vcount == 160 {
             self.frame_ready = true;
-            self.debug_frame_ready = true;
-            swap(&mut self.frame, &mut self.frontend);
-            swap(&mut self.debug_frame, &mut self.debug_frontend);
+            self.frontend.swap(&mut self.frame);
+            for index in 0..4 {
+                self.debug_frontend[index].swap(&mut self.debug_frame[index]);
+            }
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
             self.update_oam_debug_data();
-            self.sprites_ready = true;
 
             scanline_event.vblank = true;
         }

@@ -1,4 +1,7 @@
-// TODO: Debugger slow on pi, cpu performance fine, check gpu issue with less texture updating
+// updates make to reduce amount of texture updating by gating with a flag, but there
+// are minimal improvements during the sprite viewer for the pi. perhaps the issue
+// is the fact that 128 independent textures
+
 use crate::components::{
     gba::GBA,
     ppu::{BgDebugInfo, sprites::SpriteAttributes},
@@ -6,13 +9,10 @@ use crate::components::{
 use egui::{Color32, RichText, Sense, TextureHandle, Window, vec2};
 use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
-    render::{Frame, PixelFormat, ScalingMethod, rgb555_to_rgb888},
+    render::{Frame, rgb555_to_rgb888},
     traits::BitOps,
 };
-use std::{
-    array::from_fn,
-    mem::{swap, take},
-};
+use std::{array::from_fn, mem::swap};
 
 const GRID_COLUMNS: f32 = 16.0;
 const GRID_SPACING: f32 = 2.0;
@@ -110,9 +110,8 @@ pub struct PpuDebugger {
     texture: Option<TextureHandle>,
     palette: [u8; 0x400],
     palette_tab: PaletteType,
-    background_frames: [Frame; 4],
     background_textures: Vec<Option<TextureHandle>>,
-    sprites: Vec<SpriteAttributes>,
+    sprites_data: Vec<SpriteAttributes>,
     sprite_textures: Vec<Option<TextureHandle>>,
     render_tab: RenderTab,
     current_mode: u8,
@@ -134,15 +133,8 @@ impl PpuDebugger {
             texture: None,
             palette: [0; 0x400],
             palette_tab: PaletteType::Background,
-            background_frames: from_fn(|_| Frame {
-                pixels: Box::new([0; 240 * 160]),
-                width: 240,
-                height: 160,
-                pixel_format: PixelFormat::Rgb555,
-                scaling_method: ScalingMethod::Integer,
-            }),
             background_textures: vec![None; 4],
-            sprites: Vec::with_capacity(128),
+            sprites_data: Vec::with_capacity(128),
             sprite_textures: vec![None; 128],
             render_tab: RenderTab::Background,
             current_mode: 0,
@@ -181,19 +173,13 @@ impl PpuDebugger {
         if !self.frozen {
             self.palette = *gba.bus.ppu.palette_ram.clone();
 
-            if take(&mut gba.bus.ppu.debug_frame_ready) {
-                swap(&mut gba.bus.ppu.debug_frontend, &mut self.background_frames);
-            }
-
-            if take(&mut gba.bus.ppu.sprites_ready) {
-                swap(&mut gba.bus.ppu.sprites_data, &mut self.sprites);
-            }
-
             self.current_mode = gba.bus.ppu.current_mode();
 
             for bg_id in 0..4 {
                 self.bg_on[bg_id] = gba.bus.ppu.dispcnt.is_set(8 + bg_id);
             }
+
+            self.sprites_data = gba.bus.ppu.sprites_data.clone();
 
             self.interrupt_flag = gba.bus.interrupt_flag_copy;
             self.interrupt_enable = gba.bus.interrupt_enable_copy;
@@ -270,7 +256,7 @@ impl PpuDebugger {
                             );
                         });
 
-                        self.show_backgrounds(ui)
+                        self.show_backgrounds(ui, &mut gba.bus.ppu.debug_frontend)
                     }
                     RenderTab::Sprite => {
                         ui.horizontal(|ui| {
@@ -292,7 +278,7 @@ impl PpuDebugger {
         create_game_screen(
             &mut self.texture,
             egui_ctx,
-            &gba.bus.ppu.frontend,
+            &mut gba.bus.ppu.frontend,
             "Game Screen".to_string(),
         );
     }
@@ -445,7 +431,7 @@ impl PpuDebugger {
         }
     }
 
-    fn show_backgrounds(&mut self, ui: &mut egui::Ui) {
+    fn show_backgrounds(&mut self, ui: &mut egui::Ui, frames: &mut [Frame; 4]) {
         let width = ui.available_width();
         let cell = vec2(width, width * 160.0 / 240.0);
 
@@ -464,17 +450,25 @@ impl PpuDebugger {
 
             let (rect, _) = ui.allocate_exact_size(cell, Sense::hover());
 
-            let size = compute_size(cell, &self.background_frames[index]);
-            let texture_id = get_texture_id(
-                &mut self.background_textures[index],
-                ui.ctx(),
-                &self.background_frames[index],
-                title,
-            );
+            let size = compute_size(cell, &frames[index]);
+            let texture_id = if self.frozen {
+                self.background_textures[index]
+                    .as_ref()
+                    .map(|texture| texture.id())
+            } else {
+                Some(get_texture_id(
+                    &mut self.background_textures[index],
+                    ui.ctx(),
+                    &mut frames[index],
+                    title,
+                ))
+            };
 
             let image_rect = egui::Rect::from_center_size(rect.center(), size);
 
-            egui::Image::new((texture_id, size)).paint_at(ui, image_rect);
+            if let Some(texture_id) = texture_id {
+                egui::Image::new((texture_id, size)).paint_at(ui, image_rect);
+            }
 
             let response = ui.interact(
                 image_rect,
@@ -519,7 +513,7 @@ impl PpuDebugger {
                 for index in 0..128 {
                     let (rect, response) = ui.allocate_exact_size(cell, Sense::hover());
 
-                    if let Some(frame) = &self.sprites[index].frame {
+                    if let Some(frame) = &mut self.sprites_data[index].frame {
                         if frame.width > 0 && frame.height > 0 {
                             let scale =
                                 (cell.x / frame.width as f32).min(cell.y / frame.height as f32);
@@ -538,7 +532,7 @@ impl PpuDebugger {
                         }
                     }
 
-                    let sprite = &self.sprites[index];
+                    let sprite = &self.sprites_data[index];
                     let mode = if sprite.matrix.is_some() {
                         "affine"
                     } else {

@@ -41,6 +41,7 @@ impl SpriteMode {
     }
 }
 
+#[derive(Clone)]
 pub struct SpriteCoordinate {
     pub x: i32,
     pub y: i32,
@@ -52,6 +53,7 @@ pub struct SpriteDimension {
     pub height: i32,
 }
 
+#[derive(Clone)]
 pub struct SpriteAttributes {
     pub coordinate: SpriteCoordinate,
     pub disabled: bool,
@@ -119,6 +121,8 @@ impl SpriteAttributes {
                 height: dimension.1,
                 pixel_format: PixelFormat::Rgb555,
                 scaling_method: ScalingMethod::Integer,
+                dimensions_changed: false,
+                buffer_changed: true,
             })
         } else {
             None

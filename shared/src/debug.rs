@@ -35,17 +35,25 @@ impl DebugPage {
 pub fn get_texture_id(
     texture_handle: &mut Option<TextureHandle>,
     egui_ctx: &egui::Context,
-    frame: &Frame,
+    frame: &mut Frame,
     id: String,
 ) -> TextureId {
-    let image =
-        egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &to_rgba(&frame));
-    let texture = texture_handle
-        .get_or_insert_with(|| egui_ctx.load_texture(id, image.clone(), TextureOptions::NEAREST));
+    if texture_handle.is_none() || frame.dimensions_changed || frame.buffer_changed {
+        let image =
+            egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &to_rgba(frame));
 
-    texture.set(image, TextureOptions::NEAREST);
+        match texture_handle {
+            Some(texture) => texture.set(image, TextureOptions::NEAREST),
+            None => {
+                *texture_handle = Some(egui_ctx.load_texture(id, image, TextureOptions::NEAREST))
+            }
+        }
 
-    texture.id()
+        frame.buffer_changed = false;
+        frame.dimensions_changed = false;
+    }
+
+    texture_handle.as_ref().unwrap().id()
 }
 
 pub fn compute_size(size: Vec2, frame: &Frame) -> Vec2 {
@@ -60,7 +68,7 @@ pub fn compute_size(size: Vec2, frame: &Frame) -> Vec2 {
 pub fn create_game_screen(
     texture_handle: &mut Option<TextureHandle>,
     egui_ctx: &egui::Context,
-    frame: &Frame,
+    frame: &mut Frame,
     id: String,
 ) {
     let texture_id = get_texture_id(texture_handle, egui_ctx, frame, id);

@@ -84,7 +84,7 @@ impl GameBoySession {
         self.gameboy.take_frame();
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, true);
-        self.screen.update(&self.gameboy.cpu.bus.ppu.frontend);
+        self.screen.update(&mut self.gameboy.cpu.bus.ppu.frontend);
     }
 
     fn draw(&mut self) {
