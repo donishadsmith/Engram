@@ -3,6 +3,10 @@ name = "frontend"
 version = "0.1.18"
 edition = "2024"
 
+[[bin]]
+name = "engram"
+path = "src/main.rs"
+
 [dependencies]
 shared.workspace = true
 gb.workspace = true
