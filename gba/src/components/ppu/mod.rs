@@ -2,7 +2,6 @@ mod affine;
 mod special_effects;
 pub mod sprites;
 
-use crate::components::ppu::sprites::DisplayMode;
 use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 use affine::{AffineMatrix, AffineState};
 use shared::render::{Frame, PixelFormat, ScalingMethod};
@@ -169,10 +168,11 @@ pub struct PPU {
     pub debug_frame: [Frame; 4],
     pub frame_ready: bool,
     pub sprites_data: Vec<SpriteAttributes>,
+    pub sprite_atlas: Frame,
     pub transparant_sprite_background: bool,
     pub transparant_background: bool,
     pub bg_debug_info: [BgDebugInfo; 4],
-    pub debugger_visible: bool,
+    pub debugger_active: bool,
 }
 
 impl PPU {
@@ -231,12 +231,21 @@ impl PPU {
                 dimensions_changed: false,
                 buffer_changed: true,
             }),
+            sprite_atlas: Frame {
+                pixels: Box::new([0; 1024 * 512]),
+                width: 1024,
+                height: 512,
+                pixel_format: PixelFormat::Rgb555,
+                scaling_method: ScalingMethod::Integer,
+                buffer_changed: true,
+                dimensions_changed: false,
+            },
             frame_ready: false,
             sprites_data: Vec::with_capacity(128),
             transparant_sprite_background: true,
             transparant_background: false,
             bg_debug_info: from_fn(|_| BgDebugInfo::new()),
-            debugger_visible: false,
+            debugger_active: false,
         }
     }
 
@@ -871,7 +880,7 @@ impl PPU {
         let mut obj_window = [false; 240];
 
         for sprite_id in 0..128 {
-            let sprite = SpriteAttributes::from_bytes(sprite_id, &self.oam, DisplayMode::Game);
+            let sprite = SpriteAttributes::from_bytes(sprite_id, &self.oam);
 
             if self.current_mode() >= 3 && sprite.tile < 512 {
                 continue;
@@ -1021,10 +1030,16 @@ impl PPU {
     // not perfect but this is the minimum amount of code i could come with to add sprites
     // to debugger
     pub fn update_oam_debug_data(&mut self) {
-        let mut sprites_data: Vec<SpriteAttributes> = Vec::with_capacity(128);
+        self.sprites_data = Vec::with_capacity(128);
 
         for index in 0..128 {
-            let mut sprite = SpriteAttributes::from_bytes(index, &self.oam, DisplayMode::Debug);
+            let sprite = SpriteAttributes::from_bytes(index, &self.oam);
+
+            let (atlas_x, atlas_y) = ((index % 16) * 64, (index / 16) * 64);
+            for row in 0..64 {
+                let start = (atlas_y + row) * 1024 + atlas_x;
+                self.sprite_atlas.pixels[start..start + 64].fill(1 << 31);
+            }
             let (mosaic_h, mosaic_v) = if sprite.mosaic && sprite.mosaic {
                 (
                     self.mosaic.get_bit_range(8..12) as i32 + 1,
@@ -1049,36 +1064,20 @@ impl PPU {
                         texture_y as usize,
                     );
 
-                    if let Some(frame) = sprite.frame.as_mut() {
-                        frame.pixels[pixel] = self.fetch_color(
+                    self.sprite_atlas.pixels
+                        [(atlas_y + row as usize) * 1024 + (atlas_x + col as usize)] = self
+                        .fetch_color(
                             palette_index + 256,
                             LayerId::Sprite,
                             self.transparant_sprite_background,
                         );
-                    }
                 }
             }
 
-            // Technically, the same sprite can change position in oam but gonna make a strict
-            // assumption here
-            if let Some(frame) = sprite.frame.as_mut()
-                && let Some(old_frame) = self
-                    .sprites_data
-                    .get(index)
-                    .and_then(|old_frame| old_frame.frame.as_ref())
-            {
-                let dims_differ =
-                    old_frame.width != frame.width || old_frame.height != frame.height;
-
-                frame.dimensions_changed = dims_differ || old_frame.dimensions_changed;
-                frame.buffer_changed =
-                    dims_differ || old_frame.pixels != frame.pixels || old_frame.buffer_changed;
-            }
-
-            sprites_data.push(sprite);
+            self.sprites_data.push(sprite);
         }
 
-        self.sprites_data = sprites_data;
+        self.sprite_atlas.buffer_changed = true;
     }
 
     pub fn handle_hblank_end(&mut self, interrupt_flag: &mut u16) -> ScanlineEvent {
@@ -1108,7 +1107,7 @@ impl PPU {
             }
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
-            if self.debugger_visible {
+            if self.debugger_active {
                 self.update_oam_debug_data();
             }
 

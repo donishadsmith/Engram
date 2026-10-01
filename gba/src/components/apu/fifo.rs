@@ -7,10 +7,10 @@ pub struct Fifo {
     channel_id: FifoChannel,
     pub latched: u8,
     pub enabled: bool,
-    pub history: Vec<u8>,
-    pub occupancy: Vec<u8>,
+    pub history: VecDeque<i8>,
+    pub occupancy: VecDeque<u8>,
     pub mute: bool,
-    pub debugger_visible: bool,
+    pub debugger_active: bool,
 }
 
 impl Fifo {
@@ -20,10 +20,10 @@ impl Fifo {
             channel_id,
             latched: 0,
             enabled: false,
-            history: Vec::with_capacity(2048),
-            occupancy: Vec::with_capacity(2048),
+            history: VecDeque::with_capacity(2048),
+            occupancy: VecDeque::with_capacity(2048),
             mute: false,
-            debugger_visible: false,
+            debugger_active: false,
         }
     }
 
@@ -55,9 +55,17 @@ impl Fifo {
             self.latched = data;
         }
 
-        if self.debugger_visible {
-            self.history.push(self.latched);
-            self.occupancy.push(self.queue.len() as u8);
+        if self.debugger_active {
+            if self.history.len() == 2048 {
+                self.history.pop_front();
+            }
+
+            if self.occupancy.len() == 2048 {
+                self.occupancy.pop_front();
+            }
+
+            self.history.push_back(self.latched as i8);
+            self.occupancy.push_back(self.queue.len() as u8);
         }
     }
 

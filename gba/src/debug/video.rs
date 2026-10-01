@@ -1,11 +1,8 @@
 // updates make to reduce amount of texture updating by gating with a flag, but there
 // are minimal improvements during the sprite viewer for the pi. perhaps the issue
-// is the fact that 128 independent textures
+// is the fact that 128 independent textures - confirmed this was the issue
 
-use crate::components::{
-    gba::GBA,
-    ppu::{BgDebugInfo, sprites::SpriteAttributes},
-};
+use crate::components::{gba::GBA, ppu::BgDebugInfo};
 use egui::{Color32, RichText, Sense, TextureHandle, Window, vec2};
 use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
@@ -111,8 +108,7 @@ pub struct PpuDebugger {
     palette: [u8; 0x400],
     palette_tab: PaletteType,
     background_textures: Vec<Option<TextureHandle>>,
-    sprites_data: Vec<SpriteAttributes>,
-    sprite_textures: Vec<Option<TextureHandle>>,
+    sprite_atlas_texture: Option<TextureHandle>,
     render_tab: RenderTab,
     current_mode: u8,
     bg_on: [bool; 4],
@@ -134,8 +130,7 @@ impl PpuDebugger {
             palette: [0; 0x400],
             palette_tab: PaletteType::Background,
             background_textures: vec![None; 4],
-            sprites_data: Vec::with_capacity(128),
-            sprite_textures: vec![None; 128],
+            sprite_atlas_texture: None,
             render_tab: RenderTab::Background,
             current_mode: 0,
             bg_on: [false; 4],
@@ -165,7 +160,7 @@ impl PpuDebugger {
         self.dispstat = 0;
         self.bg_debug_info = from_fn(|_| BgDebugInfo::new());
         self.mosaic = 0;
-        gba.bus.ppu.debugger_visible = false;
+        gba.bus.ppu.debugger_active = false;
     }
 
     // TODO: continue improving this and improving accuracy, vra palette
@@ -179,8 +174,6 @@ impl PpuDebugger {
             for bg_id in 0..4 {
                 self.bg_on[bg_id] = gba.bus.ppu.dispcnt.is_set(8 + bg_id);
             }
-
-            self.sprites_data = gba.bus.ppu.sprites_data.clone();
 
             self.interrupt_flag = gba.bus.interrupt_flag_copy;
             self.interrupt_enable = gba.bus.interrupt_enable_copy;
@@ -267,7 +260,7 @@ impl PpuDebugger {
                             );
                         });
 
-                        self.show_sprites(ui)
+                        self.show_sprites(ui, gba)
                     }
                     RenderTab::Information => self.show_information(ui),
                     RenderTab::Palette => {
@@ -283,7 +276,7 @@ impl PpuDebugger {
             "Game Screen".to_string(),
         );
 
-        gba.bus.ppu.debugger_visible = !self.frozen;
+        gba.bus.ppu.debugger_active = !self.frozen;
     }
 
     fn get_pallete(&self, palette_type: PaletteType) -> Vec<Color32> {
@@ -504,7 +497,21 @@ impl PpuDebugger {
         }
     }
 
-    fn show_sprites(&mut self, ui: &mut egui::Ui) {
+    fn show_sprites(&mut self, ui: &mut egui::Ui, gba: &mut GBA) {
+        let atlas_id = if self.frozen && self.sprite_atlas_texture.is_some() {
+            self.sprite_atlas_texture
+                .as_ref()
+                .map(|texture| texture.id())
+                .unwrap()
+        } else {
+            get_texture_id(
+                &mut self.sprite_atlas_texture,
+                ui.ctx(),
+                &mut gba.bus.ppu.sprite_atlas,
+                "Sprite Atlas".into(),
+            )
+        };
+
         let cell_side = compute_cell_width(ui.available_width());
         let cell = vec2(cell_side, cell_side);
 
@@ -515,27 +522,22 @@ impl PpuDebugger {
             .show(ui, |ui| {
                 for index in 0..128 {
                     let (rect, response) = ui.allocate_exact_size(cell, Sense::hover());
+                    let sprite = &gba.bus.ppu.sprites_data[index];
 
-                    if let Some(frame) = &mut self.sprites_data[index].frame {
-                        if frame.width > 0 && frame.height > 0 {
-                            let scale =
-                                (cell.x / frame.width as f32).min(cell.y / frame.height as f32);
-                            let size =
-                                vec2(frame.width as f32 * scale, frame.height as f32 * scale);
-                            let texture_id = get_texture_id(
-                                &mut self.sprite_textures[index],
-                                ui.ctx(),
-                                frame,
-                                format!("Sprite {index}"),
-                            );
-
-                            let image_rect = egui::Rect::from_center_size(rect.center(), size);
-
-                            egui::Image::new((texture_id, size)).paint_at(ui, image_rect);
-                        }
+                    if sprite.dimension.width > 0 {
+                        let (atlas_x, atlas_y) = ((index % 16) as f32 * 64.0, (index / 16) as f32 * 64.0);
+                        let (width, heigth) = (sprite.dimension.width as f32, sprite.dimension.height as f32);
+                        let uv = egui::Rect::from_min_max(
+                            egui::pos2(atlas_x / 1024.0, atlas_y / 512.0),
+                            egui::pos2((atlas_x + width) / 1024.0, (atlas_y + heigth) / 512.0),
+                        );
+                        let scale = (cell.x / width).min(cell.y / heigth);
+                        let size = vec2(width * scale, heigth * scale);
+                        egui::Image::new((atlas_id, size))
+                            .uv(uv)
+                            .paint_at(ui, egui::Rect::from_center_size(rect.center(), size));
                     }
 
-                    let sprite = &self.sprites_data[index];
                     let mode = if sprite.matrix.is_some() {
                         "affine"
                     } else {

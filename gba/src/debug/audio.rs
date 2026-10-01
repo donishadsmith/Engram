@@ -1,6 +1,5 @@
 use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
-use std::collections::VecDeque;
 
 use crate::components::{apu::APU, dma::FifoChannel, gba::GBA};
 use shared::debug::create_game_screen;
@@ -29,42 +28,6 @@ const CHANNELS: [AudioChannel; 6] = [
     AudioChannel::FifoA,
     AudioChannel::FifoB,
 ];
-
-struct AudioSamples {
-    channel1: VecDeque<i8>,
-    channel2: VecDeque<i8>,
-    channel3: VecDeque<i8>,
-    channel4: VecDeque<i8>,
-    fifo_a: VecDeque<i8>,
-    fifo_b: VecDeque<i8>,
-}
-
-impl AudioSamples {
-    fn new() -> Self {
-        Self {
-            channel1: VecDeque::new(),
-            channel2: VecDeque::new(),
-            channel3: VecDeque::new(),
-            channel4: VecDeque::new(),
-            fifo_a: VecDeque::new(),
-            fifo_b: VecDeque::new(),
-        }
-    }
-}
-
-struct AudioOccupancy {
-    fifo_a: VecDeque<u8>,
-    fifo_b: VecDeque<u8>,
-}
-
-impl AudioOccupancy {
-    fn new() -> Self {
-        Self {
-            fifo_a: VecDeque::new(),
-            fifo_b: VecDeque::new(),
-        }
-    }
-}
 
 struct AudioRegisters {
     channel1: [u16; 3],
@@ -195,8 +158,6 @@ fn register(ui: &mut egui::Ui, name: &str, value: u16) {
 
 pub struct AudioDebugger {
     pub frozen: bool,
-    samples: AudioSamples,
-    occupancy: AudioOccupancy,
     mute: [bool; 6],
     texture: Option<TextureHandle>,
     registers: AudioRegisters,
@@ -208,8 +169,6 @@ impl AudioDebugger {
     pub fn new() -> Self {
         Self {
             frozen: false,
-            samples: AudioSamples::new(),
-            occupancy: AudioOccupancy::new(),
             mute: [false; 6],
             texture: None,
             registers: AudioRegisters::new(),
@@ -226,7 +185,6 @@ impl AudioDebugger {
     }
 
     pub fn freeze(&mut self) {
-        // same unbound growth issue when frozen
         self.frozen = match self.frozen {
             true => false,
             false => true,
@@ -235,72 +193,6 @@ impl AudioDebugger {
 
     pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
         if !self.frozen {
-            for (sample, occupancy) in gba
-                .bus
-                .apu
-                .fifo_a
-                .history
-                .drain(..)
-                .zip(gba.bus.apu.fifo_a.occupancy.drain(..))
-            {
-                if self.samples.fifo_a.len() == 2048 {
-                    self.samples.fifo_a.pop_front();
-                    self.occupancy.fifo_a.pop_front();
-                }
-
-                self.samples.fifo_a.push_back(sample as i8);
-                self.occupancy.fifo_a.push_back(occupancy as u8);
-            }
-
-            for (sample, occupancy) in gba
-                .bus
-                .apu
-                .fifo_b
-                .history
-                .drain(..)
-                .zip(gba.bus.apu.fifo_b.occupancy.drain(..))
-            {
-                if self.samples.fifo_b.len() == 2048 {
-                    self.samples.fifo_b.pop_front();
-                    self.occupancy.fifo_b.pop_front();
-                }
-
-                self.samples.fifo_b.push_back(sample as i8);
-                self.occupancy.fifo_b.push_back(occupancy as u8);
-            }
-
-            for sample in gba.bus.apu.psg_history[0].drain(..) {
-                if self.samples.channel1.len() == 2048 {
-                    self.samples.channel1.pop_front();
-                }
-
-                self.samples.channel1.push_back(sample as i8);
-            }
-
-            for sample in gba.bus.apu.psg_history[1].drain(..) {
-                if self.samples.channel2.len() == 2048 {
-                    self.samples.channel2.pop_front();
-                }
-
-                self.samples.channel2.push_back(sample as i8);
-            }
-
-            for sample in gba.bus.apu.psg_history[2].drain(..) {
-                if self.samples.channel3.len() == 2048 {
-                    self.samples.channel3.pop_front();
-                }
-
-                self.samples.channel3.push_back(sample as i8);
-            }
-
-            for sample in gba.bus.apu.psg_history[3].drain(..) {
-                if self.samples.channel4.len() == 2048 {
-                    self.samples.channel4.pop_front();
-                }
-
-                self.samples.channel4.push_back(sample as i8);
-            }
-
             let registers = &gba.bus.apu.psg_registers;
             self.registers.channel1 = [
                 registers.read_u16(0x4000060),
@@ -330,14 +222,15 @@ impl AudioDebugger {
             self.volume.psg = gba.bus.apu.global_control.psg_volume();
         }
 
+        let apu = &gba.bus.apu;
         SidePanel::right("FIFO Audio").show(egui_ctx, |ui| {
             ui.heading("FIFO Audio").highlight();
             ui.separator();
 
             let fifo_a_samples = Line::new(
                 "FIFO A Samples",
-                self.samples
-                    .fifo_a
+                apu.fifo_a
+                    .history
                     .iter()
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
@@ -346,8 +239,8 @@ impl AudioDebugger {
 
             let fifo_a_occupancy = Line::new(
                 "FIFO A Occupancy",
-                self.occupancy
-                    .fifo_a
+                apu.fifo_a
+                    .occupancy
                     .iter()
                     .enumerate()
                     .map(|(index, &size)| [index as f64, size as f64])
@@ -381,8 +274,8 @@ impl AudioDebugger {
 
             let fifo_b_samples = Line::new(
                 "FIFO B Samples",
-                self.samples
-                    .fifo_b
+                apu.fifo_b
+                    .history
                     .iter()
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
@@ -391,8 +284,8 @@ impl AudioDebugger {
 
             let fifo_b_occupancy = Line::new(
                 "FIFO B Occupancy",
-                self.occupancy
-                    .fifo_b
+                apu.fifo_b
+                    .occupancy
                     .iter()
                     .enumerate()
                     .map(|(index, &size)| [index as f64, size as f64])
@@ -430,8 +323,7 @@ impl AudioDebugger {
 
             let channel1_samples = Line::new(
                 "Channel 1 Samples",
-                self.samples
-                    .channel1
+                apu.psg_history[0]
                     .iter()
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
@@ -453,8 +345,7 @@ impl AudioDebugger {
 
             let channel2_samples = Line::new(
                 "Channel 2 Samples",
-                self.samples
-                    .channel2
+                apu.psg_history[1]
                     .iter()
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
@@ -475,8 +366,7 @@ impl AudioDebugger {
 
             let channel3_samples = Line::new(
                 "Channel 3 Samples",
-                self.samples
-                    .channel3
+                apu.psg_history[2]
                     .iter()
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
@@ -497,8 +387,7 @@ impl AudioDebugger {
 
             let channel4_samples = Line::new(
                 "Channel 4 Samples",
-                self.samples
-                    .channel4
+                apu.psg_history[3]
                     .iter()
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])

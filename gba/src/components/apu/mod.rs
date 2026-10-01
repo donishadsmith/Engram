@@ -2,7 +2,7 @@
 mod fifo;
 pub mod global_control;
 
-use std::array::from_fn;
+use std::{array::from_fn, collections::VecDeque};
 
 use crate::components::dma::FifoChannel;
 use fifo::Fifo;
@@ -19,7 +19,7 @@ pub struct APU {
     pub psg: PsgChannel,
     pub fifo_a: Fifo,
     pub fifo_b: Fifo,
-    pub psg_history: [Vec<u8>; 4],
+    pub psg_history: [VecDeque<u8>; 4],
     pub psg_registers: GroupedRegisters<u16>,
     pub sample_buffer: Vec<f32>,
     last_psg_update: u64,
@@ -27,7 +27,7 @@ pub struct APU {
     pub psg_mute: [bool; 4],
     low_pass_left: LowPassFilter,
     low_pass_right: LowPassFilter,
-    pub debugger_visible: bool,
+    pub debugger_active: bool,
 }
 
 impl APU {
@@ -39,14 +39,14 @@ impl APU {
             fifo_b: Fifo::new(FifoChannel::B),
             sample_buffer: Vec::new(),
             last_psg_update: 0,
-            psg_history: from_fn(|_| Vec::with_capacity(2048)),
+            psg_history: from_fn(|_| VecDeque::with_capacity(2048)),
             psg_mixer: PsgMixer::new(),
             psg_registers: GroupedRegisters::new(16, 0x4000060),
             psg_mute: from_fn(|_| false),
             psg_prescaler: 0,
             low_pass_left: LowPassFilter::new(),
             low_pass_right: LowPassFilter::new(),
-            debugger_visible: false,
+            debugger_active: false,
         }
     }
 
@@ -111,7 +111,14 @@ impl APU {
             if self.psg_prescaler == 0 {
                 self.psg.tick();
 
-                let (left_sample, right_sample) = self.psg_mixer.mix(self.psg.samples());
+                let mut psg_samples = self.psg.samples();
+                for (index, muted) in self.psg_mute.iter().enumerate() {
+                    if *muted {
+                        psg_samples[index] = 0
+                    }
+                }
+
+                let (left_sample, right_sample) = self.psg_mixer.mix(psg_samples);
                 self.low_pass_left.collect_sample(left_sample as f64);
                 self.low_pass_right.collect_sample(right_sample as f64);
             }
@@ -129,13 +136,13 @@ impl APU {
         }
 
         let mut psg_samples = self.psg.samples();
-
-        if self.debugger_visible {
-            for (index, sample) in psg_samples.iter_mut().enumerate() {
-                self.psg_history[index].push(*sample);
-                if self.psg_mute[index] {
-                    *sample = 0;
+        for (index, sample) in psg_samples.iter_mut().enumerate() {
+            if self.debugger_active {
+                if self.psg_history[index].len() == 2048 {
+                    self.psg_history[index].pop_front();
                 }
+
+                self.psg_history[index].push_back(*sample);
             }
         }
 
@@ -170,10 +177,11 @@ impl APU {
     }
 
     // huge oopsie, i believe not gating this resulted in many vectors growing without bounds
+    // now just make the sample collectors ring buffers - why didnt i do that to begin with
     pub fn debugger_status(&mut self, on: bool) {
-        self.debugger_visible = on;
-        self.fifo_a.debugger_visible = on;
-        self.fifo_b.debugger_visible = on;
+        self.debugger_active = on;
+        self.fifo_a.debugger_active = on;
+        self.fifo_b.debugger_active = on;
     }
 
     pub fn reset_sound_registers(&mut self) {

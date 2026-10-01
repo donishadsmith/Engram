@@ -1,14 +1,5 @@
 use crate::components::ppu::{AffineMatrix, Bpp};
-use shared::{
-    render::{Frame, PixelFormat, ScalingMethod},
-    traits::BitOps,
-};
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum DisplayMode {
-    Game,
-    Debug,
-}
+use shared::traits::BitOps;
 
 const SPRITE_DIMENSIONS: [[(usize, usize); 4]; 3] = [
     [(8, 8), (16, 16), (32, 32), (64, 64)],
@@ -68,12 +59,11 @@ pub struct SpriteAttributes {
     pub priority: u8,
     pub palette_bank: usize,
     pub bounding_box: SpriteDimension,
-    pub frame: Option<Frame>,
     pub double_size: bool,
 }
 
 impl SpriteAttributes {
-    pub fn from_bytes(sprite_id: usize, oam: &Box<[u8; 1024]>, display_mode: DisplayMode) -> Self {
+    pub fn from_bytes(sprite_id: usize, oam: &Box<[u8; 1024]>) -> Self {
         let (attribute0, attribute1, attribute2) = create_attribute_halfwords(sprite_id, oam);
 
         let affine = attribute0.is_set(8);
@@ -114,20 +104,6 @@ impl SpriteAttributes {
         let priority = attribute2.get_bit_range(10..12) as u8;
         let palette_bank = attribute2.get_bit_range(12..16) as usize;
 
-        let frame = if display_mode == DisplayMode::Debug {
-            Some(Frame {
-                pixels: vec![0; dimension.0 * dimension.1].into_boxed_slice(),
-                width: dimension.0,
-                height: dimension.1,
-                pixel_format: PixelFormat::Rgb555,
-                scaling_method: ScalingMethod::Integer,
-                dimensions_changed: false,
-                buffer_changed: true,
-            })
-        } else {
-            None
-        };
-
         let matrix = if affine {
             Some(create_sprite_affine(
                 attribute1.get_bit_range(9..14) as usize,
@@ -160,7 +136,6 @@ impl SpriteAttributes {
             priority,
             palette_bank,
             bounding_box,
-            frame,
             double_size,
         }
     }
