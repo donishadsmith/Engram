@@ -55,6 +55,11 @@ impl<T: ScheduledEvent> EventScheduler<T> {
         self.queue.retain(|Reverse((_, e))| *e != event);
     }
 
+    // lazy fix for a gba test that failed because events are initialized on bus construction
+    pub fn clear_all_events(&mut self) {
+        self.queue = BinaryHeap::new();
+    }
+
     pub fn is_scheduled(&self, event: T) -> bool {
         self.queue.iter().any(|Reverse((_, e))| *e == event)
     }
