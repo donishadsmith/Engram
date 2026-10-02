@@ -8,7 +8,7 @@ use crate::components::{
     bus::{AccessType, Bus},
     cpu::{Arm7tdmi, HaltState, Registers},
 };
-use shared::traits::BitOps;
+use shared::{enums::Width, traits::BitOps};
 use std::f32::consts::PI;
 
 const ARCTAN_COEFFICIENTS: [i32; 7] = [0x390, 0x91C, 0xFB6, 0x16AA, 0x2081, 0x3651, 0xA2F9];
@@ -18,13 +18,6 @@ const THREE_FOURTHS_CIRCLE: i32 = 0xC000;
 const HALF_CIRCLE: i32 = 0x8000;
 const QUARTER_CIRCLE: i32 = 0x4000;
 const CIRCLE_ORIGIN: i32 = 0;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum BitSize {
-    EightBit,
-    SixteenBit,
-    ThirtyTwoBit,
-}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CpuSetMode {
@@ -80,19 +73,14 @@ pub fn handle_swi(function: u32, cpu: &mut Arm7tdmi, bus: &mut Bus) {
         0x0E => bg_affine_set(&cpu.registers, bus),
         0x0F => obj_affine_set(&cpu.registers, bus),
         0x10 => bit_unpack(&cpu.registers, bus),
-        0x11 => lz77_uncomp(&cpu.registers, bus, BitSize::EightBit),
-        0x12 => lz77_uncomp(&cpu.registers, bus, BitSize::SixteenBit),
+        0x11 => lz77_uncomp(&cpu.registers, bus, Width::Byte),
+        0x12 => lz77_uncomp(&cpu.registers, bus, Width::Halfword),
         0x13 => huff_uncomp(&cpu.registers, bus),
-        0x14 => rl_uncomp(&cpu.registers, bus, BitSize::EightBit),
-        0x15 => rl_uncomp(&cpu.registers, bus, BitSize::SixteenBit),
-        0x16 => diff_unfilter(&cpu.registers, bus, BitSize::EightBit, BitSize::EightBit),
-        0x17 => diff_unfilter(&cpu.registers, bus, BitSize::EightBit, BitSize::SixteenBit),
-        0x18 => diff_unfilter(
-            &cpu.registers,
-            bus,
-            BitSize::SixteenBit,
-            BitSize::SixteenBit,
-        ),
+        0x14 => rl_uncomp(&cpu.registers, bus, Width::Byte),
+        0x15 => rl_uncomp(&cpu.registers, bus, Width::Halfword),
+        0x16 => diff_unfilter(&cpu.registers, bus, Width::Byte, Width::Byte),
+        0x17 => diff_unfilter(&cpu.registers, bus, Width::Byte, Width::Halfword),
+        0x18 => diff_unfilter(&cpu.registers, bus, Width::Halfword, Width::Halfword),
         0x1F => midi_key_2_freq(&mut cpu.registers, bus),
         0xFF => cpu.halt_state = HaltState::TestExit(cpu.registers.r[0]),
         _ => {}
@@ -204,12 +192,12 @@ fn cpuset(cpu: &Arm7tdmi, bus: &mut Bus, cpu_mode: CpuSetMode) {
     let fixed_source_address = metadata.get_bit(24);
 
     let bit_mode = match cpu_mode {
-        CpuSetMode::CpuSetFast => BitSize::ThirtyTwoBit,
+        CpuSetMode::CpuSetFast => Width::Word,
         CpuSetMode::CpuSet => {
             if metadata.is_set(26) {
-                BitSize::ThirtyTwoBit
+                Width::Word
             } else {
-                BitSize::SixteenBit
+                Width::Halfword
             }
         }
     };
@@ -220,10 +208,8 @@ fn cpuset(cpu: &Arm7tdmi, bus: &mut Bus, cpu_mode: CpuSetMode) {
 
     let fill_data: Option<u32> = if fixed_source_address == 1 {
         match bit_mode {
-            BitSize::SixteenBit => {
-                Some(bus.read_u16(source_address, AccessType::Nonsequential) as u32)
-            }
-            BitSize::ThirtyTwoBit => Some(bus.read_u32(source_address, AccessType::Nonsequential)),
+            Width::Halfword => Some(bus.read_u16(source_address, AccessType::Nonsequential) as u32),
+            Width::Word => Some(bus.read_u32(source_address, AccessType::Nonsequential)),
             _ => unreachable!(),
         }
     } else {
@@ -239,25 +225,25 @@ fn cpuset(cpu: &Arm7tdmi, bus: &mut Bus, cpu_mode: CpuSetMode) {
         };
         match fill_data {
             Some(data) => match bit_mode {
-                BitSize::SixteenBit => {
+                Width::Halfword => {
                     bus.write_u16(destination_address, data as u16, access_type);
                     destination_address += 2;
                 }
-                BitSize::ThirtyTwoBit => {
+                Width::Word => {
                     bus.write_u32(destination_address, data, access_type);
                     destination_address += 4;
                 }
                 _ => unreachable!(),
             },
             None => match bit_mode {
-                BitSize::SixteenBit => {
+                Width::Halfword => {
                     let halfword = bus.read_u16(source_address, access_type);
                     source_address += 2;
 
                     bus.write_u16(destination_address, halfword, access_type);
                     destination_address += 2;
                 }
-                BitSize::ThirtyTwoBit => {
+                Width::Word => {
                     let word = bus.read_u32(source_address, access_type);
                     source_address += 4;
 
@@ -703,12 +689,12 @@ impl DiffMetadata {
         }
     }
 
-    fn transform_data(&self, bus: &mut Bus, read_width: BitSize) -> Vec<u8> {
+    fn transform_data(&self, bus: &mut Bus, read_width: Width) -> Vec<u8> {
         let mut arr = vec![0u8; self.source_data_size as usize];
         let data_start = self.source_address + 4;
 
         match read_width {
-            BitSize::EightBit => {
+            Width::Byte => {
                 let mut accumulator: u8 = 0;
                 for i in 0..self.source_data_size {
                     let byte = bus.read_u8(data_start + i, AccessType::Sequential);
@@ -716,7 +702,7 @@ impl DiffMetadata {
                     arr[i as usize] = accumulator;
                 }
             }
-            BitSize::SixteenBit => {
+            Width::Halfword => {
                 let mut accumulator: u16 = 0;
                 for i in 0..(self.source_data_size / 2) {
                     let halfword = bus.read_u16(data_start + i * 2, AccessType::Sequential);
@@ -732,14 +718,14 @@ impl DiffMetadata {
     }
 }
 
-fn diff_unfilter(registers: &Registers, bus: &mut Bus, read_width: BitSize, write_width: BitSize) {
+fn diff_unfilter(registers: &Registers, bus: &mut Bus, read_width: Width, write_width: Width) {
     let metadata = DiffMetadata::from_register(registers.r[0], bus);
     let destination_address = registers.r[1];
 
     let data = metadata.transform_data(bus, read_width);
 
     match write_width {
-        BitSize::EightBit => {
+        Width::Byte => {
             for i in 0..metadata.source_data_size {
                 bus.write_u8(
                     destination_address + i,
@@ -748,7 +734,7 @@ fn diff_unfilter(registers: &Registers, bus: &mut Bus, read_width: BitSize, writ
                 );
             }
         }
-        BitSize::SixteenBit => {
+        Width::Halfword => {
             for i in 0..(metadata.source_data_size / 2) {
                 let low_byte = data[(i * 2) as usize] as u16;
                 let high_byte = data[((i * 2) + 1) as usize] as u16;
@@ -779,12 +765,12 @@ impl CompressionType {
 }
 
 struct Packer {
-    write_width: BitSize,
+    write_width: Width,
     pending: Option<u8>,
 }
 
 impl Packer {
-    fn new(write_width: BitSize) -> Self {
+    fn new(write_width: Width) -> Self {
         Self {
             write_width,
             pending: None,
@@ -793,11 +779,11 @@ impl Packer {
 
     fn push(&mut self, bus: &mut Bus, destination_address: &mut u32, byte: u8) {
         match self.write_width {
-            BitSize::EightBit => {
+            Width::Byte => {
                 bus.write_u8(*destination_address, byte, AccessType::Sequential);
                 *destination_address += 1;
             }
-            BitSize::SixteenBit => match self.pending.take() {
+            Width::Halfword => match self.pending.take() {
                 Some(low_byte) => {
                     let halfword = low_byte as u16 | ((byte as u16) << 8);
                     bus.write_u16(*destination_address, halfword, AccessType::Sequential);
@@ -819,7 +805,7 @@ impl Packer {
     }
 }
 
-fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
+fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: Width) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
 
@@ -873,7 +859,7 @@ fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
 }
 
 // Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
-fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: BitSize) {
+fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: Width) {
     bus.idle(20);
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
@@ -1251,7 +1237,7 @@ mod tests {
         let header = 4 << 8;
         write_diff_source(&mut bus, 0x03000000, header, &[10, 1, 0xFF, 1]);
 
-        diff_unfilter(&registers, &mut bus, BitSize::EightBit, BitSize::EightBit);
+        diff_unfilter(&registers, &mut bus, Width::Byte, Width::Byte);
 
         assert_eq!(&bus.ewram[0..4], &[10, 11, 10, 11]);
     }
@@ -1272,12 +1258,7 @@ mod tests {
             &[0xFF, 0x00, 0x01, 0x00, 0xFF, 0xFF],
         );
 
-        diff_unfilter(
-            &registers,
-            &mut bus,
-            BitSize::SixteenBit,
-            BitSize::SixteenBit,
-        );
+        diff_unfilter(&registers, &mut bus, Width::Halfword, Width::Halfword);
 
         assert_eq!(
             u16::from_le_bytes(bus.ewram[0..2].try_into().unwrap()),
@@ -1304,7 +1285,7 @@ mod tests {
         let header = 4 << 8;
         write_diff_source(&mut bus, 0x03000000, header, &[10, 1, 1, 1]);
 
-        diff_unfilter(&registers, &mut bus, BitSize::EightBit, BitSize::SixteenBit);
+        diff_unfilter(&registers, &mut bus, Width::Byte, Width::Halfword);
 
         assert_eq!(ewram_word(&bus, 0), 0x0D0C0B0A);
     }
@@ -1326,7 +1307,7 @@ mod tests {
             &[0x84, 0xAA, 0x02, 0x11, 0x22, 0x33, 0x81, 0x00],
         );
 
-        rl_uncomp(&registers, &mut bus, BitSize::EightBit);
+        rl_uncomp(&registers, &mut bus, Width::Byte);
 
         assert_eq!(
             &bus.ewram[0..14],
@@ -1348,7 +1329,7 @@ mod tests {
         let header = 4 << 8;
         write_diff_source(&mut bus, 0x03000000, header, &[0x80, 0xAA, 0x00, 0xBB]);
 
-        rl_uncomp(&registers, &mut bus, BitSize::SixteenBit);
+        rl_uncomp(&registers, &mut bus, Width::Halfword);
 
         assert_eq!(ewram_word(&bus, 0), 0xBBAA_AAAA);
     }
@@ -1370,7 +1351,7 @@ mod tests {
             &[0x20, 0x41, 0x42, 0x00, 0x01],
         );
 
-        lz77_uncomp(&registers, &mut bus, BitSize::EightBit);
+        lz77_uncomp(&registers, &mut bus, Width::Byte);
 
         assert_eq!(&bus.ewram[0..5], &[0x41, 0x42, 0x41, 0x42, 0x41]);
     }

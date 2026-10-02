@@ -15,29 +15,25 @@
 
 // https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
 
-use std::{
-    collections::HashMap,
-    env::var,
-    fmt::Arguments,
-    fs::File,
-    io::{BufWriter, Write},
-};
+use std::{collections::HashMap, env::var, fmt::Arguments, fs::File, io::BufWriter};
 
 use crate::components::{
     apu::APU,
     dma::{DmaChannels, FifoChannel, TransferType, Trigger},
     gamepak::{BackupChip, GamePak},
+    gba::{APU_SEQUENCER, CYCLES_PER_SCANLINE, Event, HBLANK_OFFSET},
     keypad::Keypad,
     ppu::PPU,
-    scheduler::EventScheduler,
     serial::Serial,
     timer::Timers,
 };
 
 use shared::{
     debug::Trace,
+    enums::Width,
     psg::PsgMixerRegister,
-    script::{WatchpointAccess, WatchpointArgs, WatchpointHit, WatchpointType},
+    scheduler::EventScheduler,
+    script::{WatchpointArgs, WatchpointHit, WatchpointType},
     traits::{BitOps, zero_arr},
 };
 
@@ -106,7 +102,7 @@ fn write_u8_modify_halfword(address: u32, mut halfword: u16, value: u8) -> u16 {
 }
 
 pub struct Bus {
-    pub scheduler: EventScheduler,
+    pub scheduler: EventScheduler<Event>,
     _bios: Box<[u8; 0x4000]>,
     pub ewram: Box<[u8; 0x40000]>,
     pub iwram: Box<[u8; 0x8000]>,
@@ -138,17 +134,23 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(gamepak: GamePak, apu_sample_period: u32) -> Self {
-        let trace = var("TRACE")
+        let trace = var("GBATRACE")
             .ok()
             .and_then(|str| str.parse().ok())
             .map(|limit| Trace {
-                file: BufWriter::with_capacity(1 << 20, File::create("trace.txt").unwrap()),
+                file: BufWriter::with_capacity(1 << 20, File::create("gba_trace.txt").unwrap()),
                 limit,
                 count: 0,
             });
 
+        let mut scheduler = EventScheduler::<Event>::new();
+        scheduler.push(Event::Hblank, HBLANK_OFFSET);
+        scheduler.push(Event::HblankEnd, CYCLES_PER_SCANLINE);
+        scheduler.push(Event::ApuSample, apu_sample_period as u64);
+        scheduler.push(Event::ApuSequencer, APU_SEQUENCER);
+
         Self {
-            scheduler: EventScheduler::new(apu_sample_period),
+            scheduler,
             _bios: zero_arr(),
             ewram: zero_arr(),
             iwram: zero_arr(),
@@ -261,7 +263,7 @@ impl Bus {
             }
         };
 
-        self.check_read_watchpoint(address, access_type, WatchpointAccess::Byte, value as u32);
+        self.check_read_watchpoint(address, access_type, Width::Byte, value as u32);
 
         value
     }
@@ -269,7 +271,7 @@ impl Bus {
     pub fn write_u8(&mut self, address: u32, value: u8, access_type: AccessType) {
         self.cost(address, 8, access_type);
 
-        self.check_write_watchpoint(address, access_type, WatchpointAccess::Byte, value as u32);
+        self.check_write_watchpoint(address, access_type, Width::Byte, value as u32);
 
         // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
@@ -398,12 +400,7 @@ impl Bus {
             }
         };
 
-        self.check_read_watchpoint(
-            address,
-            access_type,
-            WatchpointAccess::Halfword,
-            value as u32,
-        );
+        self.check_read_watchpoint(address, access_type, Width::Halfword, value as u32);
 
         value
     }
@@ -411,12 +408,7 @@ impl Bus {
     pub fn write_u16(&mut self, mut address: u32, value: u16, access_type: AccessType) {
         self.cost(address, 16, access_type);
 
-        self.check_write_watchpoint(
-            address,
-            access_type,
-            WatchpointAccess::Halfword,
-            value as u32,
-        );
+        self.check_write_watchpoint(address, access_type, Width::Halfword, value as u32);
 
         if self.is_eeprom_address(address) {
             self.eeprom_write_u16(value);
@@ -526,7 +518,7 @@ impl Bus {
             }
         };
 
-        self.check_read_watchpoint(address, access_type, WatchpointAccess::Word, value);
+        self.check_read_watchpoint(address, access_type, Width::Word, value);
 
         value
     }
@@ -534,7 +526,7 @@ impl Bus {
     pub fn write_u32(&mut self, mut address: u32, value: u32, access_type: AccessType) {
         self.cost(address, 32, access_type);
 
-        self.check_write_watchpoint(address, access_type, WatchpointAccess::Word, value);
+        self.check_write_watchpoint(address, access_type, Width::Word, value);
         let bytes = value.to_le_bytes();
         if address & !1 == 0x4000300 {
             if address.is_clear(0) {
@@ -1052,19 +1044,10 @@ impl Bus {
         }
     }
 
-    pub fn trace(&mut self, write: impl FnOnce(&mut dyn Write)) {
-        if let Some(trace) = &mut self.trace {
-            if trace.count <= trace.limit {
-                write(&mut trace.file);
-            }
-        }
-    }
-
     pub fn dump(&mut self, arguments: Arguments) {
-        self.trace(|write| {
-            let _ = write.write_fmt(arguments);
-            let _ = writeln!(write);
-        });
+        if let Some(trace) = &mut self.trace {
+            trace.dump(arguments);
+        }
     }
 
     pub fn copy_interrupt_info(&mut self) {
@@ -1078,21 +1061,21 @@ impl Bus {
         &mut self,
         address: u32,
         access_type: AccessType,
-        access: WatchpointAccess,
+        width: Width,
         value: u32,
     ) {
         if access_type == AccessType::Lua || self.watchpoint_queue.is_empty() {
             return;
         }
 
-        let address = access.align(address);
+        let address = width.align(address);
         let Some(args) = self.watchpoint_queue.get(&address) else {
             return;
         };
 
-        if args.access == access && args.fires_on_read(value) {
+        if args.width == width && args.fires_on_read(value) {
             let pause = args.pause;
-            self.push_watchpoint_hit(address, value, pause, access, WatchpointType::Read);
+            self.push_watchpoint_hit(address, value, pause, width, WatchpointType::Read);
         }
     }
 
@@ -1101,19 +1084,19 @@ impl Bus {
         &mut self,
         address: u32,
         access_type: AccessType,
-        access: WatchpointAccess,
+        width: Width,
         value: u32,
     ) {
         if access_type == AccessType::Lua || self.watchpoint_queue.is_empty() {
             return;
         }
 
-        let address = access.align(address);
+        let address = width.align(address);
         let Some(args) = self.watchpoint_queue.get_mut(&address) else {
             return;
         };
 
-        if args.access != access {
+        if args.width != width {
             return;
         }
 
@@ -1125,7 +1108,7 @@ impl Bus {
         };
 
         if args.should_fire_on_write(value) {
-            self.push_watchpoint_hit(address, value, pause, access, on);
+            self.push_watchpoint_hit(address, value, pause, width, on);
         }
     }
 
@@ -1134,7 +1117,7 @@ impl Bus {
         address: u32,
         value: u32,
         pause: bool,
-        access: WatchpointAccess,
+        width: Width,
         on: WatchpointType,
     ) {
         if pause {
@@ -1149,9 +1132,10 @@ impl Bus {
             address,
             value,
             pause,
-            access,
+            width,
             on,
             pc: 0,
+            fetch_source: None,
         });
     }
 }

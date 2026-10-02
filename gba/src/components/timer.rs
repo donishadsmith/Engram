@@ -1,5 +1,5 @@
-use crate::components::scheduler::{Event, EventScheduler};
-use shared::traits::BitOps;
+use crate::components::gba::Event;
+use shared::{scheduler::EventScheduler, traits::BitOps};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum IncrementTimerMode {
@@ -66,7 +66,7 @@ impl Timer {
         }
     }
 
-    pub fn write_control_register(&mut self, value: u16, scheduler: &mut EventScheduler) {
+    pub fn write_control_register(&mut self, value: u16, scheduler: &mut EventScheduler<Event>) {
         if self.on {
             self.counter = self.current_counter(scheduler.current);
         }
@@ -102,7 +102,7 @@ impl Timer {
         }
     }
 
-    pub fn schedule_overflow(&mut self, timestamp: u64, scheduler: &mut EventScheduler) {
+    pub fn schedule_overflow(&mut self, timestamp: u64, scheduler: &mut EventScheduler<Event>) {
         let IncrementTimerMode::Prescaler(prescaler) = self.increment_mode else {
             return;
         };
@@ -134,7 +134,7 @@ impl Timers {
         &mut self,
         timer_id: u8,
         deadline: u64,
-        scheduler: &mut EventScheduler,
+        scheduler: &mut EventScheduler<Event>,
         interrupt_flag: &mut u16,
     ) -> u8 {
         let timer = &self.timers[timer_id as usize];
@@ -203,7 +203,7 @@ impl Timers {
 mod tests {
     use super::*;
     use crate::components::{
-        bus::AccessType, gamepak::BackupType, scheduler::Event::TimerOverflow, utils::create_bus,
+        bus::AccessType, gamepak::BackupType, gba::Event::TimerOverflow, utils::create_bus,
     };
 
     // counter=200; prescaler=256; first tick is 256 and deadline = 256+(0x10000 - 200 - 1)*256 = 256 + 65335* 256 = 16726016

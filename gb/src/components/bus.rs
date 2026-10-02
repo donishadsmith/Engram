@@ -15,7 +15,8 @@ MemoryMap
 */
 
 use shared::{
-    script::{WatchpointAccess, WatchpointArgs, WatchpointHit, WatchpointType},
+    enums::Width,
+    script::{WatchpointArgs, WatchpointHit, WatchpointType},
     traits::BitOps,
 };
 use std::{
@@ -372,9 +373,10 @@ impl Bus {
             address: address as u32,
             value: value as u32,
             pause,
-            access: WatchpointAccess::Byte,
+            width: Width::Byte,
             on,
             pc: 0,
+            fetch_source: None,
         });
     }
 }

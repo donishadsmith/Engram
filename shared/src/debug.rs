@@ -1,6 +1,7 @@
 use crate::render::{Frame, to_rgba};
 use egui::{CentralPanel, TextureHandle, TextureId, TextureOptions, Vec2};
 use std::{
+    fmt::Arguments,
     fs::File,
     io::{BufWriter, Write},
 };
@@ -9,6 +10,21 @@ pub struct Trace {
     pub file: BufWriter<File>,
     pub limit: u64,
     pub count: u64,
+}
+
+impl Trace {
+    pub fn record(&mut self, write: impl FnOnce(&mut dyn Write)) {
+        if self.count <= self.limit {
+            write(&mut self.file);
+        }
+    }
+
+    pub fn dump(&mut self, arguments: Arguments) {
+        self.record(|write| {
+            let _ = write.write_fmt(arguments);
+            let _ = writeln!(write);
+        });
+    }
 }
 
 impl Drop for Trace {

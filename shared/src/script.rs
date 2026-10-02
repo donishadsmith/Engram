@@ -1,4 +1,8 @@
-use crate::{EmulatorId, EmulatorState, ScriptTarget, keybind::DEFAULT_GBA_KEYS};
+use crate::{
+    EmulatorId, EmulatorState, ScriptTarget,
+    enums::{FetchSource, Width},
+    keybind::DEFAULT_GBA_KEYS,
+};
 use mlua::{
     Function, HookTriggers, Lua, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus,
 };
@@ -39,7 +43,7 @@ check_breakpoints()
 Watchpoints for bus accesses:
 set_watchpoint(address, {pause = true, on = "rw", access = "byte", target=None})
   - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
-  - access: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
+  - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
     a watchpoint only fires for specified access width
   - target: on writes its the incoming value being written to address and on reads its the current value
     at the address being accessed; watchpoint only fires for specified target
@@ -118,48 +122,12 @@ impl WatchpointType {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum WatchpointAccess {
-    Byte,
-    Halfword,
-    Word,
-}
-
-impl WatchpointAccess {
-    pub fn from_string(string: String) -> Result<WatchpointAccess, mlua::Error> {
-        match string.to_lowercase().as_str() {
-            "byte" => Ok(WatchpointAccess::Byte),
-            "halfword" => Ok(WatchpointAccess::Halfword),
-            "word" => Ok(WatchpointAccess::Word),
-            _ => Err(mlua::Error::runtime(format!(
-                "invalid option for `access`: {string}; valid options are 'byte', 'halfword', and 'word'."
-            ))),
-        }
-    }
-
-    pub fn to_string(self) -> &'static str {
-        match self {
-            WatchpointAccess::Byte => "byte",
-            WatchpointAccess::Halfword => "halfword",
-            WatchpointAccess::Word => "word",
-        }
-    }
-
-    pub fn align(self, address: u32) -> u32 {
-        match self {
-            WatchpointAccess::Byte => address,
-            WatchpointAccess::Halfword => address & !1,
-            WatchpointAccess::Word => address & !3,
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub struct WatchpointArgs {
     pub pause: bool,
     pub on: WatchpointType,
     pub target: Option<u32>,
-    pub access: WatchpointAccess,
+    pub width: Width,
     pub last_written: Option<u32>,
 }
 
@@ -198,9 +166,10 @@ pub struct WatchpointHit {
     pub address: u32,
     pub value: u32,
     pub pause: bool,
-    pub access: WatchpointAccess,
+    pub width: Width,
     pub on: WatchpointType,
     pub pc: u32,
+    pub fetch_source: Option<FetchSource>,
 }
 
 impl WatchpointHit {
@@ -243,11 +212,11 @@ fn parse_watchpoint_args(
     address: u32,
     kwargs: Option<Table>,
 ) -> Result<(u32, WatchpointArgs), mlua::Error> {
-    let (pause, on, access, target) = match kwargs {
+    let (pause, on, width, target) = match kwargs {
         Some(table) => (
             table.get::<Option<bool>>("pause")?,
             table.get::<Option<String>>("on")?,
-            table.get::<Option<String>>("access")?,
+            table.get::<Option<String>>("width")?,
             table.get::<Option<u32>>("target")?,
         ),
         None => (None, None, None, None),
@@ -255,11 +224,11 @@ fn parse_watchpoint_args(
 
     let pause = pause.unwrap_or(true);
     let on = WatchpointType::from_string(on.unwrap_or_else(|| "rw".to_string()))?;
-    let access = WatchpointAccess::from_string(access.unwrap_or_else(|| "byte".to_string()))?;
+    let width = Width::from_string(width.unwrap_or_else(|| "byte".to_string()))?;
 
-    if emulator_id == EmulatorId::Gb && access != WatchpointAccess::Byte {
+    if emulator_id == EmulatorId::Gb && width != Width::Byte {
         return Err(mlua::Error::runtime(
-            "invalid option for `access`: gameboy only allows byte access",
+            "invalid option for `width`: gameboy only allows byte width",
         ));
     }
 
@@ -267,11 +236,11 @@ fn parse_watchpoint_args(
         pause,
         on,
         target,
-        access,
+        width,
         last_written: None,
     };
 
-    Ok((access.align(address), watchpoint_args))
+    Ok((width.align(address), watchpoint_args))
 }
 
 fn get_available_inputs(emulator_id: EmulatorId) -> Vec<String> {
@@ -635,7 +604,7 @@ impl ScriptEngine {
                             "run"
                         };
                         let on = watchpoint_args.on.to_string();
-                        let access = watchpoint_args.access.to_string();
+                        let width = watchpoint_args.width.to_string();
                         let target_message = if let Some(target) = watchpoint_args.target {
 
                         format!(" with target={}", target)} else {
@@ -643,7 +612,7 @@ impl ScriptEngine {
                         };
 
                         output.borrow_mut().push(format!(
-                            "watchpoint at {:08x} on {on} for {access} access{}, action on watchpoint: {action}",
+                            "watchpoint at {:08x} on {on} for {width} access{}, action on watchpoint: {action}",
                             *address, target_message
                         ))
                     }
@@ -751,16 +720,14 @@ impl ScriptEngine {
                 let hook = lua.globals().get::<Function>("on_watchpoint").ok();
 
                 for hit in hits {
-                    if hit.pause || hook.is_none() {
-                        output.borrow_mut().push(format!(
-                            "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}",
-                            hit.address,
-                            hit.on.to_string(),
-                            hit.access.to_string(),
-                            hit.value,
-                            hit.pc
-                        ));
-                    }
+                    output.borrow_mut().push(format!(
+                        "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}",
+                        hit.address,
+                        hit.on.to_string(),
+                        hit.width.to_string(),
+                        hit.value,
+                        hit.pc
+                    ));
 
                     let Some(hook) = &hook else {
                         continue;
@@ -771,7 +738,7 @@ impl ScriptEngine {
                     table.set("value", hit.value)?;
                     table.set("pc", hit.pc)?;
                     table.set("on", hit.on.to_string())?;
-                    table.set("access", hit.access.to_string())?;
+                    table.set("width", hit.width.to_string())?;
                     table.set("pause", hit.pause)?;
 
                     if let Some((domain, offset)) = target.borrow().address_to_domain(hit.address) {

@@ -4,7 +4,6 @@ use crate::components::{
     cpu::{Arm7tdmi, HaltState},
     dma::Trigger,
     gamepak::GamePak,
-    scheduler::Event,
 };
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
@@ -14,19 +13,31 @@ use shared::{
 };
 use std::{io::Error, mem::take};
 
+pub const HBLANK_OFFSET: u64 = 1006;
+pub const CYCLES_PER_SCANLINE: u64 = 1232;
+pub const APU_SEQUENCER: u64 = 32768;
+
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Debug)]
+pub enum Event {
+    Hblank,
+    HblankEnd,
+    TimerOverflow(u8),
+    ApuSample,
+    ApuSequencer,
+}
+
 pub struct GBA {
     pub bus: Bus,
     pub cpu: Arm7tdmi,
     pub scripted_keypad: Option<[bool; 10]>,
     pub keypad: [bool; 10],
+    apu_sample_period: u32,
 }
 
 impl GBA {
     pub fn boot(gamepak: GamePak, apu_sample_period: u32) -> Self {
         let mut bus = Bus::new(gamepak, apu_sample_period);
         bus.skip_boot();
-
-        bus.scheduler.initialize_events();
 
         let mut cpu = Arm7tdmi::new();
         cpu.skip_boot();
@@ -36,6 +47,7 @@ impl GBA {
             cpu,
             scripted_keypad: None,
             keypad: [false; 10],
+            apu_sample_period,
         }
     }
 
@@ -118,7 +130,20 @@ impl GBA {
                         _ => unreachable!(),
                     }
 
-                    self.bus.scheduler.reschedule(event, deadline);
+                    match event {
+                        Event::Hblank | Event::HblankEnd => self
+                            .bus
+                            .scheduler
+                            .push(event, deadline + CYCLES_PER_SCANLINE),
+                        Event::ApuSample => self
+                            .bus
+                            .scheduler
+                            .push(event, deadline + self.apu_sample_period as u64),
+                        Event::ApuSequencer => {
+                            self.bus.scheduler.push(event, deadline + APU_SEQUENCER)
+                        }
+                        _ => unreachable!(),
+                    }
                 }
                 Event::TimerOverflow(timer_id) => {
                     let overflow_mask = self.bus.timers.handle_overflow(

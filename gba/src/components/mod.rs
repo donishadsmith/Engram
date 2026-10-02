@@ -7,7 +7,6 @@ pub mod gamepak;
 pub mod gba;
 pub mod keypad;
 pub mod ppu;
-pub mod scheduler;
 pub mod serial;
 pub mod timer;
 pub mod utils;
