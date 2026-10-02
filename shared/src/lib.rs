@@ -36,6 +36,7 @@ pub enum EmulatorState {
     Launch,
     Paused,
     BiosSelection,
+    SwapDisc,
 }
 
 pub trait Emulator {

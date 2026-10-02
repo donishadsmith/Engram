@@ -53,7 +53,7 @@ struct Session {
     solar_level: u8,
     last_debug_page: HashMap<EmulatorId, DebugPage>,
     lua_editor: LuaEditor,
-    emulator_paused: bool,
+    return_state: Option<EmulatorState>,
     pending_steps: VecDeque<ScriptRequest>,
 }
 
@@ -83,7 +83,7 @@ impl Session {
             solar_level,
             last_debug_page: initialize_debug_hashmap(),
             lua_editor: LuaEditor::new(),
-            emulator_paused: false,
+            return_state: None,
             pending_steps: VecDeque::new(),
         }
     }
@@ -121,10 +121,8 @@ impl Session {
 
     fn toggle_emulator_status(&mut self) {
         self.state = if self.state == EmulatorState::Running {
-            self.emulator_paused = true;
             EmulatorState::Paused
         } else {
-            self.emulator_paused = false;
             EmulatorState::Running
         }
     }
@@ -242,12 +240,23 @@ impl Session {
 
     fn set_paused(&mut self) {
         self.state = EmulatorState::Paused;
-        self.emulator_paused = true;
     }
 
     fn set_running(&mut self) {
         self.state = EmulatorState::Running;
-        self.emulator_paused = false;
+    }
+
+    fn is_paused(&self) -> bool {
+        self.state == EmulatorState::Paused
+    }
+
+    fn add_transient_state(&mut self, state: EmulatorState) {
+        self.return_state = Some(self.state);
+        self.state = state
+    }
+
+    fn take_return_state(&mut self) -> Option<EmulatorState> {
+        self.return_state.take()
     }
 }
 
@@ -321,15 +330,7 @@ async fn main() -> Result<(), Error> {
         match session.state {
             EmulatorState::RomSelection => {
                 let Some(rom_path) = file_dialog() else {
-                    session.state = if session.emulator.is_some() {
-                        if session.emulator_paused {
-                            EmulatorState::Paused
-                        } else {
-                            EmulatorState::Running
-                        }
-                    } else {
-                        EmulatorState::Launch
-                    };
+                    session.state = session.take_return_state().unwrap();
 
                     continue;
                 };
@@ -353,6 +354,7 @@ async fn main() -> Result<(), Error> {
                     _ => continue,
                 }
 
+                session.take_return_state();
                 session.set_running();
             }
             EmulatorState::Running => {
@@ -369,7 +371,7 @@ async fn main() -> Result<(), Error> {
             }
             EmulatorState::Reset => {
                 let _ = session.reset();
-                session.emulator_paused = false;
+                session.take_return_state();
                 session.state = EmulatorState::Running;
             }
             EmulatorState::Quit => {
@@ -391,6 +393,7 @@ async fn main() -> Result<(), Error> {
             EmulatorState::BiosSelection => {
                 // TODO: update for future emu
             }
+            EmulatorState::SwapDisc => {}
         }
 
         egui_macroquad::ui(|egui_ctx| {
@@ -399,7 +402,7 @@ async fn main() -> Result<(), Error> {
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button("Load ROM").clicked() {
-                            session.state = EmulatorState::RomSelection;
+                            session.add_transient_state(EmulatorState::RomSelection);
                             ui.close_menu();
                         }
 
@@ -528,6 +531,7 @@ async fn main() -> Result<(), Error> {
                         target_key_id = None;
                     }
 
+                    // TODO: https://docs.rs/gilrs/latest/gilrs/
                     ui.menu_button("Tools", |ui| {
                         if session
                             .emulator
@@ -734,7 +738,11 @@ async fn main() -> Result<(), Error> {
                         }
 
                         if session.emulator.is_some() {
-                            let (text, hover) = if session.emulator_paused {
+                            let (text, hover) = if session.is_paused()
+                                || session
+                                    .return_state
+                                    .is_some_and(|state| state == EmulatorState::Paused)
+                            {
                                 (
                                     egui::RichText::new("PAUSED").color(egui::Color32::YELLOW),
                                     "Click to resume emulator",
@@ -828,8 +836,7 @@ async fn main() -> Result<(), Error> {
                             match request {
                                 ScriptRequest::Pause => {
                                     // cant reuse functions for pause and running due to a classic borrow checker no no
-                                    session.state = EmulatorState::Paused;
-                                    session.emulator_paused = true;
+                                    session.state = EmulatorState::Paused
                                 }
                                 ScriptRequest::Screenshot => screenshot(session.image_dir.clone()),
                                 ScriptRequest::StartGif => {
@@ -858,14 +865,13 @@ async fn main() -> Result<(), Error> {
                                 }
                                 ScriptRequest::Resume => {
                                     session.state = EmulatorState::Running;
-                                    session.emulator_paused = false;
                                 }
                             }
                         }
 
                         // executed outside for loop for one step per next frame await
                         if let Some(request) = session.pending_steps.pop_front() {
-                            if !session.emulator_paused {
+                            if session.state != EmulatorState::Paused {
                                 session.pending_steps.clear();
                                 session.lua_editor.push_output(vec![
                                     "emulator must be paused to step".to_string(),

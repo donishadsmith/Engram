@@ -3,7 +3,7 @@
 [![Run Tests](https://github.com/donishadsmith/Engram/actions/workflows/test.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/test.yml)
 [![Publish](https://github.com/donishadsmith/Engram/actions/workflows/build.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/build.yml)
 
-A Gameboy Advance & Game Boy Color emulator (supports DMG games too).
+A Gameboy Advance & Game Boy/Game Boy Color emulator.
 
 <table align="center">
   <tr>
@@ -64,6 +64,13 @@ Additional dependencies are required:
 sudo apt update
 sudo apt install -y libwayland-dev libasound2-dev libudev-dev pkg-config
 ```
+
+## Settings
+Settings are saved to `engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
+
+- Linux: `$XDG_CONFIG_HOME/engram/` or `$HOME/.config/engram/`
+- MacOS: `$HOME/Library/Application Support/engram/`
+- Windows: `%AppData%\engram\`
 
 ## References
 I heavily relied on the prior work of the emulation development community while developing my own emulators. In particular, [mGBA](https://github.com/mgba-emu/mgba), [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance), [rustboyadvance-ng](https://github.com/michelhe/rustboyadvance-ng), [retroboy](https://github.com/smparsons/retroboy), [SameBoy](https://github.com/LIJI32/SameBoy), [Pan Docs](https://gbdev.io/pandocs/), and [GBATEK](https://problemkaputt.de/gbatek.htm) were incredibly helpful. The full list of emulators, documentation, and articles used is in [REFERENCES.md](REFERENCES.md).
