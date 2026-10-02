@@ -3,7 +3,7 @@ pub mod config;
 pub mod debug;
 pub mod editor;
 pub mod enums;
-pub mod keybind;
+pub mod input;
 pub mod psg;
 pub mod render;
 pub mod scheduler;
@@ -12,11 +12,11 @@ pub mod traits;
 pub mod utils;
 
 use egui::Context;
-use macroquad::input::KeyCode;
 use std::{io::Error, path::PathBuf};
 
 use crate::{
     debug::DebugPage,
+    input::enums::KeyId,
     render::Frame,
     script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit},
 };
@@ -25,6 +25,15 @@ use crate::{
 pub enum EmulatorId {
     Gb,
     Gba,
+}
+
+impl EmulatorId {
+    pub fn to_key_id(self) -> KeyId {
+        match self {
+            EmulatorId::Gb => KeyId::Emulator(self),
+            EmulatorId::Gba => KeyId::Emulator(self),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -81,12 +90,7 @@ pub trait SolarSensor {
 
 pub trait EmulatorSession {
     // eventually allow emu to return running or paused based on internal state/conditions
-    fn run(
-        &mut self,
-        key_bindings: &Vec<KeyCode>,
-        input_blocked: bool,
-        volume: u8,
-    ) -> Result<EmulatorState, Error>;
+    fn run(&mut self, input: &[bool], volume: u8) -> Result<EmulatorState, Error>;
 
     fn save_game(&mut self) -> Result<(), Error>;
 

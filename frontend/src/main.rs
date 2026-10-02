@@ -1,22 +1,23 @@
-use chrono::{DateTime, Local, TimeDelta};
+pub mod session;
+pub mod utils;
+
+use crate::{
+    session::Session,
+    utils::{bindings_grid, file_dialog},
+};
 use egui_macroquad;
+use gilrs::Button;
 use macroquad::prelude::*;
-use rfd::FileDialog;
 use shared::{
-    EmulatorId, EmulatorSession, EmulatorState,
-    config::{Config, load_config, save_config},
-    debug::DebugPage,
-    editor::LuaEditor,
-    keybind::{Hotkeys, KeyBindings, KeyId, keycode_to_string},
+    EmulatorState,
+    input::{
+        enums::{Hotkeys, Input, InputType, KeyId},
+        utils::keycode_to_string,
+    },
     script::ScriptRequest,
-    utils::{GifRecorder, screenshot},
+    utils::screenshot,
 };
-use std::{
-    collections::{HashMap, VecDeque},
-    fs::create_dir_all,
-    io::Error,
-    path::PathBuf,
-};
+use std::io::Error;
 
 fn conf() -> Conf {
     Conf {
@@ -28,297 +29,13 @@ fn conf() -> Conf {
     }
 }
 
-fn initialize_debug_hashmap() -> HashMap<EmulatorId, DebugPage> {
-    let mut map = HashMap::new();
-
-    map.insert(EmulatorId::Gba, DebugPage::Video);
-
-    map
-}
-
-struct Session {
-    state: EmulatorState,
-    emulator: Option<Box<dyn EmulatorSession>>,
-    rom_path: Option<PathBuf>,
-    gif: GifRecorder,
-    image_dir: PathBuf,
-    set_image_dir: bool,
-    key_bindings: KeyBindings,
-    show_key_bindings: bool,
-    show_hotkeys: bool,
-    open_gif_settings: bool,
-    start_time: Option<DateTime<Local>>,
-    message_queue: VecDeque<&'static str>,
-    master_volume: u8,
-    solar_level: u8,
-    last_debug_page: HashMap<EmulatorId, DebugPage>,
-    lua_editor: LuaEditor,
-    return_state: Option<EmulatorState>,
-    pending_steps: VecDeque<ScriptRequest>,
-}
-
-impl Session {
-    fn new() -> Self {
-        prevent_quit();
-
-        let config = load_config();
-        let master_volume = config.master_volume.unwrap_or_else(|| 100).min(100);
-        let solar_level = config.solar_level;
-        let gif_settings = &config.gif_settings;
-
-        Self {
-            state: EmulatorState::Launch,
-            emulator: None,
-            rom_path: None,
-            gif: GifRecorder::new(gif_settings),
-            key_bindings: KeyBindings::new().load_keys(&config),
-            image_dir: PathBuf::from(config.image_dir.unwrap()),
-            show_key_bindings: false,
-            show_hotkeys: false,
-            open_gif_settings: false,
-            set_image_dir: false,
-            start_time: None,
-            message_queue: VecDeque::new(),
-            master_volume,
-            solar_level,
-            last_debug_page: initialize_debug_hashmap(),
-            lua_editor: LuaEditor::new(),
-            return_state: None,
-            pending_steps: VecDeque::new(),
-        }
-    }
-
-    fn set_emulator<T: EmulatorSession + 'static>(&mut self, emulator: T) {
-        self.emulator = Some(Box::new(emulator));
-    }
-
-    fn toggle_debug_mode(&mut self) {
-        let Some(emulator) = &mut self.emulator else {
-            return;
-        };
-
-        let emulator_id = emulator.id();
-
-        let Some(debugger) = emulator.debugger_mut() else {
-            return;
-        };
-
-        if debugger.active() {
-            debugger.toggle(None);
-
-            return;
-        }
-
-        let debug_page =
-            if let Some(last_debug_page) = self.last_debug_page.get(&emulator_id).copied() {
-                Some(last_debug_page)
-            } else {
-                Some(debugger.available_pages()[0])
-            };
-
-        debugger.toggle(debug_page);
-    }
-
-    fn toggle_emulator_status(&mut self) {
-        self.state = if self.state == EmulatorState::Running {
-            EmulatorState::Paused
-        } else {
-            EmulatorState::Running
-        }
-    }
-
-    fn save(&mut self) -> Result<(), Error> {
-        if let Some(emulator) = &mut self.emulator {
-            emulator.save_game()?;
-        }
-
-        Ok(())
-    }
-
-    fn run(&mut self) -> Result<EmulatorState, Error> {
-        let emulator = self.emulator.as_mut().unwrap();
-
-        let key_id = match emulator.id() {
-            EmulatorId::Gb | EmulatorId::Gba => KeyId::Gba,
-        };
-
-        emulator.run(
-            &self.key_bindings.keys(key_id),
-            self.show_key_bindings || self.show_hotkeys || self.lua_editor.occupied(),
-            self.master_volume,
-        )
-    }
-
-    fn pause(&mut self) {
-        self.emulator.as_mut().unwrap().pause();
-    }
-
-    fn reset(&mut self) -> Result<(), Error> {
-        self.emulator
-            .as_mut()
-            .unwrap()
-            .reset(self.rom_path.clone().unwrap())?;
-
-        self.set_solar_sensor();
-
-        Ok(())
-    }
-
-    fn set_solar_sensor(&mut self) {
-        let emulator = self.emulator.as_mut().unwrap();
-
-        if let Some(solar_sensor) = emulator.solar_sensor() {
-            solar_sensor.set_level(self.solar_level);
-        }
-    }
-
-    fn save_configs(&self) -> Result<(), Error> {
-        let save_keys = self.key_bindings.save_keys()?;
-
-        let config = Config {
-            gbakeys: save_keys.gbakeys,
-            hotkeys: save_keys.hotkeys,
-            image_dir: Some(
-                self.image_dir
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap(),
-            ),
-            solar_level: self.solar_level,
-            master_volume: Some(self.master_volume),
-            gif_settings: self.gif.settings(),
-        };
-
-        save_config(&config)
-    }
-
-    // TODO: do better, probably should refactor
-    fn create_image_path(&self) -> Result<(), Error> {
-        create_dir_all(self.image_dir.parent().unwrap())?;
-
-        Ok(())
-    }
-
-    fn get_image_path(&self) -> PathBuf {
-        let _ = self.create_image_path();
-        self.image_dir.clone()
-    }
-
-    // unless i can think of a better way only the messages will be a queue
-    // unfortunately time will always be the same, technically can extend, to avoid wierd flash messages
-    // do fifo, lowkey assumes things were actually saved
-    fn display_message(&mut self) -> bool {
-        if let Some(time) = &self.start_time {
-            if (Local::now() - *time) >= TimeDelta::seconds(3) {
-                self.start_time = None;
-                self.message_queue.pop_front();
-
-                if !self.message_queue.is_empty() {
-                    self.start_time = Some(Local::now());
-
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn get_message(&self) -> Option<&'static str> {
-        self.message_queue.front().map(|&s| s)
-    }
-
-    fn add_message(&mut self, message: &'static str) {
-        self.message_queue.push_back(message);
-        self.start_time = Some(Local::now());
-    }
-
-    fn set_paused(&mut self) {
-        self.state = EmulatorState::Paused;
-    }
-
-    fn set_running(&mut self) {
-        self.state = EmulatorState::Running;
-    }
-
-    fn is_paused(&self) -> bool {
-        self.state == EmulatorState::Paused
-    }
-
-    fn add_transient_state(&mut self, state: EmulatorState) {
-        self.return_state = Some(self.state);
-        self.state = state
-    }
-
-    fn take_return_state(&mut self) -> Option<EmulatorState> {
-        self.return_state.take()
-    }
-}
-
-impl Drop for Session {
-    fn drop(&mut self) {
-        let _ = self.save();
-        let _ = self.save_configs();
-    }
-}
-
-fn file_dialog() -> Option<PathBuf> {
-    FileDialog::new()
-        .set_title("Select ROM")
-        .add_filter("ROMs", &["gb", "gbc", "gba"])
-        .pick_file()
-}
-
-fn bindings_grid(
-    ui: &mut egui::Ui,
-    grid_id: &str,
-    key_bindings: &KeyBindings,
-    key_id: KeyId,
-    key_rebinding: &mut Option<usize>,
-    target_key_id: &mut Option<KeyId>,
-    restore_default_bindings: &mut bool,
-) {
-    egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
-        for (index, (label, key)) in key_bindings
-            .labels(key_id)
-            .iter()
-            .zip(key_bindings.keys(key_id))
-            .enumerate()
-        {
-            ui.label(*label);
-
-            let text = if *key_rebinding == Some(index) && *target_key_id == Some(key_id) {
-                "".to_string()
-            } else {
-                keycode_to_string(key)
-            };
-
-            if ui.button(text).clicked() {
-                *key_rebinding = Some(index);
-                *target_key_id = Some(key_id);
-            }
-
-            ui.end_row();
-        }
-
-        if ui.button("Restore Defaults").clicked() {
-            *target_key_id = Some(key_id);
-            *restore_default_bindings = true;
-        }
-    });
-}
-
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
     let mut key_rebinding: Option<usize> = None;
     let mut target_key_id: Option<KeyId> = None;
     let mut restore_default_bindings = false;
+    let mut last_button_pressed: Option<Button>;
 
     loop {
         session.save()?;
@@ -326,6 +43,8 @@ async fn main() -> Result<(), Error> {
         if is_quit_requested() {
             session.state = EmulatorState::Quit;
         }
+
+        last_button_pressed = session.drain_gamepad_events();
 
         match session.state {
             EmulatorState::RomSelection => {
@@ -463,10 +182,8 @@ async fn main() -> Result<(), Error> {
                     });
 
                     if let Some(emulator) = &session.emulator {
-                        let key_id = match emulator.id() {
-                            EmulatorId::Gb | EmulatorId::Gba => KeyId::Gba,
-                        };
-
+                        let key_id = emulator.id().to_key_id().map_to_shared_key_id();
+                        let controller_detected = session.latest_gamepad_id.is_some();
                         egui::Window::new("Controller Bindings")
                             .open(&mut session.show_key_bindings)
                             .show(egui_ctx, |ui| {
@@ -475,6 +192,11 @@ async fn main() -> Result<(), Error> {
                                     "Controller Bindings",
                                     &session.key_bindings,
                                     key_id,
+                                    if controller_detected {
+                                        InputType::Gamepad
+                                    } else {
+                                        InputType::Keyboard
+                                    },
                                     &mut key_rebinding,
                                     &mut target_key_id,
                                     &mut restore_default_bindings,
@@ -492,6 +214,7 @@ async fn main() -> Result<(), Error> {
                                 "Hotkey Bindings",
                                 &session.key_bindings,
                                 KeyId::Hotkeys,
+                                InputType::Keyboard,
                                 &mut key_rebinding,
                                 &mut target_key_id,
                                 &mut restore_default_bindings,
@@ -500,12 +223,14 @@ async fn main() -> Result<(), Error> {
 
                     if restore_default_bindings {
                         if let Some(key_id) = target_key_id {
-                            let emu_id = session
-                                .emulator
-                                .as_ref()
-                                .map(|emulator| emulator.id())
-                                .unwrap_or(EmulatorId::Gba);
-                            session.key_bindings.restore_defaults(key_id, emu_id);
+                            session.key_bindings.restore_defaults(
+                                key_id,
+                                if session.latest_gamepad_id.is_some() {
+                                    InputType::Gamepad
+                                } else {
+                                    InputType::Keyboard
+                                },
+                            );
                         }
 
                         restore_default_bindings = false;
@@ -514,12 +239,30 @@ async fn main() -> Result<(), Error> {
                     }
 
                     if let (Some(index), Some(key_id)) = (key_rebinding, target_key_id) {
-                        if let Some(key) = get_last_key_pressed() {
-                            let same_key = session.key_bindings.keys(key_id)[index] == key;
-                            let taken = session.key_bindings.keys(key_id.reserved()).contains(&key);
+                        let possible_input =
+                            match session.latest_gamepad_id.is_some() && key_id != KeyId::Hotkeys {
+                                true => {
+                                    if let Some(button) = last_button_pressed {
+                                        Some(Input::Gamepad(button))
+                                    } else {
+                                        None
+                                    }
+                                }
+                                false => {
+                                    if let Some(keycode) = get_last_key_pressed() {
+                                        Some(Input::Key(keycode))
+                                    } else {
+                                        None
+                                    }
+                                }
+                            };
+
+                        if let Some(input) = possible_input {
+                            let same_key = session.key_bindings.keys(key_id)[index] == input;
+                            let taken = session.key_bindings.reserved(key_id, &input);
 
                             if same_key || !taken {
-                                session.key_bindings.rebind(key_id, index, key);
+                                session.key_bindings.rebind(key_id, index, input);
                                 key_rebinding = None;
                                 target_key_id = None;
                             }
@@ -531,7 +274,6 @@ async fn main() -> Result<(), Error> {
                         target_key_id = None;
                     }
 
-                    // TODO: https://docs.rs/gilrs/latest/gilrs/
                     ui.menu_button("Tools", |ui| {
                         if session
                             .emulator

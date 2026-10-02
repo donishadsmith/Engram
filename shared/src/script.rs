@@ -1,7 +1,7 @@
 use crate::{
     EmulatorId, EmulatorState, ScriptTarget,
     enums::{FetchSource, Width},
-    keybind::DEFAULT_GBA_KEYS,
+    input::constants::DEFAULT_GBA_KEYS,
 };
 use mlua::{
     Function, HookTriggers, Lua, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus,
@@ -58,8 +58,8 @@ reset() screenshot()  start_gif()  stop_gif()
 
 Input:
 available_inputs(): table of input buttons
-set_inputs({a = true, up = true}): buttons held permanantly until released, keyboard is ignored;
-  set_inputs({}), set_inputs(nil), or set_inputs() to return control to keyboard
+set_inputs({a = true, up = true}): buttons held permanantly until released, keyboard/gamepad is ignored;
+  set_inputs({}), set_inputs(nil), or set_inputs() to return control to keyboard/gamepad
 check_inputs(): prints buttons currently held
 
 Hooks:

@@ -16,12 +16,10 @@ use crate::{
     debug::video::PpuDebugger,
 };
 use debug::audio::AudioDebugger;
-use macroquad::input::KeyCode;
 use shared::{
     DebugInterface, Emulator, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     debug::DebugPage,
-    keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
 };
@@ -136,17 +134,10 @@ impl GBASession {
 }
 
 impl EmulatorSession for GBASession {
-    fn run(
-        &mut self,
-        key_bindings: &Vec<KeyCode>,
-        input_blocked: bool,
-        volume: u8,
-    ) -> Result<EmulatorState, Error> {
+    fn run(&mut self, input: &[bool], volume: u8) -> Result<EmulatorState, Error> {
         let frame_start_cycle = self.gba.bus.scheduler.current;
         self.frame_ready = false;
-        self.gba.keypad = get_relevant_key_presses(&key_bindings, input_blocked)
-            .try_into()
-            .unwrap();
+        self.gba.keypad = input.try_into().unwrap_or([false; 10]);
 
         loop {
             let break_loop = if self.audio.is_some() {

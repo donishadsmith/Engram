@@ -11,7 +11,8 @@ use toml::{from_str, to_string_pretty};
 #[derive(Default, Serialize, Deserialize)]
 pub struct Config {
     // just to save deterministically since random ordering bugs me
-    pub gbakeys: BTreeMap<String, String>,
+    pub gba_keyboard: BTreeMap<String, String>,
+    pub gba_gamepad: BTreeMap<String, String>,
     pub hotkeys: BTreeMap<String, String>,
     pub image_dir: Option<String>,
     pub master_volume: Option<u8>,

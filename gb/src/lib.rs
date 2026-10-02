@@ -13,11 +13,9 @@ use crate::components::{
     gameboy::{GameBoy, T_CYCLES_PER_FRAME_DOUBLE},
     gamepak::GamePak,
 };
-use macroquad::input::KeyCode;
 use shared::{
     Emulator, EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
-    keybind::get_relevant_key_presses,
     render::Screen,
     script::ScriptEngine,
 };
@@ -113,16 +111,9 @@ impl GameBoySession {
 }
 
 impl EmulatorSession for GameBoySession {
-    fn run(
-        &mut self,
-        key_bindings: &Vec<KeyCode>,
-        input_blocked: bool,
-        volume: u8,
-    ) -> Result<EmulatorState, Error> {
+    fn run(&mut self, input: &[bool], volume: u8) -> Result<EmulatorState, Error> {
         self.frame_ready = false;
-        self.gameboy.keypad = get_relevant_key_presses(&key_bindings[..8].to_vec(), input_blocked)
-            .try_into()
-            .unwrap();
+        self.gameboy.keypad = input.try_into().unwrap_or([false; 8]);
 
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
         if self.audio.is_some() {
