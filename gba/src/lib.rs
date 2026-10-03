@@ -31,7 +31,6 @@ use std::{
 };
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
-const CYCLES_PER_FRAME: u64 = 280896;
 
 pub struct GBASession {
     audio: Option<AudioOutput>,
@@ -131,34 +130,34 @@ impl GBASession {
             self.set_resume();
         }
     }
+
+    fn run_frame(&mut self, volume: u8) -> bool {
+        loop {
+            self.tick(volume);
+
+            if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
+                return false;
+            }
+
+            if self.gba.bus.ppu.frame_ready {
+                self.on_frame();
+                return true;
+            }
+        }
+    }
 }
 
 impl EmulatorSession for GBASession {
     fn run(&mut self, input: &[bool], volume: u8) -> Result<EmulatorState, Error> {
-        let frame_start_cycle = self.gba.bus.scheduler.current;
         self.frame_ready = false;
         self.gba.keypad = input.try_into().unwrap_or([false; 10]);
 
-        loop {
-            let break_loop = if self.audio.is_some() {
-                !self.audio_needs_samples()
-            } else {
-                self.gba.bus.scheduler.current - frame_start_cycle >= CYCLES_PER_FRAME
-            };
-
-            if break_loop {
-                break;
-            }
-
-            self.tick(volume);
-
-            if self.gba.bus.ppu.frame_ready {
-                self.on_frame();
-            }
-
-            if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
-                break;
-            }
+        if self.audio.is_some() {
+            // fixing a very dumb frame pacing issue for the audio loop
+            // cause the audio side never checked frame completion
+            while self.audio_needs_samples() && self.run_frame(volume) {}
+        } else {
+            self.run_frame(volume);
         }
 
         self.script_engine

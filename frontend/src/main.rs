@@ -17,7 +17,7 @@ use shared::{
     script::ScriptRequest,
     utils::screenshot,
 };
-use std::io::Error;
+use std::{io::Error, time::Duration};
 
 fn conf() -> Conf {
     Conf {
@@ -35,6 +35,7 @@ async fn main() -> Result<(), Error> {
     let mut key_rebinding: Option<usize> = None;
     let mut target_key_id: Option<KeyId> = None;
     let mut restore_default_bindings = false;
+    let mut gamepad_status_change: Option<bool>;
     let mut last_button_pressed: Option<Button>;
 
     loop {
@@ -44,7 +45,24 @@ async fn main() -> Result<(), Error> {
             session.state = EmulatorState::Quit;
         }
 
-        last_button_pressed = session.drain_gamepad_events();
+        (last_button_pressed, gamepad_status_change) = session.drain_gamepad_events();
+        if let Some(status_change) = gamepad_status_change.take() {
+            match status_change {
+                true => {
+                    session
+                        .toasts
+                        .info("Controller connected")
+                        .duration(Some(Duration::from_secs(5)));
+                }
+
+                false => {
+                    session
+                        .toasts
+                        .warning("Controller disconnected")
+                        .duration(Some(Duration::from_secs(5)));
+                }
+            }
+        }
 
         match session.state {
             EmulatorState::RomSelection => {
@@ -310,7 +328,10 @@ async fn main() -> Result<(), Error> {
                             .clicked()
                         {
                             screenshot(session.get_image_path());
-                            session.add_message("Screenshot saved");
+                            session
+                                .toasts
+                                .success("Screenshot saved")
+                                .duration(Some(Duration::from_secs(5)));
                             ui.close_menu();
                         }
 
@@ -332,7 +353,10 @@ async fn main() -> Result<(), Error> {
                                         .gif
                                         .toggle(emulator.frontend_ref(), session.get_image_path());
 
-                                    session.add_message("GIF saved");
+                                    session
+                                        .toasts
+                                        .success("GIF saved")
+                                        .duration(Some(Duration::from_secs(5)));
                                 }
                             } else {
                                 session.open_gif_settings = true;
@@ -381,7 +405,10 @@ async fn main() -> Result<(), Error> {
                     if !session.show_hotkeys {
                         if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                         {
-                            session.add_message("Screenshot saved");
+                            session
+                                .toasts
+                                .success("Screenshot saved")
+                                .duration(Some(Duration::from_secs(5)));
                             screenshot(session.get_image_path());
                         }
 
@@ -399,7 +426,10 @@ async fn main() -> Result<(), Error> {
                                     let _ = session
                                         .gif
                                         .toggle(emulator.frontend_ref(), session.get_image_path());
-                                    session.add_message("GIF saved");
+                                    session
+                                        .toasts
+                                        .success("GIF saved")
+                                        .duration(Some(Duration::from_secs(5)));
                                 } else {
                                     session.open_gif_settings = !session.open_gif_settings;
                                 }
@@ -446,10 +476,7 @@ async fn main() -> Result<(), Error> {
                         session.open_gif_settings = false;
                     }
 
-                    let show_message = session.display_message();
-                    let message = session.get_message();
                     let recording = session.gif.is_recording();
-
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if let Some(emulator) = &mut session.emulator
                             && let Some(debugger) = emulator.debugger_ref()
@@ -514,11 +541,7 @@ async fn main() -> Result<(), Error> {
                             }
                         }
 
-                        if show_message {
-                            if let Some(message) = message {
-                                ui.label(egui::RichText::new(message).color(egui::Color32::WHITE));
-                            }
-                        } else if recording {
+                        if recording {
                             ui.label(egui::RichText::new("RECORDING").color(egui::Color32::RED));
                         }
                     });
@@ -632,6 +655,8 @@ async fn main() -> Result<(), Error> {
                         }
                     }
                 });
+
+                session.toasts.show(egui_ctx);
             });
 
             if let Some(emulator) = &mut session.emulator

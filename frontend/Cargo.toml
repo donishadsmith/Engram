@@ -15,5 +15,5 @@ egui.workspace = true
 egui-macroquad.workspace = true
 rfd.workspace = true
 macroquad.workspace = true
-chrono.workspace = true
 gilrs.workspace = true
+egui-notify.workspace = true

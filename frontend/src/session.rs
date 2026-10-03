@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, TimeDelta};
+use egui_notify::{Anchor, Toasts};
 use gilrs::{Button, EventType, GamepadId, Gilrs};
 use macroquad::input::prevent_quit;
 use shared::{
@@ -30,8 +30,6 @@ pub struct Session {
     pub show_key_bindings: bool,
     pub show_hotkeys: bool,
     pub open_gif_settings: bool,
-    pub start_time: Option<DateTime<Local>>,
-    pub message_queue: VecDeque<&'static str>,
     pub master_volume: u8,
     pub solar_level: u8,
     pub last_debug_page: HashMap<EmulatorId, DebugPage>,
@@ -40,6 +38,7 @@ pub struct Session {
     pub pending_steps: VecDeque<ScriptRequest>,
     pub gilrs: Option<Gilrs>,
     pub latest_gamepad_id: Option<GamepadId>,
+    pub toasts: Toasts, // worth the extra dependency, far more visually appealing than my ugly queue solution
 }
 
 impl Session {
@@ -62,8 +61,6 @@ impl Session {
             show_hotkeys: false,
             open_gif_settings: false,
             set_image_dir: false,
-            start_time: None,
-            message_queue: VecDeque::new(),
             master_volume,
             solar_level,
             last_debug_page: initialize_debug_hashmap(),
@@ -72,6 +69,7 @@ impl Session {
             pending_steps: VecDeque::new(),
             gilrs: Gilrs::new().ok(),
             latest_gamepad_id: None,
+            toasts: Toasts::default().with_anchor(Anchor::BottomRight),
         }
     }
 
@@ -213,39 +211,6 @@ impl Session {
         self.image_dir.clone()
     }
 
-    // unless i can think of a better way only the messages will be a queue
-    // unfortunately time will always be the same, technically can extend, to avoid wierd flash messages
-    // do fifo, lowkey assumes things were actually saved
-    pub fn display_message(&mut self) -> bool {
-        if let Some(time) = &self.start_time {
-            if (Local::now() - *time) >= TimeDelta::seconds(3) {
-                self.start_time = None;
-                self.message_queue.pop_front();
-
-                if !self.message_queue.is_empty() {
-                    self.start_time = Some(Local::now());
-
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    pub fn get_message(&self) -> Option<&'static str> {
-        self.message_queue.front().map(|&s| s)
-    }
-
-    pub fn add_message(&mut self, message: &'static str) {
-        self.message_queue.push_back(message);
-        self.start_time = Some(Local::now());
-    }
-
     pub fn set_paused(&mut self) {
         self.state = EmulatorState::Paused;
     }
@@ -267,17 +232,20 @@ impl Session {
         self.return_state.take()
     }
 
-    pub fn drain_gamepad_events(&mut self) -> Option<Button> {
+    pub fn drain_gamepad_events(&mut self) -> (Option<Button>, Option<bool>) {
         let Some(gilrs) = &mut self.gilrs else {
-            return None;
+            return (None, None);
         };
 
         let mut last_pressed = None;
+        let mut gamepad_status_change: Option<bool> = None;
         while let Some(event) = gilrs.next_event() {
             if event.event == EventType::Connected {
-                self.latest_gamepad_id = Some(event.id)
+                self.latest_gamepad_id = Some(event.id);
+                gamepad_status_change = Some(true)
             } else if event.event == EventType::Disconnected {
                 self.latest_gamepad_id = None;
+                gamepad_status_change = Some(false)
             }
 
             if let EventType::ButtonPressed(button, _) = event.event {
@@ -287,7 +255,7 @@ impl Session {
             }
         }
 
-        last_pressed
+        (last_pressed, gamepad_status_change)
     }
 }
 
