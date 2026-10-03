@@ -62,6 +62,9 @@ set_inputs({a = true, up = true}): buttons held permanantly until released, keyb
   set_inputs({}), set_inputs(nil), or set_inputs() to return control to keyboard/gamepad
 check_inputs(): prints buttons currently held
 
+Misc:
+elapsed_cpu_cycles(): GB/GBC reports t-cycles
+
 Hooks:
 function on_frame(): runs once per frame
 function on_breakpoint(address): runs when a breakpoint is hit
@@ -559,6 +562,11 @@ impl ScriptEngine {
                 Ok(())
             })?;
             lua.globals().set("check_breakpoints", check_breakpoints)?;
+
+            let elapsed_cpu_cycles = scope.create_function(|_, (): ()| {
+                        Ok(target.borrow().elapsed_cpu_cycles())
+            })?;
+            lua.globals().set("elapsed_cpu_cycles", elapsed_cpu_cycles)?;
 
             let set_watchpoint =
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {

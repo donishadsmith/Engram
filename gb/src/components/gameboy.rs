@@ -24,6 +24,7 @@ pub struct GameBoy {
     pub scripted_keypad: Option<[bool; 8]>,
     pub keypad: [bool; 8],
     pub remaining_cycles: u32,
+    t_cycles: u64,
 }
 
 impl GameBoy {
@@ -37,6 +38,7 @@ impl GameBoy {
             scripted_keypad: None,
             keypad: [false; 8],
             remaining_cycles: 0,
+            t_cycles: 0,
         }
     }
 
@@ -49,18 +51,15 @@ impl GameBoy {
             return 0;
         }
 
-        let timer_t_cycles = machine_cycles * 4;
+        let t_cycles = machine_cycles * 4;
+        self.t_cycles += machine_cycles as u64;
 
         for _ in 0..machine_cycles {
             self.cpu.bus.oam_dma_step();
         }
 
         let double_speed = self.cpu.bus.key_register & 0x80 != 0;
-        let cpu_t_cycles = if double_speed {
-            timer_t_cycles
-        } else {
-            timer_t_cycles * 2
-        };
+        let cpu_t_cycles = if double_speed { t_cycles } else { t_cycles * 2 };
         let ppu_t_cycles = cpu_t_cycles / 2;
 
         self.cpu
@@ -68,11 +67,10 @@ impl GameBoy {
             .ppu
             .tick(ppu_t_cycles, &mut self.cpu.bus.interrupt_flag);
         self.cpu.bus.hblank_dma_step();
-        self.cpu.bus.timer.tick(
-            timer_t_cycles,
-            &mut self.cpu.bus.interrupt_flag,
-            double_speed,
-        );
+        self.cpu
+            .bus
+            .timer
+            .tick(t_cycles, &mut self.cpu.bus.interrupt_flag, double_speed);
         let div_apu = self.cpu.bus.timer.increase_div_apu_counter;
         self.cpu
             .bus
@@ -448,5 +446,9 @@ impl ScriptTarget for GameBoy {
         } else {
             None
         }
+    }
+
+    fn elapsed_cpu_cycles(&self) -> u64 {
+        self.t_cycles
     }
 }

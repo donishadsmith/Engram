@@ -162,4 +162,6 @@ pub trait ScriptTarget: Emulator {
     fn set_scripted_inputs(&mut self, keys: Option<Vec<bool>>);
 
     fn check_scripted_inputs(&self) -> Option<&[bool]>;
+
+    fn elapsed_cpu_cycles(&self) -> u64;
 }

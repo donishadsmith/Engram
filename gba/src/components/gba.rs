@@ -411,4 +411,8 @@ impl ScriptTarget for GBA {
             None
         }
     }
+
+    fn elapsed_cpu_cycles(&self) -> u64 {
+        self.bus.scheduler.current
+    }
 }
