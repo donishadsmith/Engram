@@ -1,3 +1,5 @@
+// TODO: I think I can just flash firmware on the pico, wire then map buttons to the gpio pins, then connect via usb
+// https://gp2040-ce.info/web-configurator/menu-pages/gpio-pin-mapping
 pub mod session;
 pub mod utils;
 
@@ -10,6 +12,7 @@ use gilrs::Button;
 use macroquad::prelude::*;
 use shared::{
     EmulatorState,
+    config::load_config,
     input::{
         enums::{Hotkeys, Input, InputType, KeyId},
         utils::keycode_to_string,
@@ -20,10 +23,13 @@ use shared::{
 use std::{io::Error, time::Duration};
 
 fn conf() -> Conf {
+    let display = load_config().display;
+
     Conf {
         window_title: "Engram".to_string(),
-        window_width: 2000,
-        window_height: 1400,
+        window_width: display.width.unwrap_or(1280),
+        window_height: display.height.unwrap_or(900),
+        fullscreen: display.fullscreen,
         high_dpi: true,
         ..Default::default()
     }
@@ -45,6 +51,7 @@ async fn main() -> Result<(), Error> {
             session.state = EmulatorState::Quit;
         }
 
+        session.record_window_size();
         (last_button_pressed, gamepad_status_change) = session.drain_gamepad_events();
         if let Some(status_change) = gamepad_status_change.take() {
             match status_change {
@@ -196,6 +203,26 @@ async fn main() -> Result<(), Error> {
                         {
                             session.show_hotkeys = true;
                             ui.close_menu();
+                        }
+
+                        let hotkey = keycode_to_string(
+                            session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen),
+                        );
+
+                        let text = if session.display.fullscreen {
+                            "Close Fullscreen"
+                        } else {
+                            "Fullscreen"
+                        };
+
+                        if ui
+                            .add(
+                                egui::Button::new(format!("{} {}", text, hotkey))
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            )
+                            .clicked()
+                        {
+                            session.toggle_fullscreen();
                         }
                     });
 
@@ -403,6 +430,11 @@ async fn main() -> Result<(), Error> {
                     let mut toggle_requested = false;
 
                     if !session.show_hotkeys {
+                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen))
+                        {
+                            session.toggle_fullscreen()
+                        }
+
                         if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                         {
                             session

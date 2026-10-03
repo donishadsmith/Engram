@@ -145,7 +145,7 @@ pub const BINDABLE_BUTTONS: [Button; 18] = [
     Button::Z,
 ];
 
-pub const DEFAULT_HOT_KEYS: [Bindings; 4] = [
+pub const DEFAULT_HOT_KEYS: [Bindings; 5] = [
     Bindings {
         label: "Screenshot",
         key: KeyCode::F7,
@@ -164,6 +164,11 @@ pub const DEFAULT_HOT_KEYS: [Bindings; 4] = [
     Bindings {
         label: "Gif",
         key: KeyCode::F12,
+        button: None,
+    },
+    Bindings {
+        label: "Fullscreen",
+        key: KeyCode::F6,
         button: None,
     },
 ];

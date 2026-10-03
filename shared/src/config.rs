@@ -8,7 +8,16 @@ use std::{
 };
 use toml::{from_str, to_string_pretty};
 
+#[derive(Default, Serialize, Deserialize, Clone, Copy)]
+#[serde(default)]
+pub struct Display {
+    pub fullscreen: bool,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+}
+
 #[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     // just to save deterministically since random ordering bugs me
     pub gba_keyboard: BTreeMap<String, String>,
@@ -18,6 +27,7 @@ pub struct Config {
     pub master_volume: Option<u8>,
     pub solar_level: u8,
     pub gif_settings: BTreeMap<String, u8>,
+    pub display: Display,
 }
 
 fn get_config_path() -> PathBuf {

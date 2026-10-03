@@ -190,6 +190,7 @@ impl KeyBindings {
             Hotkeys::Debugger => "Debugger",
             Hotkeys::Gif => "Gif",
             Hotkeys::Lua => "Lua",
+            Hotkeys::Fullscreen => "Fullscreen",
         };
 
         self.hotkeys

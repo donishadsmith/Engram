@@ -23,6 +23,7 @@ pub enum Hotkeys {
     Debugger,
     Gif,
     Lua,
+    Fullscreen,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

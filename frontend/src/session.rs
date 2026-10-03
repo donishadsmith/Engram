@@ -1,9 +1,13 @@
 use egui_notify::{Anchor, Toasts};
 use gilrs::{Button, EventType, GamepadId, Gilrs};
-use macroquad::input::prevent_quit;
+use macroquad::{
+    input::prevent_quit,
+    miniquad::window::set_fullscreen,
+    window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
+};
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
-    config::{Config, load_config, save_config},
+    config::{Config, Display, load_config, save_config},
     debug::DebugPage,
     editor::LuaEditor,
     input::{KeyBindings, utils::get_relevant_key_presses},
@@ -39,6 +43,7 @@ pub struct Session {
     pub gilrs: Option<Gilrs>,
     pub latest_gamepad_id: Option<GamepadId>,
     pub toasts: Toasts, // worth the extra dependency, far more visually appealing than my ugly queue solution
+    pub display: Display,
 }
 
 impl Session {
@@ -49,6 +54,9 @@ impl Session {
         let master_volume = config.master_volume.unwrap_or_else(|| 100).min(100);
         let solar_level = config.solar_level;
         let gif_settings = &config.gif_settings;
+        let mut display = config.display.clone();
+        display.width = Some(display.width.unwrap_or(1280));
+        display.height = Some(display.height.unwrap_or(900));
 
         Self {
             state: EmulatorState::Launch,
@@ -70,6 +78,7 @@ impl Session {
             gilrs: Gilrs::new().ok(),
             latest_gamepad_id: None,
             toasts: Toasts::default().with_anchor(Anchor::BottomRight),
+            display,
         }
     }
 
@@ -194,6 +203,7 @@ impl Session {
             solar_level: self.solar_level,
             master_volume: Some(self.master_volume),
             gif_settings: self.gif.settings(),
+            display: self.display,
         };
 
         save_config(&config)
@@ -256,6 +266,29 @@ impl Session {
         }
 
         (last_pressed, gamepad_status_change)
+    }
+
+    pub fn toggle_fullscreen(&mut self) {
+        self.display.fullscreen = !self.display.fullscreen;
+        set_fullscreen(self.display.fullscreen);
+
+        if !self.display.fullscreen
+            && let (Some(screen_width), Some(screen_height)) =
+                (self.display.width, self.display.height)
+        {
+            let scale = screen_dpi_scale();
+            request_new_screen_size(screen_width as f32 / scale, screen_height as f32 / scale);
+        }
+    }
+
+    pub fn record_window_size(&mut self) {
+        if !self.display.fullscreen {
+            let scale = screen_dpi_scale();
+            let (screen_width, screen_height) = (screen_width() * scale, screen_height() * scale);
+
+            self.display.height = Some(screen_height.round() as i32);
+            self.display.width = Some(screen_width.round() as i32);
+        }
     }
 }
 
