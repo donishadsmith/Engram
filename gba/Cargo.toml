@@ -1,6 +1,6 @@
 [package]
 name = "gba"
-version = "0.1.23"
+version = "0.1.24"
 edition = "2024"
 authors = ["Donisha Smith <donishasmith@outlook.com>"]
 license-file = "LICENSE"
