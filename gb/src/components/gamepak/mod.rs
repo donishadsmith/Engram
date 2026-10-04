@@ -25,14 +25,14 @@ const MAGIC_NUMBERS: [u8; 3] = [0x52, 0x54, 0x43];
 const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RtcSaveState::BYTE_SIZE;
 
 macro_rules! trait_functions {
-    ($s:expr, $m:ident, $e:expr) => {
-        match $s {
-            MbcType::RomOnly($m) => $e,
-            MbcType::Mbc1($m) => $e,
-            MbcType::Mbc2($m) => $e,
-            MbcType::Mbc3($m) => $e,
-            MbcType::Mbc5($m) => $e,
-            MbcType::Huc1($m) => $e,
+    ($self:expr, $mbc:ident, $func:expr) => {
+        match $self {
+            MbcType::RomOnly($mbc) => $func,
+            MbcType::Mbc1($mbc) => $func,
+            MbcType::Mbc2($mbc) => $func,
+            MbcType::Mbc3($mbc) => $func,
+            MbcType::Mbc5($mbc) => $func,
+            MbcType::Huc1($mbc) => $func,
         }
     };
 }
@@ -68,67 +68,67 @@ impl MbcType {
 
 impl Mbc for MbcType {
     fn read(&self, address: u16) -> u8 {
-        trait_functions!(self, m, m.read(address))
+        trait_functions!(self, mbc, mbc.read(address))
     }
 
     fn write(&mut self, address: u16, value: u8) {
-        trait_functions!(self, m, m.write(address, value))
+        trait_functions!(self, mbc, mbc.write(address, value))
     }
 
     fn get_rom(&self) -> &[u8] {
-        trait_functions!(self, m, m.get_rom())
+        trait_functions!(self, mbc, mbc.get_rom())
     }
 
     fn get_ram(&self) -> &[u8] {
-        trait_functions!(self, m, m.get_ram())
+        trait_functions!(self, mbc, mbc.get_ram())
     }
 
     fn get_ram_mut(&mut self) -> &mut [u8] {
-        trait_functions!(self, m, m.get_ram_mut())
+        trait_functions!(self, mbc, mbc.get_ram_mut())
     }
 
     fn get_rom_mut(&mut self) -> &mut [u8] {
-        trait_functions!(self, m, m.get_rom_mut())
+        trait_functions!(self, mbc, mbc.get_rom_mut())
     }
 
     fn rom_bank(&self) -> usize {
-        trait_functions!(self, m, m.rom_bank())
+        trait_functions!(self, mbc, mbc.rom_bank())
     }
 
     fn ram_bank(&self) -> usize {
-        trait_functions!(self, m, m.ram_bank())
+        trait_functions!(self, mbc, mbc.ram_bank())
     }
 
     fn ram_changed(&mut self) -> &mut bool {
-        trait_functions!(self, m, m.ram_changed())
+        trait_functions!(self, mbc, mbc.ram_changed())
     }
 
     fn is_timer_enabled(&self) -> bool {
-        trait_functions!(self, m, m.is_timer_enabled())
+        trait_functions!(self, mbc, mbc.is_timer_enabled())
     }
 
     fn n_ram_banks(&self) -> usize {
-        trait_functions!(self, m, m.n_ram_banks())
+        trait_functions!(self, mbc, mbc.n_ram_banks())
     }
 
     fn n_rom_banks(&self) -> usize {
-        trait_functions!(self, m, m.n_rom_banks())
+        trait_functions!(self, mbc, mbc.n_rom_banks())
     }
 
     fn ram_size(&self) -> usize {
-        trait_functions!(self, m, m.ram_size())
+        trait_functions!(self, mbc, mbc.ram_size())
     }
 
     fn rom_size(&self) -> usize {
-        trait_functions!(self, m, m.rom_size())
+        trait_functions!(self, mbc, mbc.rom_size())
     }
 
     fn rtc_save_state(&self) -> Option<RtcSaveState> {
-        trait_functions!(self, m, m.rtc_save_state())
+        trait_functions!(self, mbc, mbc.rtc_save_state())
     }
 
     fn tick(&mut self) {
-        trait_functions!(self, m, m.tick())
+        trait_functions!(self, mbc, mbc.tick())
     }
 }
 

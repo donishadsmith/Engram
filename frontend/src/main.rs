@@ -4,7 +4,7 @@ pub mod session;
 pub mod utils;
 
 use crate::{
-    session::Session,
+    session::{InputSource, Session},
     utils::{bindings_grid, file_dialog},
 };
 use egui_macroquad;
@@ -19,7 +19,13 @@ use shared::{
     script::ScriptRequest,
     utils::screenshot,
 };
-use std::{io::Error, time::Duration};
+use std::{io::Error, mem::take, time::Duration};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum KeybindingTab {
+    Keyboard,
+    Gamepad,
+}
 
 fn conf() -> Conf {
     let display = load_config().display;
@@ -34,12 +40,15 @@ fn conf() -> Conf {
     }
 }
 
+// TODO: maybe clean up some areas in the future
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
     let mut key_rebinding: Option<usize> = None;
     let mut target_key_id: Option<KeyId> = None;
     let mut restore_default_bindings = false;
+    let mut force_clear_inputs = false;
+    let mut controller_keybinding_tab = KeybindingTab::Keyboard;
 
     loop {
         session.save()?;
@@ -69,6 +78,9 @@ async fn main() -> Result<(), Error> {
                 .warning(text)
                 .duration(Some(Duration::from_secs(5)));
         }
+
+        let input_source_changed =
+            session.detect_input_source(gamepad_update.last_pressed, key_rebinding.is_some());
 
         match session.state {
             EmulatorState::RomSelection => {
@@ -101,7 +113,10 @@ async fn main() -> Result<(), Error> {
                 session.set_running();
             }
             EmulatorState::Running => {
-                if session.run(gamepad_update.changed)? == EmulatorState::Paused {
+                if session.run(
+                    gamepad_update.changed | input_source_changed | take(&mut force_clear_inputs),
+                )? == EmulatorState::Paused
+                {
                     session.set_paused();
                 };
 
@@ -216,27 +231,88 @@ async fn main() -> Result<(), Error> {
 
                         if ui
                             .add(
-                                egui::Button::new(format!("{} {}", text, hotkey))
+                                egui::Button::new(format!("{} ({})", text, hotkey))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             )
                             .clicked()
                         {
                             session.toggle_fullscreen();
                         }
+
+                        ui.separator();
+
+                        let source = match session.input_source {
+                            Some(InputSource::Gamepad) => "Controller",
+                            Some(InputSource::Keyboard) => "Keyboard",
+                            None => "Not detected yet",
+                        };
+                        ui.label(format!("Input Source: {source}"));
+
+                        if let Some(gilrs) = &session.gilrs {
+                            ui.menu_button("Connected Controllers", |ui| {
+                                let mut controller_present = false;
+
+                                for (gamepad_id, gamepad) in gilrs.gamepads() {
+                                    controller_present = true;
+
+                                    let text = if Some(gamepad_id) == session.latest_gamepad_id
+                                        && session.input_source == Some(InputSource::Gamepad)
+                                    {
+                                        egui::RichText::new(format!(
+                                            "{} (active)",
+                                            gamepad.os_name()
+                                        ))
+                                        .strong()
+                                    } else {
+                                        egui::RichText::new(gamepad.os_name()).weak()
+                                    };
+
+                                    ui.add(
+                                        egui::Label::new(text)
+                                            .wrap_mode(egui::TextWrapMode::Extend),
+                                    );
+                                }
+
+                                if !controller_present {
+                                    ui.label(egui::RichText::new("None connected").weak());
+                                }
+                            });
+                        }
                     });
 
                     if let Some(emulator) = &session.emulator {
                         let key_id = emulator.id().to_key_id().map_to_shared_key_id();
-                        let controller_detected = session.latest_gamepad_id.is_some();
                         egui::Window::new("Controller Bindings")
                             .open(&mut session.show_key_bindings)
                             .show(egui_ctx, |ui| {
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .add(egui::Button::new("Keyboard").selected(
+                                            controller_keybinding_tab == KeybindingTab::Keyboard,
+                                        ))
+                                        .clicked()
+                                    {
+                                        controller_keybinding_tab = KeybindingTab::Keyboard;
+                                    }
+
+                                    if session.latest_gamepad_id.is_some()
+                                        && ui
+                                            .add(egui::Button::new("Controller").selected(
+                                                controller_keybinding_tab == KeybindingTab::Gamepad,
+                                            ))
+                                            .clicked()
+                                    {
+                                        controller_keybinding_tab = KeybindingTab::Gamepad;
+                                    }
+                                });
+                                ui.separator();
+
                                 bindings_grid(
                                     ui,
                                     "Controller Bindings",
                                     &session.key_bindings,
                                     key_id,
-                                    if controller_detected {
+                                    if controller_keybinding_tab == KeybindingTab::Gamepad {
                                         InputType::Gamepad
                                     } else {
                                         InputType::Keyboard
@@ -269,7 +345,7 @@ async fn main() -> Result<(), Error> {
                         if let Some(key_id) = target_key_id {
                             session.key_bindings.restore_defaults(
                                 key_id,
-                                if session.latest_gamepad_id.is_some() {
+                                if controller_keybinding_tab == KeybindingTab::Gamepad {
                                     InputType::Gamepad
                                 } else {
                                     InputType::Keyboard
@@ -283,30 +359,69 @@ async fn main() -> Result<(), Error> {
                     }
 
                     if let (Some(index), Some(key_id)) = (key_rebinding, target_key_id) {
-                        let possible_input =
-                            match session.latest_gamepad_id.is_some() && key_id != KeyId::Hotkeys {
-                                true => {
-                                    if let Some(button) = gamepad_update.last_pressed {
-                                        Some(Input::Gamepad(button))
-                                    } else {
-                                        None
-                                    }
+                        let possible_input = match controller_keybinding_tab {
+                            KeybindingTab::Gamepad if key_id != KeyId::Hotkeys => {
+                                if let Some(button) = gamepad_update.last_pressed {
+                                    Some(Input::Gamepad(button))
+                                } else {
+                                    None
                                 }
-                                false => {
-                                    if let Some(keycode) = get_last_key_pressed() {
-                                        Some(Input::Key(keycode))
-                                    } else {
-                                        None
-                                    }
+                            }
+                            KeybindingTab::Keyboard => {
+                                if let Some(keycode) = get_last_key_pressed() {
+                                    Some(Input::Key(keycode))
+                                } else {
+                                    None
                                 }
+                            }
+                            _ => None,
+                        };
+
+                        // TODO: Not supeer perfect but decent enough for now
+                        if let Some(input) = possible_input {
+                            let current_input = match input {
+                                Input::Key(_) => session.key_bindings.keys(key_id)[index],
+                                Input::Gamepad(_) => session.key_bindings.buttons(key_id)[index],
                             };
 
-                        if let Some(input) = possible_input {
-                            let same_key = session.key_bindings.keys(key_id)[index] == input;
-                            let taken = session.key_bindings.reserved(key_id, &input);
+                            let mut rebinding_complete = true;
+                            match session.key_bindings.index_of(key_id, input) {
+                                Some(other_index) if other_index == index => {}
+                                Some(other_index) => {
+                                    session
+                                        .key_bindings
+                                        .rebind(key_id, other_index, current_input);
+                                    session.key_bindings.rebind(key_id, index, input);
 
-                            if same_key || !taken {
-                                session.key_bindings.rebind(key_id, index, input);
+                                    session
+                                        .toasts
+                                        .info(format!(
+                                            "Swapped bindings between {} and {}",
+                                            session.key_bindings.labels(key_id)[index],
+                                            session.key_bindings.labels(key_id)[other_index]
+                                        ))
+                                        .duration(Some(Duration::from_secs(3)));
+                                }
+                                None if session.key_bindings.reserved(key_id, input) => {
+                                    let used_by = match key_id {
+                                        KeyId::Hotkeys => "emulator controller",
+                                        _ => "hotkeys",
+                                    };
+                                    session
+                                        .toasts
+                                        .info(format!(
+                                            "{} already in use by {}",
+                                            input.to_string(),
+                                            used_by.to_string()
+                                        ))
+                                        .duration(Some(Duration::from_secs(3)));
+
+                                    rebinding_complete = false;
+                                }
+                                None => session.key_bindings.rebind(key_id, index, input),
+                            }
+
+                            if rebinding_complete {
                                 key_rebinding = None;
                                 target_key_id = None;
                             }

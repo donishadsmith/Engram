@@ -1,7 +1,7 @@
 use egui_notify::{Anchor, Toasts};
 use gilrs::{Button, EventType, GamepadId, Gilrs};
 use macroquad::{
-    input::prevent_quit,
+    input::{get_keys_pressed, prevent_quit},
     miniquad::window::set_fullscreen,
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
@@ -10,7 +10,7 @@ use shared::{
     config::{Config, Display, load_config, save_config},
     debug::DebugPage,
     editor::LuaEditor,
-    input::{KeyBindings, utils::get_relevant_key_presses},
+    input::{KeyBindings, enums::Input, utils::get_relevant_key_presses},
     script::ScriptRequest,
     utils::GifRecorder,
 };
@@ -19,6 +19,7 @@ use std::{
     fs::create_dir_all,
     io::Error,
     path::PathBuf,
+    time::{Duration, Instant},
 };
 
 use crate::utils::initialize_debug_hashmap;
@@ -30,6 +31,12 @@ pub struct GamepadUpdate {
     pub event_text: Option<String>,
     pub active_text: Option<String>,
     pub changed: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum InputSource {
+    Keyboard,
+    Gamepad,
 }
 
 pub struct Session {
@@ -54,6 +61,8 @@ pub struct Session {
     pub active_gamepad_changed: bool,
     pub toasts: Toasts, // worth the extra dependency, far more visually appealing than my ugly queue solution
     pub display: Display,
+    pub input_source: Option<InputSource>,
+    pub startup_deadline: Option<Instant>,
 }
 
 impl Session {
@@ -90,6 +99,8 @@ impl Session {
             active_gamepad_changed: false,
             toasts: Toasts::default().with_anchor(Anchor::BottomRight),
             display,
+            input_source: None,
+            startup_deadline: Some(Instant::now() + Duration::from_secs(1)),
         }
     }
 
@@ -152,6 +163,7 @@ impl Session {
 
         let gamepad = if let Some(gilrs_instance) = &self.gilrs
             && let Some(gamepad_id) = self.latest_gamepad_id
+            && self.input_source == Some(InputSource::Gamepad)
         {
             Some(gilrs_instance.gamepad(gamepad_id))
         } else {
@@ -173,6 +185,7 @@ impl Session {
         } else {
             get_relevant_key_presses(&keymap[..index], gamepad, input_blocked).into_boxed_slice()
         };
+
         emulator.run(&inputs, self.master_volume)
     }
 
@@ -265,23 +278,47 @@ impl Session {
 
         let previous_gamepad_id = self.latest_gamepad_id;
 
+        let in_startup = self
+            .startup_deadline
+            .is_some_and(|deadline| Instant::now() < deadline);
+
         while let Some(event) = gilrs.next_event() {
             match event.event {
                 EventType::Connected => {
                     self.latest_gamepad_id = Some(event.id);
-                    gamepad_update.connected = Some(true);
-                    gamepad_update.event_text = Some(format!(
-                        "Controller connected: {}",
-                        gilrs.gamepad(event.id).os_name()
-                    ));
+
+                    if !in_startup {
+                        gamepad_update.connected = Some(true);
+                        gamepad_update.event_text = Some(format!(
+                            "Controller connected: {}",
+                            gilrs.gamepad(event.id).os_name()
+                        ));
+                    }
                 }
                 EventType::Disconnected if Some(event.id) == self.latest_gamepad_id => {
-                    self.latest_gamepad_id = None;
+                    let lost_name = gilrs.gamepad(event.id).os_name().to_string();
+
+                    let fallback = gilrs
+                        .gamepads()
+                        .map(|(gamepad_id, _)| gamepad_id)
+                        .find(|gamepad_id| *gamepad_id != event.id);
+
+                    self.latest_gamepad_id = fallback;
                     gamepad_update.connected = Some(false);
-                    gamepad_update.event_text = Some(format!(
-                        "Controller disconnected: {}",
-                        gilrs.gamepad(event.id).os_name()
-                    ));
+                    gamepad_update.event_text = Some(match fallback {
+                        Some(gamepad_id) => format!(
+                            "Controller disconnected: {} (switched to {})",
+                            lost_name,
+                            gilrs.gamepad(gamepad_id).os_name()
+                        ),
+                        None => {
+                            self.input_source = Some(InputSource::Keyboard);
+                            format!(
+                                "Controller disconnected: {} (switched to keyboard)",
+                                lost_name
+                            )
+                        }
+                    });
                 }
                 EventType::ButtonPressed(button, _) if button != Button::Unknown => {
                     gamepad_update.last_pressed = Some(button);
@@ -291,15 +328,18 @@ impl Session {
             }
         }
 
+        if !in_startup && self.startup_deadline.take().is_some() {
+            if let Some(gamepad_id) = self.latest_gamepad_id {
+                gamepad_update.connected = Some(true);
+                gamepad_update.event_text = Some(format!(
+                    "Controller connected: {}",
+                    gilrs.gamepad(gamepad_id).os_name()
+                ));
+            }
+        }
+
         if previous_gamepad_id.is_some() && previous_gamepad_id != self.latest_gamepad_id {
             gamepad_update.changed = true;
-            gamepad_update.active_text = Some(match self.latest_gamepad_id {
-                Some(id) => format!(
-                    "Active controller changed to: {}",
-                    gilrs.gamepad(id).os_name()
-                ),
-                None => "No controller input detected, falling back to keyboard".to_string(),
-            });
         }
 
         gamepad_update
@@ -307,6 +347,8 @@ impl Session {
 
     pub fn toggle_fullscreen(&mut self) {
         self.display.fullscreen = !self.display.fullscreen;
+        // unfortunate windows task bar issue with fullscreen when taskbar is not on autohide so can partially obstruct screen
+        // not an issue on the pi since the bar is on the top by default for pi os
         set_fullscreen(self.display.fullscreen);
 
         if !self.display.fullscreen
@@ -326,6 +368,72 @@ impl Session {
             self.display.height = Some(screen_height.round() as i32);
             self.display.width = Some(screen_width.round() as i32);
         }
+    }
+
+    pub fn detect_input_source(
+        &mut self,
+        last_key_pressed: Option<Button>,
+        is_key_rebinding: bool,
+    ) -> bool {
+        let mut input_source_changed = false;
+
+        if is_key_rebinding | self.lua_editor.occupied() {
+            return input_source_changed;
+        }
+
+        let Some(emulator) = &self.emulator else {
+            return input_source_changed;
+        };
+
+        let mut input_source = self.input_source;
+        match self.input_source {
+            Some(InputSource::Keyboard) => {
+                if self.latest_gamepad_id.is_some()
+                    && self.gilrs.is_some()
+                    && last_key_pressed.is_some()
+                {
+                    input_source = Some(InputSource::Gamepad);
+                }
+            }
+            Some(InputSource::Gamepad) => {
+                let get_keys_pressed = get_keys_pressed();
+                let control_keys = self.key_bindings.keys(emulator.id().to_key_id());
+                let mut is_target_key_pressed = false;
+                for current_key in control_keys {
+                    match current_key {
+                        Input::Key(key) => {
+                            if get_keys_pressed.contains(&key) {
+                                is_target_key_pressed = true;
+                                break;
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+
+                if is_target_key_pressed {
+                    input_source = Some(InputSource::Keyboard);
+                }
+            }
+            None => {
+                if self.latest_gamepad_id.is_some() {
+                    input_source = Some(InputSource::Gamepad)
+                } else {
+                    input_source = Some(InputSource::Keyboard)
+                }
+            }
+        }
+
+        if self.input_source.is_some()
+            && input_source.is_some()
+            && self.input_source != input_source
+        {
+            input_source_changed = true;
+        }
+
+        self.input_source = input_source;
+
+        input_source_changed
     }
 }
 

@@ -41,7 +41,7 @@ clear_all_breakpoints()
 check_breakpoints()
 
 Watchpoints for bus accesses:
-set_watchpoint(address, {pause = true, on = "rw", access = "byte", target=None})
+set_watchpoint(address, {pause = true, on = "rw", width = "byte", target=None})
   - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
   - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
     a watchpoint only fires for specified access width

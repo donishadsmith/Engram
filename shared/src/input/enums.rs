@@ -1,7 +1,10 @@
 use gilrs::Button;
 use macroquad::input::KeyCode;
 
-use crate::EmulatorId;
+use crate::{
+    EmulatorId,
+    input::utils::{button_to_string, keycode_to_string},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum KeyId {
@@ -30,6 +33,15 @@ pub enum Hotkeys {
 pub enum Input {
     Key(KeyCode),
     Gamepad(Button),
+}
+
+impl Input {
+    pub fn to_string(self) -> String {
+        match self {
+            Input::Key(key) => keycode_to_string(key),
+            Input::Gamepad(button) => button_to_string(button),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

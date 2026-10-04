@@ -177,10 +177,10 @@ impl KeyBindings {
         }
     }
 
-    pub fn reserved(&self, key_id: KeyId, input: &Input) -> bool {
+    pub fn reserved(&self, key_id: KeyId, input: Input) -> bool {
         match key_id {
-            KeyId::Hotkeys => self.keys(KeyId::Emulator(EmulatorId::Gba)).contains(input), /*eventually use .extend*/
-            KeyId::Emulator(_) => self.keys(KeyId::Hotkeys).contains(input),
+            KeyId::Hotkeys => self.keys(KeyId::Emulator(EmulatorId::Gba)).contains(&input), /*eventually use .extend*/
+            KeyId::Emulator(_) => self.keys(KeyId::Hotkeys).contains(&input),
         }
     }
 
@@ -198,6 +198,13 @@ impl KeyBindings {
             .find(|k| k.label == text)
             .and_then(|k| Some(k.key))
             .unwrap()
+    }
+
+    pub fn index_of(&self, key_id: KeyId, input: Input) -> Option<usize> {
+        match input {
+            Input::Key(_) => self.keys(key_id).iter().position(|&i| i == input),
+            Input::Gamepad(_) => self.buttons(key_id).iter().position(|&i| i == input),
+        }
     }
 }
 
