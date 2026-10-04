@@ -1,6 +1,5 @@
 // TODO: Check if worth to consolidate some code
 pub mod prelude {
-    use crate::components::gamepak::MbcType;
     use chrono::Utc;
     use shared::traits::BitOps;
 
@@ -39,8 +38,6 @@ pub mod prelude {
 
         fn ram_changed(&mut self) -> &mut bool;
 
-        fn id(&self) -> MbcType;
-
         fn is_timer_enabled(&self) -> bool {
             false
         }
@@ -52,6 +49,7 @@ pub mod prelude {
         }
     }
 
+    #[derive(PartialEq, Eq)]
     pub struct RomOnly {
         rom: Vec<u8>,
         ram: Vec<u8>,
@@ -102,12 +100,9 @@ pub mod prelude {
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
-
-        fn id(&self) -> MbcType {
-            MbcType::RomOnly
-        }
     }
 
+    #[derive(PartialEq, Eq)]
     // https://gbdev.io/pandocs/Mbc1.html; theres a 5 + a 2 bit register for this
     pub struct Mbc1 {
         rom: Vec<u8>,
@@ -208,12 +203,9 @@ pub mod prelude {
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
-
-        fn id(&self) -> MbcType {
-            MbcType::Mbc1
-        }
     }
 
+    #[derive(PartialEq, Eq)]
     pub struct Mbc2 {
         rom: Vec<u8>,
         ram: Vec<u8>,
@@ -307,10 +299,6 @@ pub mod prelude {
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
-
-        fn id(&self) -> MbcType {
-            MbcType::Mbc2
-        }
     }
 
     #[derive(Clone, Copy)]
@@ -367,6 +355,7 @@ pub mod prelude {
         }
     }
 
+    #[derive(PartialEq, Eq)]
     struct LatchedClockData {
         seconds: u8,
         minutes: u8,
@@ -375,7 +364,9 @@ pub mod prelude {
         dh: u8,
     }
 
-    pub struct RTCRegister {
+    #[derive(PartialEq, Eq)]
+
+    pub struct RtcRegister {
         previous_unix_timestamp: i64,
         bank: u8,
         seconds: u8,
@@ -387,7 +378,7 @@ pub mod prelude {
         latched_clock_data: LatchedClockData,
     }
 
-    impl RTCRegister {
+    impl RtcRegister {
         fn new(save_state: Option<RtcSaveState>) -> Self {
             let mut rtc = match save_state {
                 Some(state) => Self {
@@ -525,6 +516,7 @@ pub mod prelude {
         }
     }
 
+    #[derive(PartialEq, Eq)]
     pub struct Mbc3 {
         rom: Vec<u8>,
         ram: Vec<u8>,
@@ -532,7 +524,7 @@ pub mod prelude {
         ram_bank: usize,
         ram_enabled: bool,
         ram_updated: bool,
-        rtc_register: RTCRegister,
+        rtc_register: RtcRegister,
         current_bank_value: u8,
         timer_enabled: bool,
     }
@@ -546,7 +538,7 @@ pub mod prelude {
                 ram_bank: 0,
                 ram_updated: false,
                 ram_enabled: false,
-                rtc_register: RTCRegister::new(rtc_save_state),
+                rtc_register: RtcRegister::new(rtc_save_state),
                 current_bank_value: 0,
                 timer_enabled: false,
             }
@@ -652,10 +644,6 @@ pub mod prelude {
             &mut self.ram_updated
         }
 
-        fn id(&self) -> MbcType {
-            MbcType::Mbc3
-        }
-
         fn is_timer_enabled(&self) -> bool {
             self.timer_enabled
         }
@@ -669,6 +657,7 @@ pub mod prelude {
         }
     }
 
+    #[derive(PartialEq, Eq)]
     pub struct Mbc5 {
         rom: Vec<u8>,
         ram: Vec<u8>,
@@ -769,28 +758,25 @@ pub mod prelude {
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
-
-        fn id(&self) -> MbcType {
-            MbcType::Mbc5
-        }
     }
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, PartialEq, Eq)]
     enum Huc1Mode {
-        RAM,
-        IR,
+        Ram,
+        Ir,
     }
 
     impl Huc1Mode {
         fn select(value: u8) -> Huc1Mode {
             if value.get_bit_range(0..4) == 0x0E {
-                Huc1Mode::IR
+                Huc1Mode::Ir
             } else {
-                Huc1Mode::RAM
+                Huc1Mode::Ram
             }
         }
     }
 
+    #[derive(PartialEq, Eq)]
     pub struct Huc1 {
         rom: Vec<u8>,
         ram: Vec<u8>,
@@ -806,7 +792,7 @@ pub mod prelude {
                 rom,
                 ram,
                 ram_updated: false,
-                mode: Huc1Mode::RAM,
+                mode: Huc1Mode::Ram,
                 rom_bank: 1,
                 ram_bank: 0,
             }
@@ -826,8 +812,8 @@ pub mod prelude {
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => match self.mode {
-                    Huc1Mode::IR => 0xC0,
-                    Huc1Mode::RAM => {
+                    Huc1Mode::Ir => 0xC0,
+                    Huc1Mode::Ram => {
                         if self.ram.is_empty() {
                             0xFF
                         } else {
@@ -846,14 +832,14 @@ pub mod prelude {
                 0x4000..=0x5FFF => self.ram_bank = value.get_bit_range(0..2) as usize,
                 0x6000..=0x7FFF => {}
                 0xA000..=0xBFFF => match self.mode {
-                    Huc1Mode::RAM => {
+                    Huc1Mode::Ram => {
                         if !self.ram.is_empty() {
                             let index = self.ram_index(address);
                             self.ram[index] = value;
                             self.ram_updated = true;
                         }
                     }
-                    Huc1Mode::IR => {}
+                    Huc1Mode::Ir => {}
                 },
                 _ => {}
             }
@@ -885,10 +871,6 @@ pub mod prelude {
 
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
-        }
-
-        fn id(&self) -> MbcType {
-            MbcType::Huc1
         }
     }
 }

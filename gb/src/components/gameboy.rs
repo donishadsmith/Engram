@@ -4,7 +4,7 @@ use crate::components::{
         SharpSm83,
         registers::{Register8Bits, Register16Bits},
     },
-    gamepak::GamePak,
+    gamepak::{GamePak, mbc::prelude::Mbc},
 };
 use shared::{
     Emulator, EmulatorState, ScriptTarget,

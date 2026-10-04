@@ -1162,7 +1162,7 @@ mod tests {
 
     #[test]
     fn test_vblank_irq_fires_once_when_enabled() {
-        let mut ppu = PPU::new();
+        let mut ppu = Ppu::new();
 
         let mut interrupt_flag = 0u16;
 

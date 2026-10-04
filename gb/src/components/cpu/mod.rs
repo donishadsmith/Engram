@@ -445,9 +445,9 @@ mod tests {
     }
 
     #[test]
-    fn test_flag_setting() -> Result<(), std::io::Error> {
+    fn test_flag_setting() {
         // Test flag setting
-        let monochrome_gamepak = GamePak::fake()?;
+        let monochrome_gamepak = GamePak::fake();
         // Default checksum is 0, so f register is set to 0x10000000
         let mut register = Registers::new(
             monochrome_gamepak.header.cgb_flag,
@@ -468,7 +468,5 @@ mod tests {
 
         register.apply_flags(delta);
         assert_eq!(register.f, 0b00110000);
-
-        Ok(())
     }
 }

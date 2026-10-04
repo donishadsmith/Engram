@@ -29,7 +29,7 @@ use crate::components::{
     apu::Apu,
     bootloader::{CGB_BOOT, DMG_BOOTIX},
     cpu::interrupts::InterruptMode,
-    gamepak::{CgbFlag, GamePak},
+    gamepak::{CgbFlag, GamePak, mbc::prelude::Mbc},
     joypad::Joypad,
     ppu::Ppu,
     timer::Timer,
