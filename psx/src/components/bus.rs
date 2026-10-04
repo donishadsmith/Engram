@@ -121,6 +121,7 @@ impl Bus {
     }
 
     pub fn read<T: BusAccess>(&mut self, address: u32, requester: Requester) -> T {
+        self.determine_cycle_cost(address, T::ACCESS_WIDTH, requester);
         unimplemented!()
     }
 
@@ -128,7 +129,9 @@ impl Bus {
         unimplemented!()
     }
 
-    pub fn write<T: BusAccess>(&mut self, address: u32, value: T, requester: Requester) {}
+    pub fn write<T: BusAccess>(&mut self, address: u32, value: T, requester: Requester) {
+        self.determine_cycle_cost(address, T::ACCESS_WIDTH, requester);
+    }
 
     pub fn poke<T: BusAccess>(&mut self, address: u32, value: T) {}
 
@@ -139,4 +142,10 @@ impl Bus {
     }
 
     pub fn notify_fetch(&mut self, address: u32, fetch_source: FetchSource) {}
+
+    pub fn determine_cycle_cost(&mut self, address: u32, width: Width, requester: Requester) {}
+
+    pub fn add_cycles(&mut self, cycles: u64) {
+        self.scheduler.current += cycles;
+    }
 }

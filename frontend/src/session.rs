@@ -23,6 +23,15 @@ use std::{
 
 use crate::utils::initialize_debug_hashmap;
 
+#[derive(Default)]
+pub struct GamepadUpdate {
+    pub last_pressed: Option<Button>,
+    pub connected: Option<bool>,
+    pub event_text: Option<String>,
+    pub active_text: Option<String>,
+    pub changed: bool,
+}
+
 pub struct Session {
     pub state: EmulatorState,
     pub emulator: Option<Box<dyn EmulatorSession>>,
@@ -42,6 +51,7 @@ pub struct Session {
     pub pending_steps: VecDeque<ScriptRequest>,
     pub gilrs: Option<Gilrs>,
     pub latest_gamepad_id: Option<GamepadId>,
+    pub active_gamepad_changed: bool,
     pub toasts: Toasts, // worth the extra dependency, far more visually appealing than my ugly queue solution
     pub display: Display,
 }
@@ -77,6 +87,7 @@ impl Session {
             pending_steps: VecDeque::new(),
             gilrs: Gilrs::new().ok(),
             latest_gamepad_id: None,
+            active_gamepad_changed: false,
             toasts: Toasts::default().with_anchor(Anchor::BottomRight),
             display,
         }
@@ -129,7 +140,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<EmulatorState, Error> {
+    pub fn run(&mut self, clear_inputs: bool) -> Result<EmulatorState, Error> {
         let emulator = self.emulator.as_mut().unwrap();
 
         let key_id = emulator.id().to_key_id().map_to_shared_key_id();
@@ -157,9 +168,11 @@ impl Session {
             self.key_bindings.keys(key_id)
         };
 
-        let inputs =
-            get_relevant_key_presses(&keymap[..index], gamepad, input_blocked).into_boxed_slice();
-
+        let inputs = if clear_inputs {
+            vec![false; index].into_boxed_slice()
+        } else {
+            get_relevant_key_presses(&keymap[..index], gamepad, input_blocked).into_boxed_slice()
+        };
         emulator.run(&inputs, self.master_volume)
     }
 
@@ -242,30 +255,54 @@ impl Session {
         self.return_state.take()
     }
 
-    pub fn drain_gamepad_events(&mut self) -> (Option<Button>, Option<bool>) {
+    // super extra just to get text for toast and still some annoying edge cases
+    pub fn drain_gamepad_events(&mut self) -> GamepadUpdate {
+        let mut gamepad_update = GamepadUpdate::default();
+
         let Some(gilrs) = &mut self.gilrs else {
-            return (None, None);
+            return gamepad_update;
         };
 
-        let mut last_pressed = None;
-        let mut gamepad_status_change: Option<bool> = None;
-        while let Some(event) = gilrs.next_event() {
-            if event.event == EventType::Connected {
-                self.latest_gamepad_id = Some(event.id);
-                gamepad_status_change = Some(true)
-            } else if event.event == EventType::Disconnected {
-                self.latest_gamepad_id = None;
-                gamepad_status_change = Some(false)
-            }
+        let previous_gamepad_id = self.latest_gamepad_id;
 
-            if let EventType::ButtonPressed(button, _) = event.event {
-                if button != Button::Unknown {
-                    last_pressed = Some(button);
+        while let Some(event) = gilrs.next_event() {
+            match event.event {
+                EventType::Connected => {
+                    self.latest_gamepad_id = Some(event.id);
+                    gamepad_update.connected = Some(true);
+                    gamepad_update.event_text = Some(format!(
+                        "Controller connected: {}",
+                        gilrs.gamepad(event.id).os_name()
+                    ));
                 }
+                EventType::Disconnected if Some(event.id) == self.latest_gamepad_id => {
+                    self.latest_gamepad_id = None;
+                    gamepad_update.connected = Some(false);
+                    gamepad_update.event_text = Some(format!(
+                        "Controller disconnected: {}",
+                        gilrs.gamepad(event.id).os_name()
+                    ));
+                }
+                EventType::ButtonPressed(button, _) if button != Button::Unknown => {
+                    gamepad_update.last_pressed = Some(button);
+                    self.latest_gamepad_id = Some(event.id);
+                }
+                _ => {}
             }
         }
 
-        (last_pressed, gamepad_status_change)
+        if previous_gamepad_id.is_some() && previous_gamepad_id != self.latest_gamepad_id {
+            gamepad_update.changed = true;
+            gamepad_update.active_text = Some(match self.latest_gamepad_id {
+                Some(id) => format!(
+                    "Active controller changed to: {}",
+                    gilrs.gamepad(id).os_name()
+                ),
+                None => "No controller input detected, falling back to keyboard".to_string(),
+            });
+        }
+
+        gamepad_update
     }
 
     pub fn toggle_fullscreen(&mut self) {

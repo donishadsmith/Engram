@@ -8,7 +8,6 @@ use crate::{
     utils::{bindings_grid, file_dialog},
 };
 use egui_macroquad;
-use gilrs::Button;
 use macroquad::prelude::*;
 use shared::{
     EmulatorState,
@@ -41,8 +40,6 @@ async fn main() -> Result<(), Error> {
     let mut key_rebinding: Option<usize> = None;
     let mut target_key_id: Option<KeyId> = None;
     let mut restore_default_bindings = false;
-    let mut gamepad_status_change: Option<bool>;
-    let mut last_button_pressed: Option<Button>;
 
     loop {
         session.save()?;
@@ -52,23 +49,25 @@ async fn main() -> Result<(), Error> {
         }
 
         session.record_window_size();
-        (last_button_pressed, gamepad_status_change) = session.drain_gamepad_events();
-        if let Some(status_change) = gamepad_status_change.take() {
-            match status_change {
-                true => {
-                    session
-                        .toasts
-                        .info("Controller connected")
-                        .duration(Some(Duration::from_secs(5)));
-                }
 
-                false => {
-                    session
-                        .toasts
-                        .warning("Controller disconnected")
-                        .duration(Some(Duration::from_secs(5)));
-                }
-            }
+        let gamepad_update = session.drain_gamepad_events();
+
+        if let (Some(connected), Some(text)) = (gamepad_update.connected, gamepad_update.event_text)
+        {
+            let toast = if connected {
+                session.toasts.info(text)
+            } else {
+                session.toasts.warning(text)
+            };
+
+            toast.duration(Some(Duration::from_secs(5)));
+        }
+
+        if let Some(text) = gamepad_update.active_text {
+            session
+                .toasts
+                .warning(text)
+                .duration(Some(Duration::from_secs(5)));
         }
 
         match session.state {
@@ -102,7 +101,7 @@ async fn main() -> Result<(), Error> {
                 session.set_running();
             }
             EmulatorState::Running => {
-                if session.run()? == EmulatorState::Paused {
+                if session.run(gamepad_update.changed)? == EmulatorState::Paused {
                     session.set_paused();
                 };
 
@@ -287,7 +286,7 @@ async fn main() -> Result<(), Error> {
                         let possible_input =
                             match session.latest_gamepad_id.is_some() && key_id != KeyId::Hotkeys {
                                 true => {
-                                    if let Some(button) = last_button_pressed {
+                                    if let Some(button) = gamepad_update.last_pressed {
                                         Some(Input::Gamepad(button))
                                     } else {
                                         None

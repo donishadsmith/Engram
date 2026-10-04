@@ -544,7 +544,7 @@ impl Arm7tdmi {
     }
 
     pub fn remove_breakpoint(&mut self, address: u32) {
-        self.breakpoint_queue.retain(|&x| x != address);
+        self.breakpoint_queue.remove(&address);
         self.breakpoint_action.remove(&address);
     }
 
