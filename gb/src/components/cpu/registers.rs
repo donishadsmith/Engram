@@ -1,6 +1,6 @@
 use crate::components::{
     cpu::{FlagDelta, ProgramCounter, STARTING_ADDRESS, StatusFlag},
-    gamepak::CGBFlag,
+    gamepak::CgbFlag,
     utils::{ByteOps16, MergeByteOps},
 };
 #[derive(Clone, Copy)]
@@ -41,9 +41,9 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new(cgb_flag: CGBFlag, checksum: u8) -> Self {
+    pub fn new(cgb_flag: CgbFlag, checksum: u8) -> Self {
         match cgb_flag {
-            CGBFlag::DMG => Self {
+            CgbFlag::Dmg => Self {
                 a: 0x01,
                 f: StatusFlag::boot(checksum),
                 b: 0x00,
@@ -57,7 +57,7 @@ impl Registers {
                 instruction_register: None,
             },
 
-            CGBFlag::CGB => Self {
+            CgbFlag::Cgb => Self {
                 a: 0x11,
                 f: StatusFlag::Z.u8(),
                 b: 0x00,

@@ -26,12 +26,12 @@ use std::{
 };
 
 use crate::components::{
-    apu::APU,
+    apu::Apu,
     bootloader::{CGB_BOOT, DMG_BOOTIX},
     cpu::interrupts::InterruptMode,
-    gamepak::{CGBFlag, GamePak},
+    gamepak::{CgbFlag, GamePak},
     joypad::Joypad,
-    ppu::PPU,
+    ppu::Ppu,
     timer::Timer,
 };
 
@@ -41,14 +41,14 @@ pub enum BootStatus {
     Incomplete,
 }
 
-pub struct OAMDMAState {
+pub struct OamDmaState {
     in_progress: bool,
     source_address: u16,
     offset: u16,
     delay: u8,
 }
 
-pub struct VRAMDMAState {
+pub struct VramDmaState {
     in_progress: bool,
     source_address: u16,
     offset: usize,
@@ -80,11 +80,11 @@ pub enum MemoryAccessor {
 //http://gameboy.mongenel.com/dmg/asmmemmap.html
 pub struct Bus {
     boot_status: BootStatus,
-    pub oam_dma: OAMDMAState,
-    pub vram_dma: VRAMDMAState,
+    pub oam_dma: OamDmaState,
+    pub vram_dma: VramDmaState,
     pub gamepak: GamePak,
-    pub ppu: PPU,
-    pub apu: APU,
+    pub ppu: Ppu,
+    pub apu: Apu,
     pub timer: Timer,
     pub joypad: Joypad,
     pub wram: Vec<u8>,
@@ -105,7 +105,7 @@ pub struct Bus {
 impl Bus {
     pub fn new(gamepak: GamePak) -> Self {
         let cgb_flag = gamepak.header.cgb_flag;
-        let wram_size = if cgb_flag == CGBFlag::CGB {
+        let wram_size = if cgb_flag == CgbFlag::Cgb {
             0x8000
         } else {
             0x2000
@@ -113,13 +113,13 @@ impl Bus {
 
         Self {
             boot_status: BootStatus::Incomplete,
-            oam_dma: OAMDMAState {
+            oam_dma: OamDmaState {
                 in_progress: false,
                 source_address: 0x00,
                 offset: 0,
                 delay: 0,
             },
-            vram_dma: VRAMDMAState {
+            vram_dma: VramDmaState {
                 in_progress: false,
                 source_address: 0,
                 offset: 0,
@@ -128,8 +128,8 @@ impl Bus {
             },
             gamepak,
             wram: vec![0u8; wram_size],
-            ppu: PPU::new(cgb_flag == CGBFlag::CGB),
-            apu: APU::new(),
+            ppu: Ppu::new(cgb_flag == CgbFlag::Cgb),
+            apu: Apu::new(),
             timer: Timer::new(),
             joypad: Joypad::new(),
             hram: vec![0u8; 0x007F],
@@ -153,13 +153,13 @@ impl Bus {
         }
 
         match self.gamepak.header.cgb_flag {
-            CGBFlag::DMG => match address {
+            CgbFlag::Dmg => match address {
                 0x0000..=0x00FF => Some(DMG_BOOTIX[address as usize]),
                 _ => None,
             },
             // https://gbdev.gg8.se/wiki/articles/Gameboy_Bootstrap_ROM
             // The rom dump includes the 256 byte rom (0x0000-0x00FF) and the 1792 byte rom (0x0200-0x08FF)
-            CGBFlag::CGB => match address {
+            CgbFlag::Cgb => match address {
                 0x0000..=0x00FF | 0x0200..=0x08FF => Some(CGB_BOOT[address as usize]),
                 _ => None,
             },
@@ -167,7 +167,7 @@ impl Bus {
     }
 
     fn is_cgb(&self) -> bool {
-        self.gamepak.header.cgb_flag == CGBFlag::CGB
+        self.gamepak.header.cgb_flag == CgbFlag::Cgb
     }
 
     pub fn get_wram_index(&self, address: u16) -> usize {
@@ -195,7 +195,7 @@ impl Bus {
 
     // transfer data from rom or ram
     fn oam_dma_transfer(&mut self, value: u8) {
-        self.oam_dma = OAMDMAState {
+        self.oam_dma = OamDmaState {
             in_progress: true,
             source_address: (value as u16) << 8,
             offset: 0,
@@ -252,7 +252,7 @@ impl Bus {
             (((self.hdma_registers[2] as u16) << 8) | self.hdma_registers[3] as u16) as usize;
         let blocks_remaining = (value.get_bit_range(0..7) as usize) + 1;
 
-        self.vram_dma = VRAMDMAState {
+        self.vram_dma = VramDmaState {
             in_progress: true,
             source_address,
             offset,

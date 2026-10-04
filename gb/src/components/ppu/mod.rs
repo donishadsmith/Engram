@@ -9,7 +9,7 @@ use crate::components::{
         attributes::ColorBackgroundAttributes,
         palette::{ColorPaletteRegisterType, DMG_SHADES, cram_color},
         sprites::SpriteAttribute,
-        vram::VRam,
+        vram::Vram,
     },
     utils::ByteOps8,
 };
@@ -65,7 +65,7 @@ pub const SCREEN_HEIGHT: usize = 144;
 
 const DOTS_PER_SCANLINE: u32 = 456;
 
-struct LCDC {
+struct Lcdc {
     pub enable_lcd: bool,
     window_tile_map_select: u8,
     enable_window: bool,
@@ -76,7 +76,7 @@ struct LCDC {
     enable_bg_and_window: bool,
 }
 
-impl LCDC {
+impl Lcdc {
     fn from_byte(byte: u8) -> Self {
         Self {
             enable_lcd: byte.is_set(7),
@@ -119,16 +119,16 @@ impl LCDC {
 
 #[derive(Clone, Copy, PartialEq)]
 #[repr(u8)]
-pub enum PPUMode {
-    HBlank = 0,
-    VBlank = 1,
-    OAMSearch = 2,
+pub enum PpuMode {
+    Hblank = 0,
+    Vblank = 1,
+    OamSearch = 2,
     PixelTransfer = 3,
 }
 
-pub struct PPU {
+pub struct Ppu {
     dots: u32,
-    pub vram: VRam,
+    pub vram: Vram,
     pub oam: Vec<u8>,
     pub ly: u8, //scanline
     lyc: u8,
@@ -149,18 +149,18 @@ pub struct PPU {
     opri: u8,
     pub bg_palette_ram: [u8; 64],
     pub obj_palette_ram: [u8; 64],
-    pub current_mode: PPUMode,
+    pub current_mode: PpuMode,
     pub entered_hblank: bool,
     is_cgb: bool,
     pub frame: Frame,
     pub frontend: Frame,
 }
 
-impl PPU {
+impl Ppu {
     pub fn new(is_cgb: bool) -> Self {
         Self {
             dots: 0,
-            vram: VRam::new(is_cgb),
+            vram: Vram::new(is_cgb),
             oam: vec![0u8; 0x00A0],
             ly: 0,
             lyc: 0,
@@ -181,7 +181,7 @@ impl PPU {
             opri: 0,
             bg_palette_ram: [0xFF; 64],
             obj_palette_ram: [0xFF; 64],
-            current_mode: PPUMode::OAMSearch,
+            current_mode: PpuMode::OamSearch,
             entered_hblank: false,
             is_cgb,
             frame: Frame {
@@ -206,7 +206,7 @@ impl PPU {
     }
 
     pub fn tick(&mut self, t_cycles: u32, interrupt_flag: &mut u8) {
-        if !LCDC::from_byte(self.lcdc).enable_lcd {
+        if !Lcdc::from_byte(self.lcdc).enable_lcd {
             return;
         }
 
@@ -225,7 +225,7 @@ impl PPU {
             self.update_stat_interrupt_line(interrupt_flag);
 
             if self.ly == 144 {
-                *interrupt_flag |= InterruptMode::VBlank.mask();
+                *interrupt_flag |= InterruptMode::Vblank.mask();
                 self.window_line = 0;
 
                 self.frontend.swap(&mut self.frame);
@@ -235,7 +235,7 @@ impl PPU {
     }
 
     fn render_scanline(&mut self) {
-        let lcdc_struct = LCDC::from_byte(self.lcdc);
+        let lcdc_struct = Lcdc::from_byte(self.lcdc);
         let background_y = self.ly.wrapping_add(self.scy);
         let background_tile_row = (background_y % 8) as u16;
 
@@ -448,22 +448,22 @@ impl PPU {
         }
     }
 
-    pub fn current_mode(&self) -> PPUMode {
+    pub fn current_mode(&self) -> PpuMode {
         if self.ly >= 144 {
-            return PPUMode::VBlank;
+            return PpuMode::Vblank;
         }
 
         match self.dots {
-            0..=79 => PPUMode::OAMSearch,
-            80..=251 => PPUMode::PixelTransfer,
-            _ => PPUMode::HBlank,
+            0..=79 => PpuMode::OamSearch,
+            80..=251 => PpuMode::PixelTransfer,
+            _ => PpuMode::Hblank,
         }
     }
 
     fn update_mode(&mut self, interrupt_flag: &mut u8) {
         let current_mode = self.current_mode();
         if current_mode != self.current_mode {
-            if current_mode == PPUMode::HBlank && self.current_mode != PPUMode::HBlank {
+            if current_mode == PpuMode::Hblank && self.current_mode != PpuMode::Hblank {
                 self.entered_hblank = true;
             }
 
@@ -477,10 +477,10 @@ impl PPU {
 
     // Future reference: https://alfaexploit.com/en/posts/gameboy_dev04/
     fn update_stat_interrupt_line(&mut self, interrupt_flag: &mut u8) {
-        let mode: PPUMode = self.current_mode();
-        let interrupt_line = mode == PPUMode::HBlank && self.stat.is_set(3)
-            || (mode == PPUMode::VBlank && self.stat.is_set(4))
-            || (mode == PPUMode::OAMSearch && self.stat.is_set(5))
+        let mode: PpuMode = self.current_mode();
+        let interrupt_line = mode == PpuMode::Hblank && self.stat.is_set(3)
+            || (mode == PpuMode::Vblank && self.stat.is_set(4))
+            || (mode == PpuMode::OamSearch && self.stat.is_set(5))
             || (self.ly == self.lyc && self.stat.is_set(6));
 
         if interrupt_line && !self.stat_interrupt_line {
@@ -497,7 +497,7 @@ impl PPU {
             self.ly = 0;
             self.dots = 0;
             self.window_line = 0;
-            self.current_mode = PPUMode::HBlank;
+            self.current_mode = PpuMode::Hblank;
             self.stat_interrupt_line = false;
         }
     }

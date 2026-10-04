@@ -1,12 +1,12 @@
 use shared::traits::BitOps;
 
-pub struct VRam {
+pub struct Vram {
     pub bank: u8,
     pub bank_size: u16,
     pub memory: Vec<u8>,
 }
 
-impl VRam {
+impl Vram {
     pub fn new(is_cgb: bool) -> Self {
         Self {
             bank: 0,

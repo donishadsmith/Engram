@@ -3,7 +3,7 @@ use shared::traits::BitOps;
 use crate::components::{
     bus::{AddressBus, MemoryAccessor},
     cpu::{
-        CPU, FlagDelta, FlagType, StatusFlag,
+        FlagDelta, FlagType, SharpSm83, StatusFlag,
         alu::{ArithmeticOperation, BitwiseOperation, half_carry_add, half_carry_sub},
         cycles::{PREFIX_CYCLES, UNPREFIX_CYCLES},
         registers::{Register8Bits, Register16Bits},
@@ -34,7 +34,7 @@ fn opcode_decoder(opcode: u8) -> (u8, u8, u8, u8, u8) {
     (x, y, z, p, q)
 }
 
-impl<A> CPU<A>
+impl<A> SharpSm83<A>
 where
     A: AddressBus,
 {
@@ -959,7 +959,7 @@ mod tests {
         let registers = Registers::from_state(255, 0, 2, 0, 0, 0, 0, 0, 0xC001, 0xFFFE);
         let mut bus = TestBus::new();
         bus.write(0xC000, 0x80, MemoryAccessor::Cpu);
-        let mut cpu = CPU::from_state(registers, bus);
+        let mut cpu = SharpSm83::from_state(registers, bus);
 
         cpu.cycle();
 
@@ -1003,7 +1003,7 @@ mod tests {
                     case.initial.pc,
                     case.initial.sp,
                 );
-                let mut cpu = CPU::from_state(registers, bus);
+                let mut cpu = SharpSm83::from_state(registers, bus);
 
                 let m_cycles = cpu.cycle();
 

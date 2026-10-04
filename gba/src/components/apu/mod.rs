@@ -13,7 +13,7 @@ use shared::{
     traits::{BitOps, GroupedRegisters},
 };
 
-pub struct APU {
+pub struct Apu {
     pub global_control: GlobalControl,
     pub psg_mixer: PsgMixer,
     pub psg: PsgChannel,
@@ -30,7 +30,7 @@ pub struct APU {
     pub debugger_active: bool,
 }
 
-impl APU {
+impl Apu {
     pub fn new() -> Self {
         Self {
             global_control: GlobalControl::new(),

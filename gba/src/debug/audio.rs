@@ -1,7 +1,7 @@
 use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
 
-use crate::components::{apu::APU, dma::FifoChannel, gba::GBA};
+use crate::components::{apu::Apu, dma::FifoChannel, gba::GBA};
 use shared::debug::create_game_screen;
 
 #[derive(Clone, Copy)]
@@ -535,7 +535,7 @@ impl AudioDebugger {
     }
 }
 
-fn sound_on(apu: &APU, channel_id: AudioChannel, direction: PanDirection) -> bool {
+fn sound_on(apu: &Apu, channel_id: AudioChannel, direction: PanDirection) -> bool {
     match (channel_id, direction) {
         (AudioChannel::Channel1, PanDirection::Left) => apu.psg_mixer.panned_left(0),
         (AudioChannel::Channel1, PanDirection::Right) => apu.psg_mixer.panned_right(0),

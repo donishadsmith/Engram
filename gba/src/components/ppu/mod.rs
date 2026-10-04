@@ -144,7 +144,7 @@ impl BgDebugInfo {
     }
 }
 
-pub struct PPU {
+pub struct Ppu {
     pub vram: Box<[u8; 0x18000]>,
     pub palette_ram: Box<[u8; 0x400]>,
     pub oam: Box<[u8; 0x400]>,
@@ -175,7 +175,7 @@ pub struct PPU {
     pub debugger_active: bool,
 }
 
-impl PPU {
+impl Ppu {
     pub fn new() -> Self {
         Self {
             vram: zero_arr(),

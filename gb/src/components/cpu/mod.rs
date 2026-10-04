@@ -11,7 +11,7 @@ use shared::EmulatorState;
 use crate::components::{
     bus::{AddressBus, MemoryAccessor},
     cpu::{interrupts::InterruptMode, registers::Registers},
-    gamepak::CGBFlag,
+    gamepak::CgbFlag,
     utils::{ByteOps8, MergeByteOps},
 };
 
@@ -162,7 +162,7 @@ impl Interrupt {
     }
 }
 
-pub struct CPU<A>
+pub struct SharpSm83<A>
 where
     A: AddressBus,
 {
@@ -177,11 +177,11 @@ where
     pub resume_from: Option<u16>,
 }
 
-impl<A> CPU<A>
+impl<A> SharpSm83<A>
 where
     A: AddressBus,
 {
-    pub fn start(cgb_flag: CGBFlag, checksum: u8, bus: A) -> Self {
+    pub fn start(cgb_flag: CgbFlag, checksum: u8, bus: A) -> Self {
         let mut cpu = Self {
             registers: Registers::new(cgb_flag, checksum),
             bus,

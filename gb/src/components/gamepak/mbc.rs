@@ -1,10 +1,10 @@
 // TODO: Check if worth to consolidate some code
 pub mod prelude {
-    use crate::components::gamepak::MBCType;
+    use crate::components::gamepak::MbcType;
     use chrono::Utc;
     use shared::traits::BitOps;
 
-    pub trait MBC {
+    pub trait Mbc {
         fn read(&self, address: u16) -> u8;
 
         fn write(&mut self, address: u16, value: u8);
@@ -39,7 +39,7 @@ pub mod prelude {
 
         fn ram_changed(&mut self) -> &mut bool;
 
-        fn id(&self) -> MBCType;
+        fn id(&self) -> MbcType;
 
         fn is_timer_enabled(&self) -> bool {
             false
@@ -47,7 +47,7 @@ pub mod prelude {
 
         fn tick(&mut self) {}
 
-        fn rtc_save_state(&self) -> Option<RTCSaveState> {
+        fn rtc_save_state(&self) -> Option<RtcSaveState> {
             None
         }
     }
@@ -68,7 +68,7 @@ pub mod prelude {
         }
     }
 
-    impl MBC for RomOnly {
+    impl Mbc for RomOnly {
         fn read(&self, address: u16) -> u8 {
             *self.rom.get(address as usize).unwrap_or(&0xFF)
         }
@@ -103,13 +103,13 @@ pub mod prelude {
             &mut self.ram_updated
         }
 
-        fn id(&self) -> MBCType {
-            MBCType::RomOnly
+        fn id(&self) -> MbcType {
+            MbcType::RomOnly
         }
     }
 
-    // https://gbdev.io/pandocs/MBC1.html; theres a 5 + a 2 bit register for this
-    pub struct MBC1 {
+    // https://gbdev.io/pandocs/Mbc1.html; theres a 5 + a 2 bit register for this
+    pub struct Mbc1 {
         rom: Vec<u8>,
         ram: Vec<u8>,
         register_5bit: u8,
@@ -119,7 +119,7 @@ pub mod prelude {
         ram_updated: bool,
     }
 
-    impl MBC1 {
+    impl Mbc1 {
         pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
             Self {
                 rom,
@@ -137,7 +137,7 @@ pub mod prelude {
         }
     }
 
-    impl MBC for MBC1 {
+    impl Mbc for Mbc1 {
         fn read(&self, address: u16) -> u8 {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize % self.rom.len()],
@@ -209,12 +209,12 @@ pub mod prelude {
             &mut self.ram_updated
         }
 
-        fn id(&self) -> MBCType {
-            MBCType::MBC1
+        fn id(&self) -> MbcType {
+            MbcType::Mbc1
         }
     }
 
-    pub struct MBC2 {
+    pub struct Mbc2 {
         rom: Vec<u8>,
         ram: Vec<u8>,
         rom_bank: usize,
@@ -222,7 +222,7 @@ pub mod prelude {
         ram_updated: bool,
     }
 
-    impl MBC2 {
+    impl Mbc2 {
         const MBC2_RAM_SIZE: usize = 512;
 
         pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
@@ -240,7 +240,7 @@ pub mod prelude {
         }
     }
 
-    impl MBC for MBC2 {
+    impl Mbc for Mbc2 {
         fn read(&self, address: u16) -> u8 {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
@@ -308,13 +308,13 @@ pub mod prelude {
             &mut self.ram_updated
         }
 
-        fn id(&self) -> MBCType {
-            MBCType::MBC2
+        fn id(&self) -> MbcType {
+            MbcType::Mbc2
         }
     }
 
     #[derive(Clone, Copy)]
-    pub struct RTCSaveState {
+    pub struct RtcSaveState {
         pub previous_unix_timestamp: i64,
         pub seconds: u8,
         pub minutes: u8,
@@ -328,7 +328,7 @@ pub mod prelude {
         pub latched_dh: u8,
     }
 
-    impl RTCSaveState {
+    impl RtcSaveState {
         pub const BYTE_SIZE: usize = 18;
 
         pub fn to_bytes(&self) -> [u8; Self::BYTE_SIZE] {
@@ -388,7 +388,7 @@ pub mod prelude {
     }
 
     impl RTCRegister {
-        fn new(save_state: Option<RTCSaveState>) -> Self {
+        fn new(save_state: Option<RtcSaveState>) -> Self {
             let mut rtc = match save_state {
                 Some(state) => Self {
                     previous_unix_timestamp: state.previous_unix_timestamp,
@@ -508,8 +508,8 @@ pub mod prelude {
             self.set_days(days);
         }
 
-        fn save_state(&self) -> RTCSaveState {
-            RTCSaveState {
+        fn save_state(&self) -> RtcSaveState {
+            RtcSaveState {
                 previous_unix_timestamp: self.previous_unix_timestamp,
                 seconds: self.seconds,
                 minutes: self.minutes,
@@ -525,7 +525,7 @@ pub mod prelude {
         }
     }
 
-    pub struct MBC3 {
+    pub struct Mbc3 {
         rom: Vec<u8>,
         ram: Vec<u8>,
         register_7bit: u8,
@@ -537,8 +537,8 @@ pub mod prelude {
         timer_enabled: bool,
     }
 
-    impl MBC3 {
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>, rtc_save_state: Option<RTCSaveState>) -> Self {
+    impl Mbc3 {
+        pub fn new(rom: Vec<u8>, ram: Vec<u8>, rtc_save_state: Option<RtcSaveState>) -> Self {
             Self {
                 rom,
                 ram,
@@ -557,7 +557,7 @@ pub mod prelude {
         }
     }
 
-    impl MBC for MBC3 {
+    impl Mbc for Mbc3 {
         fn read(&self, address: u16) -> u8 {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
@@ -652,8 +652,8 @@ pub mod prelude {
             &mut self.ram_updated
         }
 
-        fn id(&self) -> MBCType {
-            MBCType::MBC3
+        fn id(&self) -> MbcType {
+            MbcType::Mbc3
         }
 
         fn is_timer_enabled(&self) -> bool {
@@ -664,12 +664,12 @@ pub mod prelude {
             self.rtc_register.tick();
         }
 
-        fn rtc_save_state(&self) -> Option<RTCSaveState> {
+        fn rtc_save_state(&self) -> Option<RtcSaveState> {
             Some(self.rtc_register.save_state())
         }
     }
 
-    pub struct MBC5 {
+    pub struct Mbc5 {
         rom: Vec<u8>,
         ram: Vec<u8>,
         register_8bit: u8,
@@ -680,7 +680,7 @@ pub mod prelude {
         has_rumble: bool,
     }
 
-    impl MBC5 {
+    impl Mbc5 {
         pub fn new(rom: Vec<u8>, ram: Vec<u8>, has_rumble: bool) -> Self {
             Self {
                 rom,
@@ -699,7 +699,7 @@ pub mod prelude {
         }
     }
 
-    impl MBC for MBC5 {
+    impl Mbc for Mbc5 {
         fn read(&self, address: u16) -> u8 {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
@@ -770,43 +770,43 @@ pub mod prelude {
             &mut self.ram_updated
         }
 
-        fn id(&self) -> MBCType {
-            MBCType::MBC5
+        fn id(&self) -> MbcType {
+            MbcType::Mbc5
         }
     }
 
     #[derive(Clone, Copy)]
-    enum HuC1Mode {
+    enum Huc1Mode {
         RAM,
         IR,
     }
 
-    impl HuC1Mode {
-        fn select(value: u8) -> HuC1Mode {
+    impl Huc1Mode {
+        fn select(value: u8) -> Huc1Mode {
             if value.get_bit_range(0..4) == 0x0E {
-                HuC1Mode::IR
+                Huc1Mode::IR
             } else {
-                HuC1Mode::RAM
+                Huc1Mode::RAM
             }
         }
     }
 
-    pub struct HuC1 {
+    pub struct Huc1 {
         rom: Vec<u8>,
         ram: Vec<u8>,
         ram_updated: bool,
-        mode: HuC1Mode,
+        mode: Huc1Mode,
         rom_bank: usize,
         ram_bank: usize,
     }
 
-    impl HuC1 {
+    impl Huc1 {
         pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
             Self {
                 rom,
                 ram,
                 ram_updated: false,
-                mode: HuC1Mode::RAM,
+                mode: Huc1Mode::RAM,
                 rom_bank: 1,
                 ram_bank: 0,
             }
@@ -817,7 +817,7 @@ pub mod prelude {
         }
     }
 
-    impl MBC for HuC1 {
+    impl Mbc for Huc1 {
         fn read(&self, address: u16) -> u8 {
             match address {
                 0x0000..=0x3FFF => self.rom[address as usize],
@@ -826,8 +826,8 @@ pub mod prelude {
                     self.rom[offset % self.rom.len()]
                 }
                 0xA000..=0xBFFF => match self.mode {
-                    HuC1Mode::IR => 0xC0,
-                    HuC1Mode::RAM => {
+                    Huc1Mode::IR => 0xC0,
+                    Huc1Mode::RAM => {
                         if self.ram.is_empty() {
                             0xFF
                         } else {
@@ -841,19 +841,19 @@ pub mod prelude {
 
         fn write(&mut self, address: u16, value: u8) {
             match address {
-                0x0000..=0x1FFF => self.mode = HuC1Mode::select(value),
+                0x0000..=0x1FFF => self.mode = Huc1Mode::select(value),
                 0x2000..=0x3FFF => self.rom_bank = value.get_bit_range(0..6) as usize,
                 0x4000..=0x5FFF => self.ram_bank = value.get_bit_range(0..2) as usize,
                 0x6000..=0x7FFF => {}
                 0xA000..=0xBFFF => match self.mode {
-                    HuC1Mode::RAM => {
+                    Huc1Mode::RAM => {
                         if !self.ram.is_empty() {
                             let index = self.ram_index(address);
                             self.ram[index] = value;
                             self.ram_updated = true;
                         }
                     }
-                    HuC1Mode::IR => {}
+                    Huc1Mode::IR => {}
                 },
                 _ => {}
             }
@@ -887,8 +887,8 @@ pub mod prelude {
             &mut self.ram_updated
         }
 
-        fn id(&self) -> MBCType {
-            MBCType::HuC1
+        fn id(&self) -> MbcType {
+            MbcType::Huc1
         }
     }
 }

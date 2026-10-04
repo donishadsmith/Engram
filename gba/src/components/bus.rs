@@ -18,12 +18,12 @@
 use std::{collections::HashMap, env::var, fmt::Arguments, fs::File, io::BufWriter};
 
 use crate::components::{
-    apu::APU,
+    apu::Apu,
     dma::{DmaChannels, FifoChannel, TransferType, Trigger},
     gamepak::{BackupChip, GamePak},
     gba::{APU_SEQUENCER, CYCLES_PER_SCANLINE, Event, HBLANK_OFFSET},
     keypad::Keypad,
-    ppu::PPU,
+    ppu::Ppu,
     serial::Serial,
     timer::Timers,
 };
@@ -109,8 +109,8 @@ pub struct Bus {
     pub last_instruction_read: u32,
     pub last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
-    pub apu: APU,
-    pub ppu: PPU,
+    pub apu: Apu,
+    pub ppu: Ppu,
     pub dma: DmaChannels,
     pub timers: Timers,
     pub gamepak: GamePak,
@@ -156,9 +156,9 @@ impl Bus {
             iwram: zero_arr(),
             last_instruction_read: 0,
             last_bios_fetch: 0xE129F000,
-            ppu: PPU::new(),
+            ppu: Ppu::new(),
             gamepak,
-            apu: APU::new(),
+            apu: Apu::new(),
             dma: DmaChannels::new(),
             timers: Timers::new(),
             serial: Serial::new(),

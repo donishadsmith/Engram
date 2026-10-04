@@ -6,41 +6,45 @@ pub mod mbc;
     https://gbdev.io/pandocs/The_Cartridge_Header.html
     0147-Cartridge type, indicates the memory bank controller based on some 8 bit value
 
-    https://gbdev.io/pandocs/MBCs.html
+    https://gbdev.io/pandocs/Mbcs.html
     Gameboy can only see 64 KB but some Roms can be up to 1 MB, bank switching required
 */
 
-use std::path::PathBuf;
+use std::{
+    fs::{read, write},
+    io::Error,
+    path::PathBuf,
+};
 
 use crate::components::gamepak::mbc::prelude::*;
 use shared::utils::error_message;
 
 // "RTC" in ASCII
 const MAGIC_NUMBERS: [u8; 3] = [0x52, 0x54, 0x43];
-// 3 magic numebers for MBC3 with timer enabled + 18 RTC states = 21 bytes before the RAM save data
-const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RTCSaveState::BYTE_SIZE;
+// 3 magic numebers for Mbc3 with timer enabled + 18 RTC states = 21 bytes before the RAM save data
+const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RtcSaveState::BYTE_SIZE;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum MBCType {
+pub enum MbcType {
     RomOnly,
-    MBC1,
-    MBC2,
-    MBC3,
-    MBC5,
-    HuC1,
+    Mbc1,
+    Mbc2,
+    Mbc3,
+    Mbc5,
+    Huc1,
     Unknown(u8),
 }
 
-impl MBCType {
+impl MbcType {
     fn byte_to_id(rom: &[u8]) -> Self {
         match rom[0x0147] {
-            0x00 | 0x08 | 0x09 => MBCType::RomOnly,
-            0x01..=0x03 => MBCType::MBC1,
-            0x05 | 0x06 => MBCType::MBC2,
-            0x0F..=0x13 => MBCType::MBC3,
-            0x19..=0x1E => MBCType::MBC5,
-            0xFF => MBCType::HuC1,
-            other => MBCType::Unknown(other),
+            0x00 | 0x08 | 0x09 => MbcType::RomOnly,
+            0x01..=0x03 => MbcType::Mbc1,
+            0x05 | 0x06 => MbcType::Mbc2,
+            0x0F..=0x13 => MbcType::Mbc3,
+            0x19..=0x1E => MbcType::Mbc5,
+            0xFF => MbcType::Huc1,
+            other => MbcType::Unknown(other),
         }
     }
 
@@ -48,42 +52,42 @@ impl MBCType {
         &self,
         rom: Vec<u8>,
         ram: Vec<u8>,
-        rtc_save_state: Option<RTCSaveState>,
+        rtc_save_state: Option<RtcSaveState>,
         has_rumble: bool,
-    ) -> Option<Box<dyn MBC>> {
+    ) -> Option<Box<dyn Mbc>> {
         match self {
-            MBCType::RomOnly => Some(Box::new(RomOnly::new(rom, ram))),
-            MBCType::MBC1 => Some(Box::new(MBC1::new(rom, ram))),
-            MBCType::MBC2 => Some(Box::new(MBC2::new(rom, ram))),
-            MBCType::MBC3 => Some(Box::new(MBC3::new(rom, ram, rtc_save_state))),
-            MBCType::MBC5 => Some(Box::new(MBC5::new(rom, ram, has_rumble))),
-            MBCType::HuC1 => Some(Box::new(HuC1::new(rom, ram))),
-            MBCType::Unknown(_) => None,
+            MbcType::RomOnly => Some(Box::new(RomOnly::new(rom, ram))),
+            MbcType::Mbc1 => Some(Box::new(Mbc1::new(rom, ram))),
+            MbcType::Mbc2 => Some(Box::new(Mbc2::new(rom, ram))),
+            MbcType::Mbc3 => Some(Box::new(Mbc3::new(rom, ram, rtc_save_state))),
+            MbcType::Mbc5 => Some(Box::new(Mbc5::new(rom, ram, has_rumble))),
+            MbcType::Huc1 => Some(Box::new(Huc1::new(rom, ram))),
+            MbcType::Unknown(_) => None,
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum CGBFlag {
-    CGB,
-    DMG,
+pub enum CgbFlag {
+    Cgb,
+    Dmg,
 }
 
-impl CGBFlag {
+impl CgbFlag {
     fn byte_to_id(rom: &[u8]) -> Self {
         match rom[0x0143] {
-            0x80 | 0xC0 => CGBFlag::CGB,
-            _ => CGBFlag::DMG,
+            0x80 | 0xC0 => CgbFlag::Cgb,
+            _ => CgbFlag::Dmg,
         }
     }
 }
 
 pub struct Header {
     pub title: String,
-    pub mbc_type: MBCType,
+    pub mbc_type: MbcType,
     pub rom_size: usize,
     pub ram_size: usize,
-    pub cgb_flag: CGBFlag,
+    pub cgb_flag: CgbFlag,
     pub has_battery: bool,
     pub has_rumble: bool,
     pub has_timer: bool,
@@ -116,7 +120,7 @@ impl Header {
     }
 
     /*
-        https://gbdev.io/pandocs/The_Cartridge_Header.html#footnote-mbc30
+        https://gbdev.io/pandocs/The_Cartridge_Header.html#footnote-Mbc30
         0104-0133-Nintendo logo; valid rom contains this
         0134-0143-Title- in uppercase ASCII, if the title is less than 16 characters, it gets zero padded, which is NULL in ASCII
     */
@@ -143,12 +147,12 @@ impl Header {
         checksum
     }
 
-    fn mbc(rom: &[u8]) -> MBCType {
-        MBCType::byte_to_id(rom)
+    fn mbc(rom: &[u8]) -> MbcType {
+        MbcType::byte_to_id(rom)
     }
 
-    fn mode(rom: &[u8]) -> CGBFlag {
-        CGBFlag::byte_to_id(rom)
+    fn mode(rom: &[u8]) -> CgbFlag {
+        CgbFlag::byte_to_id(rom)
     }
 
     fn has_battery(rom: &[u8]) -> bool {
@@ -191,10 +195,10 @@ impl Header {
     fn fake() -> Self {
         Self {
             title: String::from("Test"),
-            mbc_type: MBCType::MBC3,
+            mbc_type: MbcType::Mbc3,
             rom_size: 0,
             ram_size: 0,
-            cgb_flag: CGBFlag::DMG,
+            cgb_flag: CgbFlag::Dmg,
             has_battery: false,
             has_rumble: false,
             has_timer: false,
@@ -206,12 +210,12 @@ impl Header {
 pub struct GamePak {
     pub header: Header,
     pub sav_path: PathBuf,
-    pub mbc: Box<dyn MBC>,
+    pub mbc: Box<dyn Mbc>,
 }
 
 impl GamePak {
-    pub fn load(rom_path: std::path::PathBuf) -> Result<Self, std::io::Error> {
-        let rom = std::fs::read(&rom_path)?;
+    pub fn load(rom_path: PathBuf) -> Result<Self, Error> {
+        let rom = read(&rom_path)?;
         if rom.len() < 0x150 {
             return Err(error_message(
                 "File too small to be a valid ROM".to_string(),
@@ -235,21 +239,21 @@ impl GamePak {
         header: &Header,
         rom: Vec<u8>,
         ram: Vec<u8>,
-        rtc_save_state: Option<RTCSaveState>,
-    ) -> Result<Box<dyn MBC>, std::io::Error> {
+        rtc_save_state: Option<RtcSaveState>,
+    ) -> Result<Box<dyn Mbc>, Error> {
         let has_rumble = header.has_rumble;
         header
             .mbc_type
             .to_struct(rom, ram, rtc_save_state, has_rumble)
             .ok_or_else(|| {
-                error_message("Only MBC1, MBC2, MBC3, MBC5, and RomOnly are supported.".to_string())
+                error_message("Only Mbc1, Mbc2, Mbc3, Mbc5, and RomOnly are supported.".to_string())
             })
     }
 
     pub fn read_sav(
         sav_path: &PathBuf,
         header: &Header,
-    ) -> Result<(Vec<u8>, Option<RTCSaveState>), std::io::Error> {
+    ) -> Result<(Vec<u8>, Option<RtcSaveState>), Error> {
         let mut ram = vec![0; header.ram_size];
         let mut rtc_save_state = None;
 
@@ -257,12 +261,12 @@ impl GamePak {
             return Ok((ram, rtc_save_state));
         }
 
-        let mut sav_buffer = std::fs::read(sav_path)?;
+        let mut sav_buffer = read(sav_path)?;
         if sav_buffer.len() >= SAV_HEADER_SIZE {
             let magic_start = sav_buffer.len() - SAV_HEADER_SIZE;
             let magic_end = magic_start + MAGIC_NUMBERS.len();
             if sav_buffer[magic_start..magic_end] == MAGIC_NUMBERS {
-                rtc_save_state = Some(RTCSaveState::from_bytes(&sav_buffer[magic_end..]));
+                rtc_save_state = Some(RtcSaveState::from_bytes(&sav_buffer[magic_end..]));
                 sav_buffer.truncate(magic_start);
             }
         }
@@ -280,7 +284,7 @@ impl GamePak {
         updated_ram
     }
 
-    pub fn write_sav(&mut self) -> Result<(), std::io::Error> {
+    pub fn write_sav(&mut self) -> Result<(), Error> {
         if !self.header.has_battery || self.mbc.get_ram().is_empty() {
             return Ok(());
         }
@@ -297,16 +301,16 @@ impl GamePak {
                 buffer.extend_from_slice(&MAGIC_NUMBERS);
                 buffer.extend_from_slice(&state.to_bytes());
 
-                std::fs::write(&self.sav_path, buffer)?;
+                write(&self.sav_path, buffer)?;
             }
-            None => std::fs::write(&self.sav_path, self.mbc.get_ram())?,
+            None => write(&self.sav_path, self.mbc.get_ram())?,
         }
 
         Ok(())
     }
 
     // Just for testing purposes
-    pub fn fake() -> Result<Self, std::io::Error> {
+    pub fn fake() -> Result<Self, Error> {
         let rom = Vec::new();
         let ram = Vec::new();
         let header = Header::fake();

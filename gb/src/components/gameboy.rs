@@ -1,7 +1,7 @@
 use crate::components::{
     bus::{AddressBus, Bus, MemoryAccessor},
     cpu::{
-        CPU,
+        SharpSm83,
         registers::{Register8Bits, Register16Bits},
     },
     gamepak::GamePak,
@@ -20,7 +20,7 @@ pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 // https://www.zilog.com/docs/z80/um0080.pdf
 
 pub struct GameBoy {
-    pub cpu: CPU<Bus>,
+    pub cpu: SharpSm83<Bus>,
     pub scripted_keypad: Option<[bool; 8]>,
     pub keypad: [bool; 8],
     pub remaining_cycles: u32,
@@ -34,7 +34,7 @@ impl GameBoy {
         let bus = Bus::new(gamepak);
 
         Self {
-            cpu: CPU::start(cgb_flag, checksum, bus),
+            cpu: SharpSm83::start(cgb_flag, checksum, bus),
             scripted_keypad: None,
             keypad: [false; 8],
             remaining_cycles: 0,

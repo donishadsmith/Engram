@@ -13,11 +13,11 @@ use shared::{
     Noise: White noise effects (attack hits)
 */
 
-// https://jsgroth.dev/blog/posts/gb-rewrite-apu/
+// https://jsgroth.dev/blog/posts/gb-rewrite-Apu/
 // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence
-pub struct APU {
+pub struct Apu {
     mixer: PsgMixer,
     pub psg: PsgChannel,
     sample_counter: u32,
@@ -26,7 +26,7 @@ pub struct APU {
     low_pass_right: LowPassFilter,
 }
 
-impl APU {
+impl Apu {
     pub fn new() -> Self {
         let mut mixer = PsgMixer::new();
         mixer.write(PsgMixerRegister::Nr52, 0xF1);
