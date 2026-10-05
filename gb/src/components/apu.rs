@@ -13,7 +13,7 @@ use shared::{
     Noise: White noise effects (attack hits)
 */
 
-// https://jsgroth.dev/blog/posts/gb-rewrite-Apu/
+// https://jsgroth.dev/blog/posts/gb-rewrite-apu/
 // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence

@@ -6,7 +6,7 @@ pub mod mbc;
     https://gbdev.io/pandocs/The_Cartridge_Header.html
     0147-Cartridge type, indicates the memory bank controller based on some 8 bit value
 
-    https://gbdev.io/pandocs/Mbcs.html
+    https://gbdev.io/pandocs/MBCs.html
     Gameboy can only see 64 KB but some Roms can be up to 1 MB, bank switching required
 */
 
@@ -182,7 +182,7 @@ impl Header {
     }
 
     /*
-        https://gbdev.io/pandocs/The_Cartridge_Header.html#footnote-Mbc30
+        https://gbdev.io/pandocs/The_Cartridge_Header.html#footnote-mbc30
         0104-0133-Nintendo logo; valid rom contains this
         0134-0143-Title- in uppercase ASCII, if the title is less than 16 characters, it gets zero padded, which is NULL in ASCII
     */

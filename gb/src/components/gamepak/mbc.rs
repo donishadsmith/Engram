@@ -103,7 +103,7 @@ pub mod prelude {
     }
 
     #[derive(PartialEq, Eq)]
-    // https://gbdev.io/pandocs/Mbc1.html; theres a 5 + a 2 bit register for this
+    // https://gbdev.io/pandocs/MBC1.html; theres a 5 + a 2 bit register for this
     pub struct Mbc1 {
         rom: Vec<u8>,
         ram: Vec<u8>,
