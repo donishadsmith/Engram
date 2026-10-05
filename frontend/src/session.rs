@@ -170,8 +170,10 @@ impl Session {
             None
         };
 
-        let input_blocked =
-            self.show_key_bindings || self.show_hotkeys || self.lua_editor.occupied();
+        let input_blocked = self.show_key_bindings
+            || self.show_hotkeys
+            || self.lua_editor.occupied()
+            || clear_inputs;
 
         // shocked that i managed to get gamepad working
         let keymap = if gamepad.is_some() {
@@ -180,13 +182,10 @@ impl Session {
             self.key_bindings.keys(key_id)
         };
 
-        let inputs = if clear_inputs {
-            vec![false; index].into_boxed_slice()
-        } else {
-            get_relevant_key_presses(&keymap[..index], gamepad, input_blocked).into_boxed_slice()
-        };
-
-        emulator.run(&inputs, self.master_volume)
+        emulator.run(
+            &get_relevant_key_presses(&keymap[..index], gamepad, input_blocked).into_boxed_slice(),
+            self.master_volume,
+        )
     }
 
     pub fn pause(&mut self) {

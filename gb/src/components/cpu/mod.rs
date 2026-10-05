@@ -4,7 +4,7 @@ pub mod instructions;
 pub mod interrupts;
 pub mod registers;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use shared::EmulatorState;
 
@@ -172,8 +172,7 @@ where
     pub halted: bool,
     pub interrupt: Interrupt,
     pub breakpoint_hit: Option<u32>,
-    pub breakpoint_queue: HashSet<u16>,
-    pub breakpoint_action: HashMap<u32, EmulatorState>,
+    pub breakpoint_queue: HashMap<u32, EmulatorState>,
     pub resume_from: Option<u16>,
 }
 
@@ -189,8 +188,7 @@ where
             halted: false,
             interrupt: Interrupt::new(),
             breakpoint_hit: None,
-            breakpoint_queue: HashSet::new(),
-            breakpoint_action: HashMap::new(),
+            breakpoint_queue: HashMap::new(),
             resume_from: None,
         };
 
@@ -207,8 +205,7 @@ where
             halted: false,
             interrupt: Interrupt::new(),
             breakpoint_hit: None,
-            breakpoint_queue: HashSet::new(),
-            breakpoint_action: HashMap::new(),
+            breakpoint_queue: HashMap::new(),
             resume_from: None,
         };
 
@@ -219,23 +216,14 @@ where
         cpu
     }
 
-    pub fn set_breakpoint(&mut self, address: u16, pause: bool) -> bool {
-        let added = self.breakpoint_queue.insert(address);
-        if added {
-            let action = if pause {
-                EmulatorState::Paused
-            } else {
-                EmulatorState::Running
-            };
-            self.breakpoint_action.insert(address as u32, action);
-        }
+    pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
+        let action = if pause {
+            EmulatorState::Paused
+        } else {
+            EmulatorState::Running
+        };
 
-        added
-    }
-
-    pub fn remove_breakpoint(&mut self, address: u16) {
-        self.breakpoint_queue.remove(&address);
-        self.breakpoint_action.remove(&(address as u32));
+        self.breakpoint_queue.insert(address, action).is_none()
     }
 
     pub fn push(&mut self, address: u16) {
@@ -289,7 +277,9 @@ where
         */
         if !self.halted {
             let executing_address = self.registers.program_counter.address.wrapping_sub(1);
-            if self.breakpoint_queue.contains(&executing_address)
+            if self
+                .breakpoint_queue
+                .contains_key(&(executing_address as u32))
                 && self.resume_from != Some(executing_address)
             {
                 self.breakpoint_hit = Some(executing_address as u32);

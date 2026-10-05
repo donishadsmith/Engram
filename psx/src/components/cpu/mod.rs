@@ -147,8 +147,7 @@ impl Registers {
 pub struct R3000a {
     pub registers: Registers,
     pub breakpoint_hit: Option<u32>,
-    pub breakpoint_queue: HashSet<u32>,
-    pub breakpoint_action: HashMap<u32, EmulatorState>,
+    pub breakpoint_queue: HashMap<u32, EmulatorState>,
     pub resume_from: Option<u32>,
 }
 
@@ -157,8 +156,7 @@ impl R3000a {
         Self {
             registers: Registers::new(),
             breakpoint_hit: None,
-            breakpoint_queue: HashSet::new(),
-            breakpoint_action: HashMap::new(),
+            breakpoint_queue: HashMap::new(),
             resume_from: None,
         }
     }
@@ -166,21 +164,12 @@ impl R3000a {
     pub fn step(&mut self, bus: &mut Bus) {}
 
     pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        let added = self.breakpoint_queue.insert(address);
-        if added {
-            let action = if pause {
-                EmulatorState::Paused
-            } else {
-                EmulatorState::Running
-            };
-            self.breakpoint_action.insert(address, action);
-        }
+        let action = if pause {
+            EmulatorState::Paused
+        } else {
+            EmulatorState::Running
+        };
 
-        added
-    }
-
-    pub fn remove_breakpoint(&mut self, address: u32) {
-        self.breakpoint_queue.remove(&address);
-        self.breakpoint_action.remove(&address);
+        self.breakpoint_queue.insert(address, action).is_none()
     }
 }

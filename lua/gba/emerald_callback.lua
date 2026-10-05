@@ -12,6 +12,6 @@ function on_breakpoint(address)
 	end
 end
 
-on_pc(0x080E518C, function(pc)
+on_pc(0x080E518C, function()
 	print("r0", read_cpu_register("r0"))
 end)

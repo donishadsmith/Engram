@@ -213,7 +213,7 @@ impl Emulator for GBA {
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
-        self.cpu.breakpoint_action.clone().into_iter().collect()
+        self.cpu.breakpoint_queue.clone().into_iter().collect()
     }
 
     fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)> {
@@ -221,12 +221,10 @@ impl Emulator for GBA {
     }
 
     fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool {
-        if self.bus.watchpoint_queue.contains_key(&address) {
-            return false;
-        }
-
-        self.bus.watchpoint_queue.insert(address, watchpoint_args);
-        true
+        self.bus
+            .watchpoint_queue
+            .insert(address, watchpoint_args)
+            .is_none()
     }
 
     fn clear_all_watchpoints(&mut self) {

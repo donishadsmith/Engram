@@ -173,11 +173,11 @@ impl Emulator for GameBoy {
     }
 
     fn remove_breakpoint(&mut self, address: u32) {
-        self.cpu.remove_breakpoint(address as u16);
+        self.cpu.breakpoint_queue.remove(&address);
     }
 
     fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        self.cpu.set_breakpoint(address as u16, pause)
+        self.cpu.set_breakpoint(address, pause)
     }
 
     fn take_breakpoint_hit(&mut self) -> Option<u32> {
@@ -189,7 +189,7 @@ impl Emulator for GameBoy {
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
-        self.cpu.breakpoint_action.clone().into_iter().collect()
+        self.cpu.breakpoint_queue.clone().into_iter().collect()
     }
 
     fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)> {
@@ -204,13 +204,8 @@ impl Emulator for GameBoy {
 
     fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool {
         let mut queue = self.cpu.bus.watchpoint_queue.borrow_mut();
-        if queue.contains_key(&address) {
-            return false;
-        }
 
-        queue.insert(address, watchpoint_args);
-
-        true
+        queue.insert(address, watchpoint_args).is_none()
     }
 
     fn clear_all_watchpoints(&mut self) {

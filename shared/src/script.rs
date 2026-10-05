@@ -295,6 +295,7 @@ pub struct ScriptEngine {
     running: Option<Thread>,
     requests: Vec<ScriptRequest>,
     step_done: bool,
+    stop_processes: bool,
 }
 
 impl ScriptEngine {
@@ -325,6 +326,7 @@ impl ScriptEngine {
             running: None,
             requests: Vec::new(),
             step_done: false,
+            stop_processes: false,
         }
     }
 
@@ -348,9 +350,26 @@ impl ScriptEngine {
         self.step_done = true;
     }
 
-    pub fn cancel(&mut self) {
+    pub fn stop_all_processes(&mut self) {
+        self.step_completed();
         self.running = None;
-        self.step_done = false;
+        self.stop_processes = true;
+    }
+
+    fn kill_processes(&mut self, target: &mut dyn ScriptTarget) {
+        if take(&mut self.stop_processes) {
+            let _ = self.lua.globals().set("on_frame", Value::Nil);
+            let _ = self.lua.globals().set("on_breakpoint", Value::Nil);
+            let _ = self.lua.globals().set("on_watchpoint", Value::Nil);
+            target.clear_all_breakpoints();
+            target.clear_all_watchpoints();
+            target.take_breakpoint_hit();
+            target.take_watchpoint_hits();
+
+            self.output.push(
+                "all running hooks, watchpoints, and breakpoints have been terminated".to_string(),
+            );
+        }
     }
 
     pub fn execute(
@@ -359,6 +378,8 @@ impl ScriptEngine {
         emulator_id: EmulatorId,
         frame_boundary: bool,
     ) {
+        self.kill_processes(target);
+
         let Self {
             lua,
             pending,
@@ -366,6 +387,7 @@ impl ScriptEngine {
             running,
             requests,
             step_done,
+            stop_processes: _,
         } = self;
 
         let target = RefCell::new(target);
@@ -514,7 +536,7 @@ impl ScriptEngine {
                     let message = if target.borrow_mut().set_breakpoint(address, pause) {
                         format!("breakpoint set at {address:08x}")
                     } else {
-                        format!("breakpoint at {address:08x} already exists")
+                        format!("breakpoint at {address:08x} was updated")
                     };
 
                     output.borrow_mut().push(message);
@@ -575,7 +597,7 @@ impl ScriptEngine {
                     let message = if target.borrow_mut().set_watchpoint(address, watchpoint_args) {
                         format!("watchpoint set at {address:08x}")
                     } else {
-                        format!("watchpoint at {address:08x} already exists")
+                        format!("watchpoint at {address:08x} was updated")
                     };
 
                     output.borrow_mut().push(message);
@@ -709,17 +731,18 @@ impl ScriptEngine {
                 }
             }
 
+            // yeah default behavior when no hook is less annoying
             let hit = target.borrow_mut().take_breakpoint_hit();
             if let Some(address) = hit {
-                output
-                    .borrow_mut()
-                    .push(format!("breakpoint at {address:08x} reached"));
-
                 if let Ok(hook) = lua.globals().get::<Function>("on_breakpoint") {
                     time_limit(lua, Duration::from_millis(5));
                     if let Err(err) = hook.call::<()>(address) {
                         output.borrow_mut().push(format!("{err}"));
                     }
+                } else {
+                    output
+                    .borrow_mut()
+                    .push(format!("breakpoint at {address:08x} reached"));
                 }
             }
 
@@ -728,14 +751,16 @@ impl ScriptEngine {
                 let hook = lua.globals().get::<Function>("on_watchpoint").ok();
 
                 for hit in hits {
-                    output.borrow_mut().push(format!(
-                        "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}",
-                        hit.address,
-                        hit.on.to_string(),
-                        hit.width.to_string(),
-                        hit.value,
-                        hit.pc
-                    ));
+                    if hook.is_none() {
+                        output.borrow_mut().push(format!(
+                            "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}",
+                            hit.address,
+                            hit.on.to_string(),
+                            hit.width.to_string(),
+                            hit.value,
+                            hit.pc
+                        ));
+                    }
 
                     let Some(hook) = &hook else {
                         continue;
@@ -749,11 +774,14 @@ impl ScriptEngine {
                     table.set("width", hit.width.to_string())?;
                     table.set("pause", hit.pause)?;
 
-                    if let Some((domain, offset)) = target.borrow().address_to_domain(hit.address) {
+                    let domain = target.borrow().address_to_domain(hit.address);
+                    if let Some((domain, offset)) = domain {
                         table.set("domain", domain)?;
                         table.set("offset", offset)?;
                     }
-                    if let Some((_, offset)) = target.borrow().address_to_domain(hit.pc) {
+
+                    let domain = target.borrow().address_to_domain(hit.pc);
+                    if let Some((_, offset)) = domain{
                         table.set("pc_offset", offset)?;
                     }
 

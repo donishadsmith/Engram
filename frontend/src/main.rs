@@ -729,8 +729,13 @@ async fn main() -> Result<(), Error> {
                         if let Some(emulator) = &mut session.emulator
                             && let Some(script_engine) = emulator.script_engine()
                         {
+
                             if let Some(code) = session.lua_editor.show_ui(&egui_ctx) {
                                 script_engine.load(code);
+                            }
+
+                            if session.lua_editor.take_termination_request() {
+                                script_engine.stop_all_processes();
                             }
                         }
                     };
@@ -747,7 +752,11 @@ async fn main() -> Result<(), Error> {
                             match request {
                                 ScriptRequest::Pause => {
                                     // cant reuse functions for pause and running due to a classic borrow checker no no
-                                    session.state = EmulatorState::Paused
+                                    session.state = EmulatorState::Paused;
+                                    session
+                                        .toasts
+                                        .info("emulator is paused")
+                                        .duration(Some(Duration::from_secs(3)));
                                 }
                                 ScriptRequest::Screenshot => screenshot(session.image_dir.clone()),
                                 ScriptRequest::StartGif => {
@@ -759,8 +768,10 @@ async fn main() -> Result<(), Error> {
                                             );
                                         } else {
                                             session.lua_editor.push_output(vec![
-                                                "frame not ready; gif recording could not start"
-                                                    .to_string(),
+                                               mlua::Error::RuntimeError(
+                                                    "frame not ready; gif recording could not start".to_string()
+                                                )
+                                                .to_string(),
                                             ]);
                                         }
                                     }
@@ -785,7 +796,10 @@ async fn main() -> Result<(), Error> {
                             if session.state != EmulatorState::Paused {
                                 session.pending_steps.clear();
                                 session.lua_editor.push_output(vec![
-                                    "emulator must be paused to step".to_string(),
+                                    mlua::Error::RuntimeError(
+                                        "emulator must be paused to step".to_string(),
+                                    )
+                                    .to_string(),
                                 ])
                             } else {
                                 match request {

@@ -4,6 +4,7 @@ use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use rfd::FileDialog;
 use std::{
     fs::{read_to_string, rename, write},
+    mem::take,
     path::PathBuf,
 };
 
@@ -12,6 +13,7 @@ pub struct LuaEditor {
     pub opened: bool,
     focused: bool,
     output: Vec<String>,
+    pub termination_request: bool,
 }
 
 impl LuaEditor {
@@ -21,6 +23,7 @@ impl LuaEditor {
             opened: false,
             focused: false,
             output: Vec::new(),
+            termination_request: false,
         }
     }
 
@@ -56,9 +59,17 @@ impl LuaEditor {
                             run = true;
                         }
 
-                        if ui.button("Clear").clicked() {
-                            self.output.clear();
-                        }
+                        ui.menu_button("Session", |ui| {
+                            if ui.button("Clear All Output").clicked() {
+                                self.output.clear();
+                            }
+
+                            if ui.button("Terminate All Processes").on_hover_text(
+                                "Terminates all hooks and clears all watchpoints and breakpoints"
+                            ).clicked() {
+                                self.termination_request = true;
+                            }
+                        });
 
                         if ui.button("Run").clicked() {
                             run = true;
@@ -117,6 +128,10 @@ impl LuaEditor {
 
     pub fn occupied(&self) -> bool {
         self.opened && self.focused
+    }
+
+    pub fn take_termination_request(&mut self) -> bool {
+        take(&mut self.termination_request)
     }
 
     fn save_lua_script(&mut self) {

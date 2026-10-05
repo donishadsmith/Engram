@@ -1,7 +1,7 @@
 pub mod arm;
 pub mod thumb;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use arm::{decode::*, execute::*};
 use thumb::decode::*;
@@ -502,8 +502,7 @@ pub struct Arm7tdmi {
     pub intr_wait_resume: bool,
     pub entered_idle_loop: bool,
     pub breakpoint_hit: Option<u32>,
-    pub breakpoint_queue: HashSet<u32>,
-    pub breakpoint_action: HashMap<u32, EmulatorState>,
+    pub breakpoint_queue: HashMap<u32, EmulatorState>,
     pub resume_from: Option<u32>,
 }
 
@@ -518,8 +517,7 @@ impl Arm7tdmi {
             intr_wait_resume: false,
             entered_idle_loop: false,
             breakpoint_hit: None,
-            breakpoint_queue: HashSet::new(),
-            breakpoint_action: HashMap::new(),
+            breakpoint_queue: HashMap::new(),
             resume_from: None,
         }
     }
@@ -530,28 +528,23 @@ impl Arm7tdmi {
     }
 
     pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        let added = self.breakpoint_queue.insert(address);
-        if added {
-            let action = if pause {
-                EmulatorState::Paused
-            } else {
-                EmulatorState::Running
-            };
-            self.breakpoint_action.insert(address, action);
-        }
+        let action = if pause {
+            EmulatorState::Paused
+        } else {
+            EmulatorState::Running
+        };
 
-        added
+        self.breakpoint_queue.insert(address, action).is_none()
     }
 
     pub fn remove_breakpoint(&mut self, address: u32) {
         self.breakpoint_queue.remove(&address);
-        self.breakpoint_action.remove(&address);
     }
 
     pub fn step(&mut self, bus: &mut Bus) {
         if self.pipeline.full() {
             let address = self.next_executing_address();
-            if self.breakpoint_queue.contains(&address) && self.resume_from != Some(address) {
+            if self.breakpoint_queue.contains_key(&address) && self.resume_from != Some(address) {
                 self.breakpoint_hit = Some(address);
 
                 return;

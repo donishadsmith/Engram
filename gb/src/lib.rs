@@ -165,7 +165,7 @@ impl EmulatorSession for GameBoySession {
         } else if let Some(address) = self.gameboy.cpu.breakpoint_hit {
             self.gameboy
                 .cpu
-                .breakpoint_action
+                .breakpoint_queue
                 .get(&address)
                 .unwrap()
                 .clone()

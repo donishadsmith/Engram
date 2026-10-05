@@ -166,12 +166,7 @@ impl EmulatorSession for GBASession {
         let state = if self.gba.take_watchpoint_pause() {
             EmulatorState::Paused
         } else if let Some(address) = self.gba.cpu.breakpoint_hit {
-            self.gba
-                .cpu
-                .breakpoint_action
-                .get(&address)
-                .unwrap()
-                .clone()
+            self.gba.cpu.breakpoint_queue.get(&address).unwrap().clone()
         } else {
             EmulatorState::Running
         };
