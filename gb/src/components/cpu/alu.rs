@@ -73,6 +73,7 @@ impl BitwiseOperation {
         })
     }
 }
+
 pub enum ArithmeticOperation {
     Add,
     Adc,

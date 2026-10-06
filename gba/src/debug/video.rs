@@ -8,6 +8,7 @@ use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
     render::{Frame, rgb555_to_rgb888},
     traits::BitOps,
+    utils::zero_arr,
 };
 use std::{array::from_fn, mem::swap};
 
@@ -105,7 +106,7 @@ fn mode_description(mode: u8) -> String {
 pub struct PpuDebugger {
     frozen: bool,
     texture: Option<TextureHandle>,
-    palette: [u8; 0x400],
+    palette: Box<[u8]>,
     palette_tab: PaletteType,
     background_textures: Vec<Option<TextureHandle>>,
     sprite_atlas_texture: Option<TextureHandle>,
@@ -127,7 +128,7 @@ impl PpuDebugger {
         Self {
             frozen: false,
             texture: None,
-            palette: [0; 0x400],
+            palette: zero_arr::<u8>(0x400),
             palette_tab: PaletteType::Background,
             background_textures: vec![None; 4],
             sprite_atlas_texture: None,
@@ -167,7 +168,7 @@ impl PpuDebugger {
 
     pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
         if !self.frozen {
-            self.palette = *gba.bus.ppu.palette_ram.clone();
+            self.palette = gba.bus.ppu.palette_ram.clone();
 
             self.current_mode = gba.bus.ppu.current_mode();
 

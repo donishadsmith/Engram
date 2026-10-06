@@ -63,7 +63,7 @@ pub struct SpriteAttributes {
 }
 
 impl SpriteAttributes {
-    pub fn from_bytes(sprite_id: usize, oam: &Box<[u8; 1024]>) -> Self {
+    pub fn from_bytes(sprite_id: usize, oam: &Box<[u8]>) -> Self {
         let (attribute0, attribute1, attribute2) = create_attribute_halfwords(sprite_id, oam);
 
         let affine = attribute0.is_set(8);
@@ -155,11 +155,11 @@ impl SpriteAttributes {
     }
 }
 
-fn create_halfword(offset: usize, oam: &Box<[u8; 1024]>) -> u16 {
+fn create_halfword(offset: usize, oam: &Box<[u8]>) -> u16 {
     u16::from_le_bytes([oam[offset], oam[offset + 1]])
 }
 
-fn create_attribute_halfwords(sprite_id: usize, oam: &Box<[u8; 1024]>) -> (u16, u16, u16) {
+fn create_attribute_halfwords(sprite_id: usize, oam: &Box<[u8]>) -> (u16, u16, u16) {
     let start_index = sprite_id * 8;
     let attributes = [
         create_halfword(start_index, oam),
@@ -170,7 +170,7 @@ fn create_attribute_halfwords(sprite_id: usize, oam: &Box<[u8; 1024]>) -> (u16, 
     (attributes[0], attributes[1], attributes[2])
 }
 
-fn create_sprite_affine(group: usize, oam: &Box<[u8; 1024]>) -> AffineMatrix {
+fn create_sprite_affine(group: usize, oam: &Box<[u8]>) -> AffineMatrix {
     let pa = create_halfword(group * 32 + 6, oam);
     let pb = create_halfword(group * 32 + 14, oam);
     let pc = create_halfword(group * 32 + 22, oam);

@@ -1,7 +1,7 @@
 // TODO: Check if worth to consolidate some code
 pub mod prelude {
     use chrono::Utc;
-    use shared::traits::BitOps;
+    use shared::{traits::BitOps, utils::zero_arr};
 
     pub trait Mbc {
         fn read(&self, address: u16) -> u8;
@@ -51,13 +51,13 @@ pub mod prelude {
 
     #[derive(PartialEq, Eq)]
     pub struct RomOnly {
-        rom: Vec<u8>,
-        ram: Vec<u8>,
+        rom: Box<[u8]>,
+        ram: Box<[u8]>,
         ram_updated: bool,
     }
 
     impl RomOnly {
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
+        pub fn new(rom: Box<[u8]>, ram: Box<[u8]>) -> Self {
             Self {
                 rom,
                 ram,
@@ -105,8 +105,8 @@ pub mod prelude {
     #[derive(PartialEq, Eq)]
     // https://gbdev.io/pandocs/MBC1.html; theres a 5 + a 2 bit register for this
     pub struct Mbc1 {
-        rom: Vec<u8>,
-        ram: Vec<u8>,
+        rom: Box<[u8]>,
+        ram: Box<[u8]>,
         register_5bit: u8,
         register_2bit: u8,
         mode: bool,
@@ -115,7 +115,7 @@ pub mod prelude {
     }
 
     impl Mbc1 {
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
+        pub fn new(rom: Box<[u8]>, ram: Box<[u8]>) -> Self {
             Self {
                 rom,
                 ram,
@@ -207,8 +207,8 @@ pub mod prelude {
 
     #[derive(PartialEq, Eq)]
     pub struct Mbc2 {
-        rom: Vec<u8>,
-        ram: Vec<u8>,
+        rom: Box<[u8]>,
+        ram: Box<[u8]>,
         rom_bank: usize,
         ram_enabled: bool,
         ram_updated: bool,
@@ -217,8 +217,8 @@ pub mod prelude {
     impl Mbc2 {
         const MBC2_RAM_SIZE: usize = 512;
 
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
-            let mut internal_ram = vec![0u8; Self::MBC2_RAM_SIZE];
+        pub fn new(rom: Box<[u8]>, ram: Box<[u8]>) -> Self {
+            let mut internal_ram = zero_arr::<u8>(Self::MBC2_RAM_SIZE);
             let n = ram.len().min(Self::MBC2_RAM_SIZE);
             internal_ram[..n].copy_from_slice(&ram[..n]);
 
@@ -483,7 +483,7 @@ pub mod prelude {
                 return;
             }
 
-            let seconds_passed = current_timestamp.saturating_sub(self.previous_unix_timestamp);
+            let seconds_passed = (current_timestamp - self.previous_unix_timestamp).max(0);
             self.previous_unix_timestamp = current_timestamp;
 
             let seconds = self.seconds as i64 + seconds_passed;
@@ -518,8 +518,8 @@ pub mod prelude {
 
     #[derive(PartialEq, Eq)]
     pub struct Mbc3 {
-        rom: Vec<u8>,
-        ram: Vec<u8>,
+        rom: Box<[u8]>,
+        ram: Box<[u8]>,
         register_7bit: u8,
         ram_bank: usize,
         ram_enabled: bool,
@@ -530,7 +530,7 @@ pub mod prelude {
     }
 
     impl Mbc3 {
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>, rtc_save_state: Option<RtcSaveState>) -> Self {
+        pub fn new(rom: Box<[u8]>, ram: Box<[u8]>, rtc_save_state: Option<RtcSaveState>) -> Self {
             Self {
                 rom,
                 ram,
@@ -659,8 +659,8 @@ pub mod prelude {
 
     #[derive(PartialEq, Eq)]
     pub struct Mbc5 {
-        rom: Vec<u8>,
-        ram: Vec<u8>,
+        rom: Box<[u8]>,
+        ram: Box<[u8]>,
         register_8bit: u8,
         register_1bit: u8,
         ram_bank: usize,
@@ -670,7 +670,7 @@ pub mod prelude {
     }
 
     impl Mbc5 {
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>, has_rumble: bool) -> Self {
+        pub fn new(rom: Box<[u8]>, ram: Box<[u8]>, has_rumble: bool) -> Self {
             Self {
                 rom,
                 ram,
@@ -778,8 +778,8 @@ pub mod prelude {
 
     #[derive(PartialEq, Eq)]
     pub struct Huc1 {
-        rom: Vec<u8>,
-        ram: Vec<u8>,
+        rom: Box<[u8]>,
+        ram: Box<[u8]>,
         ram_updated: bool,
         mode: Huc1Mode,
         rom_bank: usize,
@@ -787,7 +787,7 @@ pub mod prelude {
     }
 
     impl Huc1 {
-        pub fn new(rom: Vec<u8>, ram: Vec<u8>) -> Self {
+        pub fn new(rom: Box<[u8]>, ram: Box<[u8]>) -> Self {
             Self {
                 rom,
                 ram,

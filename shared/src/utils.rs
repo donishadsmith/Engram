@@ -1,4 +1,4 @@
-use crate::render::to_rgb;
+use crate::{render::to_rgb, traits::UnsignedInt};
 use chrono::Local;
 use gif::{Encoder, Frame, Repeat};
 use macroquad::prelude::*;
@@ -117,4 +117,26 @@ pub fn screenshot(image_dir: PathBuf) {
 
 pub fn error_message(message: String) -> Error {
     Error::new(ErrorKind::InvalidData, message)
+}
+
+pub fn zero_arr<T: UnsignedInt>(capacity: usize) -> Box<[T]> {
+    vec![T::ZERO; capacity]
+        .into_boxed_slice()
+        .try_into()
+        .unwrap()
+}
+
+pub fn saturated_arr<T: UnsignedInt>(capacity: usize) -> Box<[T]> {
+    vec![T::MAX; capacity]
+        .into_boxed_slice()
+        .try_into()
+        .unwrap()
+}
+
+pub fn get_halfword_shift(address: u32) -> u8 {
+    if address & 2 == 0 { 0 } else { 16 }
+}
+
+pub fn get_word_mask(address: u32) -> u32 {
+    !(0xFFFF << get_halfword_shift(address))
 }

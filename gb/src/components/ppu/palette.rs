@@ -12,7 +12,7 @@ pub enum ColorPaletteRegisterType {
     Object,
 }
 
-pub fn cram_color(palette_ram: &[u8; 64], palette: u8, color_index: u8) -> u16 {
+pub fn cram_color(palette_ram: &[u8], palette: u8, color_index: u8) -> u16 {
     let base = palette as usize * 8 + color_index as usize * 2;
     let color_data_low = palette_ram[base] as u16;
     let color_data_high = (palette_ram[base + 1] as u16) << 8;

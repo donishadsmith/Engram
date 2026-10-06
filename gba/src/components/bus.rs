@@ -34,7 +34,8 @@ use shared::{
     psg::PsgMixerRegister,
     scheduler::EventScheduler,
     script::{WatchpointArgs, WatchpointHit, WatchpointType},
-    traits::{BitOps, zero_arr},
+    traits::BitOps,
+    utils::zero_arr,
 };
 
 const WAIT_STATE_NONSEQUENTIAL: [u8; 4] = [4, 3, 2, 8];
@@ -103,9 +104,9 @@ fn write_u8_modify_halfword(address: u32, mut halfword: u16, value: u8) -> u16 {
 
 pub struct Bus {
     pub scheduler: EventScheduler<Event>,
-    _bios: Box<[u8; 0x4000]>,
-    pub ewram: Box<[u8; 0x40000]>,
-    pub iwram: Box<[u8; 0x8000]>,
+    _bios: Box<[u8]>,
+    pub ewram: Box<[u8]>,
+    pub iwram: Box<[u8]>,
     pub last_instruction_read: u32,
     pub last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
@@ -151,9 +152,9 @@ impl Bus {
 
         Self {
             scheduler,
-            _bios: zero_arr(),
-            ewram: zero_arr(),
-            iwram: zero_arr(),
+            _bios: zero_arr::<u8>(0x4000),
+            ewram: zero_arr::<u8>(0x40000),
+            iwram: zero_arr::<u8>(0x8000),
             last_instruction_read: 0,
             last_bios_fetch: 0xE129F000,
             ppu: Ppu::new(),

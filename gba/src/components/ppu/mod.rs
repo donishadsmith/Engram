@@ -4,8 +4,12 @@ pub mod sprites;
 
 use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 use affine::{AffineMatrix, AffineState};
-use shared::render::{Frame, PixelFormat, ScalingMethod};
-use shared::traits::{BitOps, GroupedRegisters, zero_arr};
+use shared::{
+    render::{Frame, PixelFormat, ScalingMethod},
+    structs::GroupedRegisters,
+    traits::BitOps,
+    utils::zero_arr,
+};
 use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
 use std::{array::from_fn, mem::take};
 // https://www.patater.com/gbaguy/gba/ch5.htm
@@ -145,9 +149,9 @@ impl BgDebugInfo {
 }
 
 pub struct Ppu {
-    pub vram: Box<[u8; 0x18000]>,
-    pub palette_ram: Box<[u8; 0x400]>,
-    pub oam: Box<[u8; 0x400]>,
+    pub vram: Box<[u8]>,
+    pub palette_ram: Box<[u8]>,
+    pub oam: Box<[u8]>,
     pub dispcnt: u16,
     pub dispstat: u16,
     pub bg_control: GroupedRegisters<u16>,
@@ -178,9 +182,9 @@ pub struct Ppu {
 impl Ppu {
     pub fn new() -> Self {
         Self {
-            vram: zero_arr(),
-            palette_ram: zero_arr(),
-            oam: zero_arr(),
+            vram: zero_arr(0x18000),
+            palette_ram: zero_arr(0x400),
+            oam: zero_arr(0x400),
             dispcnt: 0,
             dispstat: 0,
             bg_control: GroupedRegisters::new(4, 0x4000008),

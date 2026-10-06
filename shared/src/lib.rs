@@ -8,6 +8,7 @@ pub mod psg;
 pub mod render;
 pub mod scheduler;
 pub mod script;
+pub mod structs;
 pub mod traits;
 pub mod utils;
 

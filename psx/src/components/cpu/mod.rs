@@ -20,7 +20,7 @@ All registers are 32bit wide.
 
 */
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use shared::EmulatorState;
 

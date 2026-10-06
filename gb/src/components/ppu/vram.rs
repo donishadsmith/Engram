@@ -1,9 +1,9 @@
-use shared::traits::BitOps;
+use shared::{traits::BitOps, utils::zero_arr};
 
 pub struct Vram {
     pub bank: u8,
     pub bank_size: u16,
-    pub memory: Vec<u8>,
+    pub memory: Box<[u8]>,
 }
 
 impl Vram {
@@ -11,7 +11,7 @@ impl Vram {
         Self {
             bank: 0,
             bank_size: 8 * 1024,
-            memory: vec![0u8; if is_cgb { 0x4000 } else { 0x2000 }],
+            memory: zero_arr::<u8>(if is_cgb { 0x4000 } else { 0x2000 }),
         }
     }
 

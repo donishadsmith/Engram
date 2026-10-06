@@ -10,7 +10,8 @@ use global_control::GlobalControl;
 use shared::{
     EmulatorId,
     psg::{PsgChannel, PsgMixer, convolve::LowPassFilter},
-    traits::{BitOps, GroupedRegisters},
+    structs::GroupedRegisters,
+    traits::BitOps,
 };
 
 pub struct Apu {

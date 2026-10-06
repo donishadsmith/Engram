@@ -17,7 +17,7 @@ use std::{
 };
 
 use crate::components::gamepak::mbc::prelude::*;
-use shared::utils::error_message;
+use shared::utils::{error_message, zero_arr};
 
 // "RTC" in ASCII
 const MAGIC_NUMBERS: [u8; 3] = [0x52, 0x54, 0x43];
@@ -49,8 +49,8 @@ pub enum MbcType {
 
 impl MbcType {
     fn byte_to_struct(
-        rom: Vec<u8>,
-        ram: Vec<u8>,
+        rom: Box<[u8]>,
+        ram: Box<[u8]>,
         rtc_save_state: Option<RtcSaveState>,
         has_rumble: bool,
     ) -> Self {
@@ -273,6 +273,7 @@ pub struct GamePak {
 impl GamePak {
     pub fn load(rom_path: PathBuf) -> Result<Self, Error> {
         let rom = read(&rom_path)?;
+        let rom = rom.into_boxed_slice();
         if rom.len() < 0x150 {
             return Err(error_message(
                 "File too small to be a valid ROM".to_string(),
@@ -294,8 +295,8 @@ impl GamePak {
     pub fn read_sav(
         sav_path: &PathBuf,
         header: &Header,
-    ) -> Result<(Vec<u8>, Option<RtcSaveState>), Error> {
-        let mut ram = vec![0; header.ram_size];
+    ) -> Result<(Box<[u8]>, Option<RtcSaveState>), Error> {
+        let mut ram = zero_arr::<u8>(header.ram_size);
         let mut rtc_save_state = None;
 
         if ram.is_empty() || !sav_path.exists() {
@@ -352,8 +353,8 @@ impl GamePak {
 
     // Just for testing purposes
     pub fn fake() -> Self {
-        let rom = Vec::new();
-        let ram = Vec::new();
+        let rom = Box::new([0]);
+        let ram = Box::new([0]);
         let header = Header::fake();
         let mbc = MbcType::Mbc2(Mbc2::new(rom, ram));
 

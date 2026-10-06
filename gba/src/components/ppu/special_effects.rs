@@ -1,5 +1,5 @@
 use crate::components::ppu::{LayerId, Pixel};
-use shared::traits::{BitOps, GroupedRegisters};
+use shared::{structs::GroupedRegisters, traits::BitOps};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SpecialEffects {

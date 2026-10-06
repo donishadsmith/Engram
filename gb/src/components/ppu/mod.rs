@@ -16,6 +16,7 @@ use crate::components::{
 use shared::{
     render::{Frame, PixelFormat, ScalingMethod},
     traits::BitOps,
+    utils::{saturated_arr, zero_arr},
 };
 /*
     https://github.com/Ashiepaws/GBEDG/blob/master/ppu/index.md
@@ -129,7 +130,7 @@ pub enum PpuMode {
 pub struct Ppu {
     dots: u32,
     pub vram: Vram,
-    pub oam: Vec<u8>,
+    pub oam: Box<[u8]>,
     pub ly: u8, //scanline
     lyc: u8,
     pub lcdc: u8,
@@ -147,8 +148,8 @@ pub struct Ppu {
     pub bgpi: u8,
     pub obpi: u8,
     opri: u8,
-    pub bg_palette_ram: [u8; 64],
-    pub obj_palette_ram: [u8; 64],
+    pub bg_palette_ram: Box<[u8]>,
+    pub obj_palette_ram: Box<[u8]>,
     pub current_mode: PpuMode,
     pub entered_hblank: bool,
     is_cgb: bool,
@@ -161,7 +162,7 @@ impl Ppu {
         Self {
             dots: 0,
             vram: Vram::new(is_cgb),
-            oam: vec![0u8; 0x00A0],
+            oam: zero_arr::<u8>(0x00A0),
             ly: 0,
             lyc: 0,
             lcdc: 0x91,
@@ -179,8 +180,8 @@ impl Ppu {
             bgpi: 0,
             obpi: 0,
             opri: 0,
-            bg_palette_ram: [0xFF; 64],
-            obj_palette_ram: [0xFF; 64],
+            bg_palette_ram: saturated_arr::<u8>(64),
+            obj_palette_ram: saturated_arr::<u8>(64),
             current_mode: PpuMode::OamSearch,
             entered_hblank: false,
             is_cgb,
