@@ -3,8 +3,9 @@ use crate::components::{
     gamepak::CgbFlag,
     utils::{ByteOps16, MergeByteOps},
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 pub enum Register8Bits {
     A,
     F,
@@ -16,7 +17,7 @@ pub enum Register8Bits {
     L,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 pub enum Register16Bits {
     AF,
     BC,
@@ -27,6 +28,7 @@ pub enum Register16Bits {
 
 // https://gbdev.io/pandocs/Power_Up_Sequence.html
 // DMG & CGB
+#[derive(Deserialize, Serialize)]
 pub struct Registers {
     pub a: u8, // output always goes to A register
     pub f: u8,

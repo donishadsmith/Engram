@@ -191,6 +191,8 @@ impl KeyBindings {
             Hotkeys::Gif => "Gif",
             Hotkeys::Lua => "Lua",
             Hotkeys::Fullscreen => "Fullscreen",
+            Hotkeys::LoadState => "LoadState",
+            Hotkeys::SaveState => "SaveState",
         };
 
         self.hotkeys

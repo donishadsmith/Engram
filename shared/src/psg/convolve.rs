@@ -13,6 +13,7 @@ parameter to the GB clock speed
 when neuro/signal processing helps!
 */
 
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 #[allow(clippy::excessive_precision)]
@@ -65,6 +66,7 @@ pub const FIR_KERNEL: [f64; 46] = [
     3.0340257031444750e-03,
 ];
 
+#[derive(Deserialize, Serialize)]
 pub struct LowPassFilter {
     samples: VecDeque<f64>,
 }

@@ -1,9 +1,10 @@
 use crate::components::{bus::Bus, cpu::R3000a};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub enum CdromEvent {}
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub enum Event {
     Hblank,
     Vblank,
@@ -14,6 +15,7 @@ pub enum Event {
     Cdrom(CdromEvent),
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Psx {
     pub bus: Bus,
     pub cpu: R3000a,

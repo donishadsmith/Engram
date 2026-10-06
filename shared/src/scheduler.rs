@@ -3,12 +3,14 @@
 // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/sched.rs
 // https://github.com/elipsitz/gba-emulator/blob/main/gba_core/src/scheduler.rs
 
+use serde::{Deserialize, Serialize};
 use std::{cmp::Reverse, collections::BinaryHeap};
 
 pub trait ScheduledEvent: PartialEq + Clone + Copy + Ord {}
 
 impl<T: Copy + Ord> ScheduledEvent for T {}
 
+#[derive(Deserialize, Serialize)]
 pub struct EventScheduler<T: ScheduledEvent> {
     pub current: u64,
     queue: BinaryHeap<Reverse<(u64, T)>>,

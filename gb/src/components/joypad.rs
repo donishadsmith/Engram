@@ -1,6 +1,7 @@
 // https://gbdev.io/pandocs/Joypad_Input.html
 
 use crate::components::cpu::interrupts::InterruptMode;
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 const BUTTONS: [JoypadButton; 8] = [
@@ -47,6 +48,7 @@ impl JoypadButton {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Joypad {
     pub select: u8,
     dpad: u8,

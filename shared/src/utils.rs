@@ -32,24 +32,6 @@ impl GifRecorder {
         self.encoder.is_some()
     }
 
-    pub fn toggle(
-        &mut self,
-        frame: &crate::render::Frame,
-        image_dir: PathBuf,
-    ) -> Result<bool, Error> {
-        let is_recording = if self.is_recording() {
-            let _ = self.stop();
-
-            false
-        } else {
-            self.start(frame, image_dir)?;
-
-            true
-        };
-
-        Ok(is_recording)
-    }
-
     pub fn start(&mut self, frame: &crate::render::Frame, image_dir: PathBuf) -> Result<(), Error> {
         let path = image_dir.join(format!("clip_{}.gif", Local::now().format("%Y%m%d_%H%M%S")));
         let mut encoder = Encoder::new(

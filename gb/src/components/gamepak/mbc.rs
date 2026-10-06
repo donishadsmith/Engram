@@ -1,6 +1,7 @@
 // TODO: Check if worth to consolidate some code
 pub mod prelude {
     use chrono::Utc;
+    use serde::{Deserialize, Serialize};
     use shared::{traits::BitOps, utils::zero_arr};
 
     pub trait Mbc {
@@ -15,6 +16,8 @@ pub mod prelude {
         fn get_rom_mut(&mut self) -> &mut [u8];
 
         fn get_ram_mut(&mut self) -> &mut [u8];
+
+        fn set_rom(&mut self, rom: Box<[u8]>);
 
         fn rom_bank(&self) -> usize;
 
@@ -49,10 +52,12 @@ pub mod prelude {
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     pub struct RomOnly {
+        #[serde(skip)]
         rom: Box<[u8]>,
         ram: Box<[u8]>,
+        #[serde(skip)]
         ram_updated: bool,
     }
 
@@ -97,20 +102,26 @@ pub mod prelude {
             &mut self.ram
         }
 
+        fn set_rom(&mut self, rom: Box<[u8]>) {
+            self.rom = rom;
+        }
+
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     // https://gbdev.io/pandocs/MBC1.html; theres a 5 + a 2 bit register for this
     pub struct Mbc1 {
+        #[serde(skip)]
         rom: Box<[u8]>,
         ram: Box<[u8]>,
         register_5bit: u8,
         register_2bit: u8,
         mode: bool,
         ram_enabled: bool,
+        #[serde(skip)]
         ram_updated: bool,
     }
 
@@ -200,17 +211,23 @@ pub mod prelude {
             &mut self.ram
         }
 
+        fn set_rom(&mut self, rom: Box<[u8]>) {
+            self.rom = rom;
+        }
+
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     pub struct Mbc2 {
+        #[serde(skip)]
         rom: Box<[u8]>,
         ram: Box<[u8]>,
         rom_bank: usize,
         ram_enabled: bool,
+        #[serde(skip)]
         ram_updated: bool,
     }
 
@@ -296,12 +313,16 @@ pub mod prelude {
             &mut self.ram
         }
 
+        fn set_rom(&mut self, rom: Box<[u8]>) {
+            self.rom = rom;
+        }
+
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
     }
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Deserialize, Serialize)]
     pub struct RtcSaveState {
         pub previous_unix_timestamp: i64,
         pub seconds: u8,
@@ -355,7 +376,7 @@ pub mod prelude {
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     struct LatchedClockData {
         seconds: u8,
         minutes: u8,
@@ -364,8 +385,7 @@ pub mod prelude {
         dh: u8,
     }
 
-    #[derive(PartialEq, Eq)]
-
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     pub struct RtcRegister {
         previous_unix_timestamp: i64,
         bank: u8,
@@ -516,13 +536,15 @@ pub mod prelude {
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     pub struct Mbc3 {
+        #[serde(skip)]
         rom: Box<[u8]>,
         ram: Box<[u8]>,
         register_7bit: u8,
         ram_bank: usize,
         ram_enabled: bool,
+        #[serde(skip)]
         ram_updated: bool,
         rtc_register: RtcRegister,
         current_bank_value: u8,
@@ -640,6 +662,10 @@ pub mod prelude {
             &mut self.ram
         }
 
+        fn set_rom(&mut self, rom: Box<[u8]>) {
+            self.rom = rom;
+        }
+
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
@@ -657,14 +683,16 @@ pub mod prelude {
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     pub struct Mbc5 {
+        #[serde(skip)]
         rom: Box<[u8]>,
         ram: Box<[u8]>,
         register_8bit: u8,
         register_1bit: u8,
         ram_bank: usize,
         ram_enabled: bool,
+        #[serde(skip)]
         ram_updated: bool,
         has_rumble: bool,
     }
@@ -755,12 +783,16 @@ pub mod prelude {
             &mut self.ram
         }
 
+        fn set_rom(&mut self, rom: Box<[u8]>) {
+            self.rom = rom;
+        }
+
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
         }
     }
 
-    #[derive(Clone, Copy, PartialEq, Eq)]
+    #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
     enum Huc1Mode {
         Ram,
         Ir,
@@ -776,10 +808,12 @@ pub mod prelude {
         }
     }
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Deserialize, Serialize)]
     pub struct Huc1 {
+        #[serde(skip)]
         rom: Box<[u8]>,
         ram: Box<[u8]>,
+        #[serde(skip)]
         ram_updated: bool,
         mode: Huc1Mode,
         rom_bank: usize,
@@ -867,6 +901,10 @@ pub mod prelude {
 
         fn get_ram_mut(&mut self) -> &mut [u8] {
             &mut self.ram
+        }
+
+        fn set_rom(&mut self, rom: Box<[u8]>) {
+            self.rom = rom;
         }
 
         fn ram_changed(&mut self) -> &mut bool {

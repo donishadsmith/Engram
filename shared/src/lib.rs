@@ -13,6 +13,7 @@ pub mod traits;
 pub mod utils;
 
 use egui::Context;
+use serde::{Deserialize, Serialize};
 use std::{io::Error, path::PathBuf};
 
 use crate::{
@@ -22,7 +23,7 @@ use crate::{
     script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit},
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub enum EmulatorId {
     Gb,
     Gba,
@@ -126,6 +127,10 @@ pub trait EmulatorSession {
     fn step_frame(&mut self, volume: u8);
 
     fn set_resume(&mut self);
+
+    fn load_state(&mut self) -> Result<(), Error>;
+
+    fn save_state(&mut self) -> Result<(), Error>;
 }
 
 pub trait ScriptTarget: Emulator {

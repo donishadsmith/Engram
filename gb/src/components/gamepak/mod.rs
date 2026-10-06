@@ -17,11 +17,12 @@ use std::{
 };
 
 use crate::components::gamepak::mbc::prelude::*;
+use serde::{Deserialize, Serialize};
 use shared::utils::{error_message, zero_arr};
 
 // "RTC" in ASCII
-const MAGIC_NUMBERS: [u8; 3] = [0x52, 0x54, 0x43];
-// 3 magic numebers for Mbc3 with timer enabled + 18 RTC states = 21 bytes before the RAM save data
+const MAGIC_NUMBERS: [u8; 4] = [0x52, 0x54, 0x43, 0x31];
+// 4 magic numebers for Mbc3 with timer enabled + 18 RTC states = 22 bytes before the RAM save data
 const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RtcSaveState::BYTE_SIZE;
 
 macro_rules! trait_functions {
@@ -37,7 +38,7 @@ macro_rules! trait_functions {
     };
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
 pub enum MbcType {
     RomOnly(RomOnly),
     Mbc1(Mbc1),
@@ -130,9 +131,13 @@ impl Mbc for MbcType {
     fn tick(&mut self) {
         trait_functions!(self, mbc, mbc.tick())
     }
+
+    fn set_rom(&mut self, rom: Box<[u8]>) {
+        trait_functions!(self, mbc, mbc.set_rom(rom))
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Deserialize, Serialize)]
 pub enum CgbFlag {
     Cgb,
     Dmg,
@@ -147,6 +152,7 @@ impl CgbFlag {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Header {
     pub title: String,
     pub rom_size: usize,
@@ -159,7 +165,7 @@ pub struct Header {
 }
 
 impl Header {
-    fn new(rom: &[u8]) -> Self {
+    pub fn new(rom: &[u8]) -> Self {
         let title = Self::title(&rom);
         let rom_size = Self::rom_size(&rom);
         let ram_size = Self::ram_size(&rom);
@@ -264,8 +270,10 @@ impl Header {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct GamePak {
     pub header: Header,
+    #[serde(skip)]
     pub sav_path: PathBuf,
     pub mbc: MbcType,
 }

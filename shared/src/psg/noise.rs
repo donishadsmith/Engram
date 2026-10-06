@@ -1,10 +1,11 @@
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
+use crate::psg::sound_control::{Envelope, Length};
+use crate::traits::BitOps;
+use serde::{Deserialize, Serialize};
+
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 
-use crate::traits::BitOps;
-
-use crate::psg::sound_control::{Envelope, Length};
-
+#[derive(Deserialize, Serialize)]
 struct LFSR {
     width: u8,
     register: u16,
@@ -30,6 +31,7 @@ impl LFSR {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct NoiseChannel {
     pub enabled: bool,
     pub length: Length,

@@ -1,8 +1,10 @@
 // Very clear instructions: https://github.com/Ashiepaws/GBEDG/blob/master/timers/index.md
 
 use crate::components::cpu::interrupts::InterruptMode;
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
+#[derive(Deserialize, Serialize)]
 pub struct Timer {
     div: u16,
     tima: u8,

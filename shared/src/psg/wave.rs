@@ -1,8 +1,9 @@
 use crate::EmulatorId;
 use crate::psg::sound_control::Length;
 use crate::traits::BitOps;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 #[repr(u8)]
 enum CoarseVolume {
     Mute = 0b00,
@@ -32,6 +33,7 @@ impl CoarseVolume {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct WaveChannel {
     pub enabled: bool,
     pub dac_enabled: bool,

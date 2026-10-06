@@ -13,3 +13,5 @@ egui_plot.workspace = true
 macroquad.workspace = true
 spin_sleep.workspace = true
 shared.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true

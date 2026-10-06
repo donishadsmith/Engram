@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use shared::{
     EmulatorId,
     psg::{PsgChannel, PsgMixer, PsgMixerRegister, convolve::LowPassFilter},
@@ -17,6 +18,7 @@ use shared::{
 // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence
+#[derive(Deserialize, Serialize)]
 pub struct Apu {
     mixer: PsgMixer,
     pub psg: PsgChannel,

@@ -1,6 +1,7 @@
 use crate::EmulatorId;
 use crate::psg::{noise::NoiseChannel, pulse::PulseChannel, wave::WaveChannel};
 use crate::traits::BitOps;
+use serde::{Deserialize, Serialize};
 
 // added to shared painful refactor after lazily copying and pasting the psg channels from the gb to the gba
 // shouldve done from the start
@@ -10,7 +11,7 @@ pub mod pulse;
 pub mod sound_control;
 pub mod wave;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum PsgChannelRegister {
     Nrx0,
     Nrx1,
@@ -26,12 +27,14 @@ pub enum PsgMixerRegister {
     Nr52,
 }
 
+#[derive(Deserialize, Serialize)]
 struct SequencerStep {
     length: bool,
     sweep: bool,
     envelope: bool,
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Sequencer {
     step: u8,
 }
@@ -53,6 +56,7 @@ impl Sequencer {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct PsgChannel {
     pub channel1: PulseChannel,
     pub channel2: PulseChannel,
@@ -121,6 +125,7 @@ impl PsgChannel {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct PsgMixer {
     pub nr50: u8,
     pub nr51: u8,

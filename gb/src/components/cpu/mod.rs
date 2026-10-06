@@ -15,6 +15,8 @@ use crate::components::{
     utils::{ByteOps8, MergeByteOps},
 };
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Copy, Clone, Debug)]
 pub enum StatusFlag {
     Z = 0x80, // 7 bit is 1; Zero flag - condition in which the operation resulted in 0
@@ -98,6 +100,7 @@ impl FlagDelta {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct ProgramCounter {
     pub address: u16,
 }
@@ -146,6 +149,7 @@ impl ProgramCounter {
        bit 3 = Serial link: 0x0058 (i.e., 8 * 3 = 24 (16 + 8) = 0x10 + 0x08, add 0x0040 and its 0x0058)
        bit 4 = Button pressed (joypad): 0x0060
 */
+#[derive(Serialize, Deserialize)]
 pub struct Interrupt {
     pub master_enable: bool,
     pub pending_enable: bool,
@@ -160,6 +164,7 @@ impl Interrupt {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct SharpSm83<A>
 where
     A: AddressBus,
@@ -169,9 +174,12 @@ where
     pub halt_bug: bool,
     pub halted: bool,
     pub interrupt: Interrupt,
+    #[serde(skip)]
     pub breakpoint_hit: Option<u32>,
-    pub breakpoint_queue: HashMap<u16, EmulatorState>,
-    pub resume_from: Option<u16>,
+    #[serde(skip)]
+    pub breakpoint_queue: HashMap<u32, EmulatorState>,
+    #[serde(skip)]
+    pub resume_from: Option<u32>,
 }
 
 impl<A> SharpSm83<A>
@@ -214,14 +222,16 @@ where
         cpu
     }
 
-    pub fn set_breakpoint(&mut self, address: u16, pause: bool) -> bool {
+    pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
         let action = if pause {
             EmulatorState::Paused
         } else {
             EmulatorState::Running
         };
 
-        self.breakpoint_queue.insert(address, action).is_none()
+        self.breakpoint_queue
+            .insert(address as u16 as u32, action)
+            .is_none()
     }
 
     pub fn push(&mut self, address: u16) {
@@ -274,11 +284,11 @@ where
            Exit halt mode when IF and corresponding bit in IE is set, then apply those interrupt
         */
         if !self.halted {
-            let executing_address = self.registers.program_counter.address.wrapping_sub(1);
+            let executing_address = self.registers.program_counter.address.wrapping_sub(1) as u32;
             if self.breakpoint_queue.contains_key(&executing_address)
                 && self.resume_from != Some(executing_address)
             {
-                self.breakpoint_hit = Some(executing_address as u32);
+                self.breakpoint_hit = Some(executing_address);
 
                 return 0;
             }

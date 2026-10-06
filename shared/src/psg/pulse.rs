@@ -5,6 +5,7 @@
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence?utm_source
 use crate::psg::sound_control::{Envelope, Length};
 use crate::traits::BitOps;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PulseChannelId {
@@ -12,7 +13,7 @@ pub enum PulseChannelId {
     Channel2,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 #[repr(u8)]
 enum DutyCycle {
     Duty12 = 0b00000000,
@@ -44,7 +45,7 @@ impl DutyCycle {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 #[repr(u8)]
 enum SweepDirection {
     Addition = 0,
@@ -61,6 +62,7 @@ impl SweepDirection {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 struct Sweep {
     pace: u8,
     shift: u8,
@@ -91,6 +93,7 @@ impl Sweep {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct PulseChannel {
     pub enabled: bool,
     duty: DutyCycle,

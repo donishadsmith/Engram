@@ -1,6 +1,7 @@
 use crate::traits::BitOps;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
 #[repr(u8)]
 pub enum EnvelopeDirection {
     Decrement = 0b00000000,
@@ -25,6 +26,7 @@ impl EnvelopeDirection {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Envelope {
     pub initial_volume: u8,
     pub direction: EnvelopeDirection,
@@ -74,6 +76,7 @@ impl Envelope {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Length {
     pub timer: u16,
     pub enabled: bool,

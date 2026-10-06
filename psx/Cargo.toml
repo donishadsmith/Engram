@@ -11,3 +11,4 @@ egui-macroquad.workspace = true
 egui_plot.workspace = true
 macroquad.workspace = true
 shared.workspace = true
+serde.workspace = true

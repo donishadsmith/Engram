@@ -1,5 +1,6 @@
 // https://psx-spx.consoledev.net/ps1/system/iomap/
 // https://nsec.sjtu.edu.cn/data/MK.Computer.Organization.and.Design.4th.Edition.Oct.2011.pdf
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, env::var, fmt::Arguments, fs::File, io::BufWriter};
 
 use shared::{
@@ -90,10 +91,14 @@ impl BusAccess for u32 {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Bus {
     pub scheduler: EventScheduler<Event>,
+    #[serde(skip)]
     trace: Option<Trace>,
+    #[serde(skip)]
     pub watchpoint_queue: HashMap<u32, WatchpointArgs>,
+    #[serde(skip)]
     pub watchpoint_hits: Vec<WatchpointHit>,
     pub watchpoint_pause: bool,
 }

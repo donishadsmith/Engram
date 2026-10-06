@@ -4,21 +4,31 @@ use crate::components::{
         SharpSm83,
         registers::{Register8Bits, Register16Bits},
     },
-    gamepak::{GamePak, mbc::prelude::Mbc},
+    gamepak::{GamePak, Header, mbc::prelude::Mbc},
 };
+
+use serde::{Deserialize, Serialize};
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::{PixelFormat, to_rbg_single},
     script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
+    structs::{BreakpointData, DataTransfer, FrameData, WatchpointData},
+    utils::error_message,
 };
-use std::{io::Error, mem::take};
+use std::{
+    cell::{Cell, RefCell},
+    io::Error,
+    mem::take,
+};
 
+const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB1";
 pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
 // https://gekkio.fi/files/gb-docs/gbctr.pdf
 // https://www.zilog.com/docs/z80/um0080.pdf
 
+#[derive(Serialize, Deserialize)]
 pub struct GameBoy {
     pub cpu: SharpSm83<Bus>,
     pub scripted_keypad: Option<[bool; 8]>,
@@ -163,6 +173,90 @@ impl GameBoy {
     pub fn take_frame(&mut self) -> bool {
         take(&mut self.cpu.bus.ppu.frame_ready)
     }
+
+    fn load_data_transfer(&mut self, data: DataTransfer) {
+        self.cpu.bus.watchpoint_queue = RefCell::new(data.watchpoint_data.watchpoint_queue);
+        self.cpu.bus.watchpoint_hits = RefCell::new(data.watchpoint_data.watchpoint_hits);
+        self.cpu.bus.watchpoint_pause = Cell::new(data.watchpoint_data.watchpoint_pause);
+
+        self.cpu.breakpoint_queue = data.breakpoint_data.breakpoint_queue;
+        self.cpu.breakpoint_hit = data.breakpoint_data.breakpoint_hit;
+        self.cpu.resume_from = data.breakpoint_data.resume_from;
+
+        self.cpu.bus.ppu.frame = data.frame_data.frame;
+        self.cpu.bus.ppu.frontend = data.frame_data.frontend;
+
+        self.cpu.bus.gamepak.header = Header::new(&data.rom);
+        self.cpu.bus.gamepak.mbc.set_rom(data.rom);
+        self.cpu.bus.gamepak.sav_path = data.sav_path;
+        self.scripted_keypad = data.scripted_keypad.and_then(|k| k.try_into().ok());
+    }
+
+    fn send_data_transfer(&self) -> DataTransfer {
+        let watchpoint_data = WatchpointData {
+            watchpoint_queue: self.cpu.bus.watchpoint_queue.borrow().clone(),
+            watchpoint_hits: self.cpu.bus.watchpoint_hits.borrow().clone(),
+            watchpoint_pause: self.cpu.bus.watchpoint_pause.get(),
+        };
+
+        let breakpoint_data = BreakpointData {
+            breakpoint_queue: self.cpu.breakpoint_queue.clone(),
+            breakpoint_hit: self.cpu.breakpoint_hit.clone(),
+            resume_from: self.cpu.resume_from.clone(),
+        };
+
+        let frame_data = FrameData {
+            frame: self.cpu.bus.ppu.frame.clone(),
+            frontend: self.cpu.bus.ppu.frontend.clone(),
+        };
+
+        DataTransfer {
+            breakpoint_data,
+            watchpoint_data,
+            frame_data,
+            rom: self.cpu.bus.gamepak.mbc.get_rom().into(),
+            sav_path: self.cpu.bus.gamepak.sav_path.clone(),
+            scripted_keypad: self.scripted_keypad.map(|k| k.to_vec()),
+        }
+    }
+
+    pub fn save_state(&self) -> Result<Vec<u8>, Error> {
+        let serialized_data = postcard::to_allocvec(self)
+            .map_err(|err| error_message(format!("Failed to create save state: {err}")))?;
+        let compressed_data = lz4_flex::compress_prepend_size(&serialized_data);
+
+        let mut output = Vec::with_capacity(STATE_MAGIC_NAME.len() + compressed_data.len());
+        output.extend_from_slice(STATE_MAGIC_NAME);
+        output.extend_from_slice(&compressed_data);
+
+        Ok(output)
+    }
+
+    pub fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
+        let magic_len = STATE_MAGIC_NAME.len();
+        if bytes.len() < magic_len || &bytes[..magic_len] != STATE_MAGIC_NAME {
+            return Err(error_message("Not a Game Boy save state".to_string()));
+        }
+
+        let decompressed_data = lz4_flex::decompress_size_prepended(&bytes[magic_len..])
+            .map_err(|err| error_message(format!("Invalid save state: {err}")))?;
+        let mut data: GameBoy = postcard::from_bytes(&decompressed_data)
+            .map_err(|err| error_message(format!("Invalid save state: {err}")))?;
+
+        let (old, new) = (&self.cpu.bus.gamepak.header, &data.cpu.bus.gamepak.header);
+        if old.title != new.title || old.checksum != new.checksum {
+            return Err(error_message(
+                "Save state is for a different game".to_string(),
+            ));
+        }
+
+        self.save()?;
+        data.load_data_transfer(self.send_data_transfer());
+
+        *self = data;
+
+        Ok(())
+    }
 }
 
 impl Emulator for GameBoy {
@@ -173,11 +267,11 @@ impl Emulator for GameBoy {
     }
 
     fn remove_breakpoint(&mut self, address: u32) {
-        self.cpu.breakpoint_queue.remove(&(address as u16));
+        self.cpu.breakpoint_queue.remove(&address);
     }
 
     fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        self.cpu.set_breakpoint(address as u16, pause)
+        self.cpu.set_breakpoint(address, pause)
     }
 
     fn take_breakpoint_hit(&mut self) -> Option<u32> {
@@ -189,12 +283,7 @@ impl Emulator for GameBoy {
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
-        self.cpu
-            .breakpoint_queue
-            .clone()
-            .into_iter()
-            .map(|(address, action)| (address as u32, action))
-            .collect()
+        self.cpu.breakpoint_queue.clone().into_iter().collect()
     }
 
     fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)> {

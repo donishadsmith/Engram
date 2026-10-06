@@ -21,6 +21,7 @@ use shared::{
 };
 use spin_sleep::sleep_until;
 use std::{
+    fs::{read, rename, write},
     io::Error,
     path::PathBuf,
     time::{Duration, Instant},
@@ -157,13 +158,11 @@ impl EmulatorSession for GameBoySession {
             self.gameboy.end_of_frame();
         }
 
-        let breakpoint_action = self.gameboy.cpu.breakpoint_hit.and_then(|address| {
-            self.gameboy
-                .cpu
-                .breakpoint_queue
-                .get(&(address as u16))
-                .copied()
-        });
+        let breakpoint_action = self
+            .gameboy
+            .cpu
+            .breakpoint_hit
+            .and_then(|address| self.gameboy.cpu.breakpoint_queue.get(&address).copied());
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, false);
 
@@ -259,7 +258,22 @@ impl EmulatorSession for GameBoySession {
                 .registers
                 .program_counter
                 .address
-                .wrapping_sub(1),
+                .wrapping_sub(1) as u32,
         );
+    }
+
+    // gonna have a single state to get it working now and then later
+    // do the annoying frontend and file plumbing for multiple states
+    fn save_state(&mut self) -> Result<(), Error> {
+        let state_path = self.gameboy.cpu.bus.gamepak.sav_path.with_extension("ss1");
+        let tmp_path = state_path.with_extension("tmp");
+        write(&tmp_path, self.gameboy.save_state()?)?;
+        rename(&tmp_path, &state_path)
+    }
+
+    fn load_state(&mut self) -> Result<(), Error> {
+        let state_path = self.gameboy.cpu.bus.gamepak.sav_path.with_extension("ss1");
+        let bytes = read(state_path)?;
+        self.gameboy.load_state(&bytes)
     }
 }

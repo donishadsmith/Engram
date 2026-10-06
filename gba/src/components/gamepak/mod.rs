@@ -100,7 +100,8 @@ fn has_solar(rom: &[u8]) -> bool {
 
 pub struct GamePak {
     pub rom: Vec<u8>,
-    sav_path: PathBuf,
+    pub sav_path: PathBuf,
+    pub header: [u8; 32],
     pub gpio: Gpio,
     pub backup_chip: BackupChip,
 }
@@ -112,6 +113,11 @@ impl GamePak {
         let sav_path = rom_path.with_extension("sav");
         let mut backup_chip = detect_save_type(&rom).to_enum();
         Self::read_sav(&sav_path, &mut backup_chip)?;
+        let header = rom
+            .get(0xA0..0xC0)
+            .and_then(|bytes| bytes.try_into().ok())
+            .unwrap_or([0; 32]);
+
         let mut gpio = Gpio::new();
         gpio.rtc = if has_rtc(&rom) {
             Some(Rtc::new())
@@ -128,6 +134,7 @@ impl GamePak {
         Ok(Self {
             rom,
             sav_path,
+            header,
             gpio,
             backup_chip,
         })
@@ -205,6 +212,7 @@ impl GamePak {
             rom: vec![8u8; kilobytes(32000)],
             sav_path: PathBuf::from("mock.sav"),
             gpio: Gpio::new(),
+            header: [0; 32],
             backup_chip: BackupType::to_enum(backup_type),
         }
     }

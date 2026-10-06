@@ -165,6 +165,7 @@ impl WatchpointArgs {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct WatchpointHit {
     pub address: u32,
     pub value: u32,

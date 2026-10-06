@@ -22,6 +22,7 @@ use shared::{
     debug::DebugPage,
     render::Screen,
     script::ScriptEngine,
+    utils::error_message,
 };
 use spin_sleep::sleep_until;
 use std::{
@@ -266,6 +267,19 @@ impl EmulatorSession for GBASession {
 
     fn set_resume(&mut self) {
         self.gba.cpu.resume_from = Some(self.gba.cpu.next_executing_address());
+    }
+
+    // probably for the playstation since it will be quite some time before save states are supported
+    fn save_state(&mut self) -> Result<(), Error> {
+        Err(error_message(
+            "Save states are not supported for this system yet".to_string(),
+        ))
+    }
+
+    fn load_state(&mut self) -> Result<(), Error> {
+        Err(error_message(
+            "Save states are not supported for this system yet".to_string(),
+        ))
     }
 }
 

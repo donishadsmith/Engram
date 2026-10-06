@@ -13,6 +13,7 @@ use crate::components::{
     },
     utils::ByteOps8,
 };
+use serde::{Deserialize, Serialize};
 use shared::{
     render::{Frame, PixelFormat, ScalingMethod},
     traits::BitOps,
@@ -66,6 +67,7 @@ pub const SCREEN_HEIGHT: usize = 144;
 
 const DOTS_PER_SCANLINE: u32 = 456;
 
+#[derive(Deserialize, Serialize)]
 struct Lcdc {
     pub enable_lcd: bool,
     window_tile_map_select: u8,
@@ -118,7 +120,7 @@ impl Lcdc {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[repr(u8)]
 pub enum PpuMode {
     Hblank = 0,
@@ -127,6 +129,7 @@ pub enum PpuMode {
     PixelTransfer = 3,
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Ppu {
     dots: u32,
     pub vram: Vram,
@@ -153,7 +156,9 @@ pub struct Ppu {
     pub current_mode: PpuMode,
     pub entered_hblank: bool,
     is_cgb: bool,
+    #[serde(skip)]
     pub frame: Frame,
+    #[serde(skip)]
     pub frontend: Frame,
 }
 

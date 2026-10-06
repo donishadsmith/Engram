@@ -9,6 +9,7 @@ use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::to_rbg_single,
     script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
+    structs::{BreakpointData, DataTransfer, FrameData, WatchpointData},
     traits::BitOps,
 };
 use std::{io::Error, mem::take};
@@ -186,6 +187,51 @@ impl GBA {
 
     pub fn take_watchpoint_pause(&mut self) -> bool {
         take(&mut self.bus.watchpoint_pause)
+    }
+
+    fn load_data_transfer(&mut self, data: DataTransfer) {
+        self.bus.watchpoint_queue = data.watchpoint_data.watchpoint_queue;
+        self.bus.watchpoint_hits = data.watchpoint_data.watchpoint_hits;
+        self.bus.watchpoint_pause = data.watchpoint_data.watchpoint_pause;
+
+        self.cpu.breakpoint_queue = data.breakpoint_data.breakpoint_queue;
+        self.cpu.breakpoint_hit = data.breakpoint_data.breakpoint_hit;
+        self.cpu.resume_from = data.breakpoint_data.resume_from;
+
+        self.bus.ppu.frame = data.frame_data.frame;
+        self.bus.ppu.frontend = data.frame_data.frontend;
+
+        self.bus.gamepak.rom = data.rom.to_vec();
+        self.bus.gamepak.sav_path = data.sav_path;
+        self.scripted_keypad = data.scripted_keypad.and_then(|k| k.try_into().ok());
+    }
+
+    fn send_data_transfer(&self) -> DataTransfer {
+        let watchpoint_data = WatchpointData {
+            watchpoint_queue: self.bus.watchpoint_queue.clone(),
+            watchpoint_hits: self.bus.watchpoint_hits.clone(),
+            watchpoint_pause: self.bus.watchpoint_pause,
+        };
+
+        let breakpoint_data = BreakpointData {
+            breakpoint_queue: self.cpu.breakpoint_queue.clone(),
+            breakpoint_hit: self.cpu.breakpoint_hit.clone(),
+            resume_from: self.cpu.resume_from.clone(),
+        };
+
+        let frame_data = FrameData {
+            frame: self.bus.ppu.frame.clone(),
+            frontend: self.bus.ppu.frontend.clone(),
+        };
+
+        DataTransfer {
+            breakpoint_data,
+            watchpoint_data,
+            frame_data,
+            rom: self.bus.gamepak.rom.clone().into_boxed_slice(),
+            sav_path: self.bus.gamepak.sav_path.clone(),
+            scripted_keypad: self.scripted_keypad.and_then(|k| k.try_into().ok()),
+        }
     }
 }
 

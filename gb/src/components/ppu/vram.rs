@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
 use shared::{traits::BitOps, utils::zero_arr};
 
+#[derive(Deserialize, Serialize)]
 pub struct Vram {
     pub bank: u8,
     pub bank_size: u16,

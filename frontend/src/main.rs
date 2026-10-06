@@ -188,6 +188,24 @@ async fn main() -> Result<(), Error> {
                                 ui.close_menu();
                             }
 
+                            ui.menu_button("State", |ui| {
+                                if ui.button("Save State").clicked() {
+                                    match emulator.save_state() {
+                                        Ok(()) => session.toasts.success("State saved"),
+                                        Err(err) => session.toasts.error(format!("Save state failed: {err}")),
+                                    };
+                                    ui.close_menu();
+                                }
+
+                                if ui.button("Load State").clicked() {
+                                    match emulator.load_state() {
+                                        Ok(()) => session.toasts.success("State loaded"),
+                                        Err(err) => session.toasts.error(format!("Load state failed: {err}")),
+                                    };
+                                    ui.close_menu();
+                            }
+                            });
+
                             if let Some(solar_sensor) = emulator.solar_sensor() {
                                 ui.menu_button("Solar", |ui| {
                                     ui.add(
@@ -496,8 +514,8 @@ async fn main() -> Result<(), Error> {
                                 if let Some(emulator) = &session.emulator {
                                     let _ = session
                                         .gif
-                                        .toggle(emulator.frontend_ref(), session.get_image_path());
-
+                                        .start(emulator.frontend_ref(), session.get_image_path());
+                                    // maybe make this more accurate instead of assuming
                                     session
                                         .toasts
                                         .success("GIF saved")
@@ -566,22 +584,39 @@ async fn main() -> Result<(), Error> {
                             toggle_requested = true;
                         }
 
-                        if let Some(emulator) = &session.emulator {
+                        if session.emulator.is_some() {
                             if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua)) {
                                 session.lua_editor.opened = !session.lua_editor.opened;
                             }
 
                             if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
                                 if session.gif.is_recording() {
-                                    let _ = session
-                                        .gif
-                                        .toggle(emulator.frontend_ref(), session.get_image_path());
+                                    session.gif.stop();
+
                                     session
                                         .toasts
                                         .success("GIF saved")
                                         .duration(Some(Duration::from_secs(5)));
                                 } else {
                                     session.open_gif_settings = !session.open_gif_settings;
+                                }
+                            }
+
+                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::SaveState)) {
+                                if let Some(emulator) = &mut session.emulator {
+                                    match emulator.save_state() {
+                                        Ok(()) => session.toasts.success("State saved"),
+                                        Err(err) => session.toasts.error(format!("Save state failed: {err}")),
+                                    };
+                                }
+                            }
+
+                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::LoadState)) {
+                                if let Some(emulator) = &mut session.emulator {
+                                    match emulator.load_state() {
+                                        Ok(()) => session.toasts.success("State loaded"),
+                                        Err(err) => session.toasts.error(format!("Load state failed: {err}")),
+                                    };
                                 }
                             }
                         }
@@ -618,9 +653,10 @@ async fn main() -> Result<(), Error> {
 
                     if start_recording {
                         if let Some(emulator) = &session.emulator {
-                            let _ = session
-                                .gif
-                                .toggle(emulator.frontend_ref(), session.get_image_path());
+                            match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
+                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(5))),
+                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(5))),
+                            };
                         }
 
                         session.open_gif_settings = false;
@@ -762,14 +798,22 @@ async fn main() -> Result<(), Error> {
                                         .info("Emulator is paused")
                                         .duration(Some(Duration::from_secs(3)));
                                 }
-                                ScriptRequest::Screenshot => screenshot(session.image_dir.clone()),
+                                ScriptRequest::Screenshot => {
+                                    screenshot(session.image_dir.clone());
+                                    session
+                                        .toasts
+                                        .success("Screenshot saved")
+                                        .duration(Some(Duration::from_secs(5)));
+                                },
                                 ScriptRequest::StartGif => {
                                     if !session.gif.is_recording() {
                                         if emulator.frame_ready() {
-                                            let _ = session.gif.start(
-                                                emulator.frontend_ref(),
-                                                session.image_dir.clone(),
-                                            );
+                                            match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
+                                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(5))),
+                                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(5))),
+                                            };
+
+
                                         } else {
                                             session.lua_editor.push_output(vec![
                                                mlua::Error::RuntimeError(
@@ -783,6 +827,11 @@ async fn main() -> Result<(), Error> {
                                 ScriptRequest::StopGif => {
                                     if session.gif.is_recording() {
                                         session.gif.stop();
+
+                                        session
+                                        .toasts
+                                        .success("GIF saved")
+                                        .duration(Some(Duration::from_secs(5)));
                                     }
                                 }
                                 ScriptRequest::Reset => session.state = EmulatorState::Reset,

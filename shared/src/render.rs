@@ -45,6 +45,20 @@ impl Frame {
     }
 }
 
+impl Default for Frame {
+    fn default() -> Self {
+        Self {
+            pixels: Box::new([0]),
+            width: 0,
+            height: 0,
+            pixel_format: PixelFormat::Rgb555,
+            scaling_method: ScalingMethod::Integer,
+            buffer_changed: false,
+            dimensions_changed: false,
+        }
+    }
+}
+
 pub struct Screen {
     texture: Texture2D,
     image: Image,

@@ -20,11 +20,10 @@ All registers are 32bit wide.
 
 */
 
-use std::collections::HashMap;
-
-use shared::EmulatorState;
-
 use crate::components::bus::Bus;
+use serde::{Deserialize, Serialize};
+use shared::EmulatorState;
+use std::collections::HashMap;
 
 // mostly will be used for lua scripttarget to map registers properly
 // for ``read_cpu_registers``
@@ -69,6 +68,7 @@ pub enum RegisterAlias {
     Lo,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Registers {
     pub r: [u32; 32],
     pub shadow_r: [u32; 32],
@@ -144,10 +144,14 @@ impl Registers {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct R3000a {
     pub registers: Registers,
+    #[serde(skip)]
     pub breakpoint_hit: Option<u32>,
+    #[serde(skip)]
     pub breakpoint_queue: HashMap<u32, EmulatorState>,
+    #[serde(skip)]
     pub resume_from: Option<u32>,
 }
 

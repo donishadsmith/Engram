@@ -35,6 +35,9 @@ use crate::components::{
     timer::Timer,
 };
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize)]
 pub struct OamDmaState {
     in_progress: bool,
     source_address: u16,
@@ -42,6 +45,7 @@ pub struct OamDmaState {
     delay: u8,
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct VramDmaState {
     in_progress: bool,
     source_address: u16,
@@ -72,6 +76,7 @@ pub enum MemoryAccessor {
 }
 
 //http://gameboy.mongenel.com/dmg/asmmemmap.html
+#[derive(Deserialize, Serialize)]
 pub struct Bus {
     pub oam_dma: OamDmaState,
     pub vram_dma: VramDmaState,
@@ -90,8 +95,11 @@ pub struct Bus {
     pub key_register: u8,
     pub svbk_register: u8,
     pub hdma_registers: [u8; 5],
+    #[serde(skip)]
     pub watchpoint_queue: RefCell<HashMap<u32, WatchpointArgs>>,
+    #[serde(skip)]
     pub watchpoint_hits: RefCell<Vec<WatchpointHit>>,
+    #[serde(skip)]
     pub watchpoint_pause: Cell<bool>,
 }
 
