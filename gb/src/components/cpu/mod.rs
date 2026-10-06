@@ -15,8 +15,6 @@ use crate::components::{
     utils::{ByteOps8, MergeByteOps},
 };
 
-pub const STARTING_ADDRESS: u16 = 0x0000;
-
 #[derive(Copy, Clone, Debug)]
 pub enum StatusFlag {
     Z = 0x80, // 7 bit is 1; Zero flag - condition in which the operation resulted in 0

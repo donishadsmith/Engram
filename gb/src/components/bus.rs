@@ -27,19 +27,12 @@ use std::{
 
 use crate::components::{
     apu::Apu,
-    bootloader::{CGB_BOOT, DMG_BOOTIX},
     cpu::interrupts::InterruptMode,
     gamepak::{CgbFlag, GamePak, mbc::prelude::Mbc},
     joypad::Joypad,
     ppu::Ppu,
     timer::Timer,
 };
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum BootStatus {
-    Complete,
-    Incomplete,
-}
 
 pub struct OamDmaState {
     in_progress: bool,
@@ -79,7 +72,6 @@ pub enum MemoryAccessor {
 
 //http://gameboy.mongenel.com/dmg/asmmemmap.html
 pub struct Bus {
-    boot_status: BootStatus,
     pub oam_dma: OamDmaState,
     pub vram_dma: VramDmaState,
     pub gamepak: GamePak,
@@ -112,7 +104,6 @@ impl Bus {
         };
 
         Self {
-            boot_status: BootStatus::Incomplete,
             oam_dma: OamDmaState {
                 in_progress: false,
                 source_address: 0x00,
@@ -127,42 +118,23 @@ impl Bus {
                 mode: 0,
             },
             gamepak,
-            wram: vec![0u8; wram_size],
+            wram: vec![0; wram_size],
             ppu: Ppu::new(cgb_flag == CgbFlag::Cgb),
             apu: Apu::new(),
-            timer: Timer::new(),
+            timer: Timer::new(cgb_flag == CgbFlag::Cgb),
             joypad: Joypad::new(),
-            hram: vec![0u8; 0x007F],
+            hram: vec![0; 0x007F],
             interrupt_enable: 0x00,
-            interrupt_flag: 0x00,
+            interrupt_flag: 0xE1,
             serial_data: 0x00,
             serial_control: 0,
             serial_output: String::new(),
             key_register: 0,
             svbk_register: 0,
-            hdma_registers: [0; 5],
+            hdma_registers: [0xFF; 5], // this should be 0xff not 0 baded on pandocs but doesnt seem to be that important
             watchpoint_queue: RefCell::new(HashMap::new()),
             watchpoint_hits: RefCell::new(Vec::new()),
             watchpoint_pause: Cell::new(false),
-        }
-    }
-
-    fn boot_rom_read(&self, address: u16) -> Option<u8> {
-        if self.boot_status == BootStatus::Complete {
-            return None;
-        }
-
-        match self.gamepak.header.cgb_flag {
-            CgbFlag::Dmg => match address {
-                0x0000..=0x00FF => Some(DMG_BOOTIX[address as usize]),
-                _ => None,
-            },
-            // https://gbdev.gg8.se/wiki/articles/Gameboy_Bootstrap_ROM
-            // The rom dump includes the 256 byte rom (0x0000-0x00FF) and the 1792 byte rom (0x0200-0x08FF)
-            CgbFlag::Cgb => match address {
-                0x0000..=0x00FF | 0x0200..=0x08FF => Some(CGB_BOOT[address as usize]),
-                _ => None,
-            },
         }
     }
 
@@ -387,10 +359,6 @@ impl AddressBus for Bus {
             return 0xFF;
         }
 
-        if let Some(byte) = self.boot_rom_read(address) {
-            return byte;
-        }
-
         let value = match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.read(address),
             0x8000..=0x9FFF => self.ppu.vram.read(address),
@@ -462,11 +430,7 @@ impl AddressBus for Bus {
                 self.key_register = (self.key_register & 0x80) | value.get_bit(0);
             }
             0xFF4F if self.is_cgb() => self.ppu.vram.bank_swap(value),
-            0xFF50 => {
-                if value.is_set(0) {
-                    self.boot_status = BootStatus::Complete;
-                }
-            }
+            0xFF50 => {} // boot completion
             0xFF51 if self.is_cgb() => self.hdma_registers[0] = value,
             0xFF52 if self.is_cgb() => self.hdma_registers[1] = value & 0xF0,
             0xFF53 if self.is_cgb() => self.hdma_registers[2] = value.get_bit_range(0..5),

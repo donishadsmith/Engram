@@ -1,5 +1,4 @@
 pub mod apu;
-pub mod bootloader;
 pub mod bus;
 pub mod cpu;
 pub mod gameboy;

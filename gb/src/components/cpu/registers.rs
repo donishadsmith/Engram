@@ -1,8 +1,9 @@
 use crate::components::{
-    cpu::{FlagDelta, ProgramCounter, STARTING_ADDRESS, StatusFlag},
+    cpu::{FlagDelta, ProgramCounter, StatusFlag},
     gamepak::CgbFlag,
     utils::{ByteOps16, MergeByteOps},
 };
+
 #[derive(Clone, Copy)]
 pub enum Register8Bits {
     A,
@@ -52,7 +53,7 @@ impl Registers {
                 e: 0xD8,
                 h: 0x01,
                 l: 0x4D,
-                program_counter: ProgramCounter::start(STARTING_ADDRESS),
+                program_counter: ProgramCounter::start(0x0100),
                 stack_pointer: 0xFFFE,
                 instruction_register: None,
             },
@@ -66,7 +67,7 @@ impl Registers {
                 e: 0x56,
                 h: 0x00,
                 l: 0x0D,
-                program_counter: ProgramCounter::start(STARTING_ADDRESS),
+                program_counter: ProgramCounter::start(0x0100),
                 stack_pointer: 0xFFFE,
                 instruction_register: None,
             },

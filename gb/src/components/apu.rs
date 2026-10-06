@@ -29,14 +29,26 @@ pub struct Apu {
 impl Apu {
     pub fn new() -> Self {
         let mut mixer = PsgMixer::new();
-        mixer.write(PsgMixerRegister::Nr52, 0xF1);
         mixer.write(PsgMixerRegister::Nr50, 0x77);
         mixer.write(PsgMixerRegister::Nr51, 0xF3);
+        mixer.write(PsgMixerRegister::Nr52, 0xF1);
 
         let mut psg = PsgChannel::new(EmulatorId::Gb);
+        psg.channel1.write_nrx0(0x80);
         psg.channel1.write_nrx1(0xBF);
         psg.channel1.write_nrx2(0xF3);
+        psg.channel1.write_nrx3(0xFF);
+        psg.channel1.write_nrx4(0xBF);
         psg.channel2.write_nrx1(0x3F);
+        psg.channel2.write_nrx3(0xFF);
+        psg.channel2.write_nrx4(0xBF);
+        psg.channel3.write_nrx0(0x7F);
+        psg.channel3.write_nrx1(0xFF);
+        psg.channel3.write_nrx2(0x9F);
+        psg.channel3.write_nrx3(0xFF);
+        psg.channel3.write_nrx4(0xBF);
+        psg.channel4.write_nrx1(0xFF);
+        psg.channel4.write_nrx4(0xBF);
 
         Self {
             mixer,

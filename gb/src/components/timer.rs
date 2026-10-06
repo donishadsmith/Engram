@@ -12,12 +12,12 @@ pub struct Timer {
 }
 
 impl Timer {
-    pub fn new() -> Self {
+    pub fn new(is_cgb: bool) -> Self {
         Self {
-            div: 0,
+            div: if is_cgb { 0 } else { 0xAB }, // pandocs unsure what this is for cgb
             tima: 0,
             tma: 0,
-            tac: 0,
+            tac: 0xF8,
             increase_div_apu_counter: false,
         }
     }
