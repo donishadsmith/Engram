@@ -118,6 +118,10 @@ async fn main() -> Result<(), Error> {
                 )? == EmulatorState::Paused
                 {
                     session.set_paused();
+                    session
+                        .toasts
+                        .info("Emulator is paused")
+                        .duration(Some(Duration::from_secs(3)));
                 };
 
                 if let Some(emulator) = &session.emulator {
@@ -755,7 +759,7 @@ async fn main() -> Result<(), Error> {
                                     session.state = EmulatorState::Paused;
                                     session
                                         .toasts
-                                        .info("emulator is paused")
+                                        .info("Emulator is paused")
                                         .duration(Some(Duration::from_secs(3)));
                                 }
                                 ScriptRequest::Screenshot => screenshot(session.image_dir.clone()),

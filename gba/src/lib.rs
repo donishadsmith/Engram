@@ -160,15 +160,18 @@ impl EmulatorSession for GBASession {
             self.run_frame(volume);
         }
 
+        let breakpoint_action = self
+            .gba
+            .cpu
+            .breakpoint_hit
+            .and_then(|address| self.gba.cpu.breakpoint_queue.get(&address).copied());
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, false);
 
         let state = if self.gba.take_watchpoint_pause() {
             EmulatorState::Paused
-        } else if let Some(address) = self.gba.cpu.breakpoint_hit {
-            self.gba.cpu.breakpoint_queue.get(&address).unwrap().clone()
         } else {
-            EmulatorState::Running
+            breakpoint_action.unwrap_or(EmulatorState::Running)
         };
 
         self.draw();

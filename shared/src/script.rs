@@ -210,6 +210,16 @@ fn display_value(value: &Value) -> String {
     }
 }
 
+fn check_address(emulator_id: EmulatorId, address: u32) -> Result<(), mlua::Error> {
+    if emulator_id == EmulatorId::Gb && address > 0xFFFF {
+        return Err(mlua::Error::runtime(format!(
+            "address {address:#x} out of range: gameboy addresses are 16-bit (max 0xFFFF)"
+        )));
+    }
+
+    Ok(())
+}
+
 fn parse_watchpoint_args(
     emulator_id: EmulatorId,
     address: u32,
@@ -529,6 +539,8 @@ impl ScriptEngine {
 
             let set_breakpoint =
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
+                    check_address(emulator_id, address)?;
+
                     let pause = match kwargs {
                         Some(table) => table.get::<Option<bool>>("pause")?.unwrap_or(true),
                         None => true,
@@ -592,6 +604,8 @@ impl ScriptEngine {
 
             let set_watchpoint =
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
+                    check_address(emulator_id, address)?;
+
                     let (address, watchpoint_args) =
                         parse_watchpoint_args(emulator_id, address, kwargs)?;
                     let message = if target.borrow_mut().set_watchpoint(address, watchpoint_args) {

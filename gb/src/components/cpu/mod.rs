@@ -170,7 +170,7 @@ where
     pub halted: bool,
     pub interrupt: Interrupt,
     pub breakpoint_hit: Option<u32>,
-    pub breakpoint_queue: HashMap<u32, EmulatorState>,
+    pub breakpoint_queue: HashMap<u16, EmulatorState>,
     pub resume_from: Option<u16>,
 }
 
@@ -214,7 +214,7 @@ where
         cpu
     }
 
-    pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
+    pub fn set_breakpoint(&mut self, address: u16, pause: bool) -> bool {
         let action = if pause {
             EmulatorState::Paused
         } else {
@@ -275,9 +275,7 @@ where
         */
         if !self.halted {
             let executing_address = self.registers.program_counter.address.wrapping_sub(1);
-            if self
-                .breakpoint_queue
-                .contains_key(&(executing_address as u32))
+            if self.breakpoint_queue.contains_key(&executing_address)
                 && self.resume_from != Some(executing_address)
             {
                 self.breakpoint_hit = Some(executing_address as u32);

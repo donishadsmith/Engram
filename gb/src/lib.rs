@@ -157,20 +157,20 @@ impl EmulatorSession for GameBoySession {
             self.gameboy.end_of_frame();
         }
 
+        let breakpoint_action = self.gameboy.cpu.breakpoint_hit.and_then(|address| {
+            self.gameboy
+                .cpu
+                .breakpoint_queue
+                .get(&(address as u16))
+                .copied()
+        });
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, false);
 
         let state = if self.gameboy.take_watchpoint_pause() {
             EmulatorState::Paused
-        } else if let Some(address) = self.gameboy.cpu.breakpoint_hit {
-            self.gameboy
-                .cpu
-                .breakpoint_queue
-                .get(&address)
-                .unwrap()
-                .clone()
         } else {
-            EmulatorState::Running
+            breakpoint_action.unwrap_or(EmulatorState::Running)
         };
 
         self.draw();
