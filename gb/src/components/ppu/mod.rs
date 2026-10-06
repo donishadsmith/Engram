@@ -188,7 +188,11 @@ impl Ppu {
                 pixels: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
-                pixel_format: PixelFormat::Rgb555,
+                pixel_format: if is_cgb {
+                    PixelFormat::Rgb555
+                } else {
+                    PixelFormat::Rgb888
+                },
                 scaling_method: ScalingMethod::Integer,
                 dimensions_changed: false,
                 buffer_changed: true,
@@ -197,7 +201,11 @@ impl Ppu {
                 pixels: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]),
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,
-                pixel_format: PixelFormat::Rgb555,
+                pixel_format: if is_cgb {
+                    PixelFormat::Rgb555
+                } else {
+                    PixelFormat::Rgb888
+                },
                 scaling_method: ScalingMethod::Integer,
                 dimensions_changed: false,
                 buffer_changed: true,
@@ -318,11 +326,11 @@ impl Ppu {
             bg_priority[pixel] = attributes.priority;
 
             self.frame.pixels[self.ly as usize * SCREEN_WIDTH + pixel] = if self.is_cgb {
-                cram_color(&self.bg_palette_ram, attributes.color_palette, color_index)
+                cram_color(&self.bg_palette_ram, attributes.color_palette, color_index) as u32
             } else {
                 let shade = (self.bgp >> (color_index * 2)).get_bit_range(0..2);
                 DMG_SHADES[shade as usize]
-            } as u32;
+            };
         }
 
         if window_rendered {
@@ -376,12 +384,12 @@ impl Ppu {
                             &self.obj_palette_ram,
                             sprite_attribute.palette_number,
                             color_index,
-                        )
+                        ) as u32
                     } else {
                         let dmg_palette =
                             self.monochrome_object_palette(sprite_attribute.palette_number);
                         let shade = (dmg_palette >> (color_index * 2)).get_bit_range(0..2);
-                        DMG_SHADES[shade as usize]
+                        DMG_SHADES[shade as usize] as u32
                     };
 
                     let bg_priority = bg_indices[x as usize] != 0
@@ -389,8 +397,7 @@ impl Ppu {
                         && (!sprite_attribute.priority || bg_priority[x as usize]);
 
                     if !bg_priority {
-                        self.frame.pixels[self.ly as usize * SCREEN_WIDTH + x as usize] =
-                            color as u32;
+                        self.frame.pixels[self.ly as usize * SCREEN_WIDTH + x as usize] = color;
                     }
                 }
             }

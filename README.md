@@ -30,8 +30,8 @@ A Gameboy Advance & Game Boy/Game Boy Color emulator.
       <br>Pokemon Crystal (GBC)
     </td>
     <td align="center">
-      <img src="assets/mario.png" width="250">
-      <br>Super Mario Land (GB)
+      <img src="assets/kirby.png" width="250">
+      <br>Kirby's Dream Land (GB)
     </td>
   </tr>
 </table>

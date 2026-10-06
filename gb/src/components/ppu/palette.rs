@@ -1,4 +1,10 @@
-pub const DMG_SHADES: [u16; 4] = [0x7FFF, 0x56B5, 0x294A, 0x0000];
+// https://github.com/langurmonkey/playkid/blob/master/src/ppu.rs
+// [224, 248, 208, 136, 192, 112, 52, 104, 86, 8, 24, 32],
+// TODO: changed form black and white to the green palette to look better
+// eventually attempt colorization of gb but the process looks far too cumbersome
+// maybe attempt after psx
+// https://gbdev.io/pandocs/Power_Up_Sequence.html#compatibility-palettes
+pub const DMG_SHADES: [u32; 4] = [0xE0F8D0, 0x88C070, 0x346856, 0x081820];
 
 #[derive(Clone, Copy)]
 pub enum ColorPaletteRegisterType {
