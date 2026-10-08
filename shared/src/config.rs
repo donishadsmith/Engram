@@ -28,6 +28,7 @@ pub struct Config {
     pub solar_level: u8,
     pub gif_settings: BTreeMap<String, u8>,
     pub display: Display,
+    pub show_fps: bool,
 }
 
 fn get_config_path() -> PathBuf {

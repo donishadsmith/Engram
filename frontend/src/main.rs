@@ -7,7 +7,9 @@ use crate::{
     session::{InputSource, Session},
     utils::{bindings_grid, file_dialog},
 };
+use egui::FontDefinitions;
 use egui_macroquad;
+use egui_phosphor::regular as icons;
 use macroquad::prelude::*;
 use shared::{
     EmulatorState,
@@ -41,6 +43,7 @@ fn conf() -> Conf {
 }
 
 // TODO: maybe clean up some areas in the future
+// determine if too many toast messages
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
@@ -49,6 +52,8 @@ async fn main() -> Result<(), Error> {
     let mut restore_default_bindings = false;
     let mut force_clear_inputs = false;
     let mut controller_keybinding_tab = KeybindingTab::Keyboard;
+    let mut fonts = FontDefinitions::default();
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
 
     loop {
         session.save()?;
@@ -71,14 +76,14 @@ async fn main() -> Result<(), Error> {
                 session.toasts.warning(text)
             };
 
-            toast.duration(Some(Duration::from_secs(5)));
+            toast.duration(Some(Duration::from_secs(3)));
         }
 
         if let Some(text) = gamepad_update.active_text {
             session
                 .toasts
                 .warning(text)
-                .duration(Some(Duration::from_secs(5)));
+                .duration(Some(Duration::from_secs(3)));
         }
 
         let input_source_changed =
@@ -88,6 +93,8 @@ async fn main() -> Result<(), Error> {
             EmulatorState::RomSelection => {
                 let Some(rom_path) = file_dialog() else {
                     session.state = session.take_return_state().unwrap();
+
+                    session.reset_fps();
 
                     continue;
                 };
@@ -108,7 +115,7 @@ async fn main() -> Result<(), Error> {
                         session.set_emulator(gba::GBASession::new_session(rom_path)?);
                         session.set_solar_sensor();
                     }
-                    _ => continue,
+                    _ => {}
                 }
 
                 session.take_return_state();
@@ -137,6 +144,10 @@ async fn main() -> Result<(), Error> {
                 let _ = session.reset();
                 session.take_return_state();
                 session.state = EmulatorState::Running;
+                session
+                    .toasts
+                    .success("Emulator resetted")
+                    .duration(Some(Duration::from_secs(3)));
             }
             EmulatorState::Quit => {
                 session.gif.stop();
@@ -163,21 +174,22 @@ async fn main() -> Result<(), Error> {
         egui_macroquad::ui(|egui_ctx| {
             egui_ctx.set_pixels_per_point(screen_dpi_scale());
             egui::TopBottomPanel::top("Menu Bar").show(egui_ctx, |ui| {
+                egui_ctx.set_fonts(fonts.clone());
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
-                        if ui.button("Load ROM").clicked() {
+                        if ui.button(format!("{} Load ROM", icons::FOLDER)).clicked() {
                             session.add_transient_state(EmulatorState::RomSelection);
                             ui.close_menu();
                         }
 
-                        if ui.button("Quit").clicked() {
+                        if ui.button(format!("{} Quit", icons::SIGN_OUT)).clicked() {
                             session.state = EmulatorState::Quit;
                             ui.close_menu();
                         }
                     });
 
                     ui.menu_button("Emulation", |ui| {
-                        ui.menu_button("Volume", |ui| {
+                        ui.menu_button(format!("{}  Volume", icons::SPEAKER_HIGH), |ui| {
                             ui.add(
                                 egui::Slider::new(&mut session.master_volume, 0..=100)
                                     .text("Adjust volume for the emulator."),
@@ -185,12 +197,12 @@ async fn main() -> Result<(), Error> {
                         });
 
                         if let Some(emulator) = &mut session.emulator {
-                            if ui.button("Reset").clicked() {
+                            if ui.button(format!("{}  Reset", icons::ARROWS_COUNTER_CLOCKWISE)).clicked() {
                                 session.state = EmulatorState::Reset;
                                 ui.close_menu();
                             }
 
-                            ui.menu_button("States", |ui| {
+                            ui.menu_button(format!("{}  States", icons::FLOPPY_DISK), |ui| {
                                 if ui.button("Save State").clicked() {
                                     match emulator.save_state() {
                                         Ok(()) => session.toasts.success("State saved"),
@@ -209,7 +221,7 @@ async fn main() -> Result<(), Error> {
                             });
 
                             if let Some(solar_sensor) = emulator.solar_sensor() {
-                                ui.menu_button("Solar", |ui| {
+                                ui.menu_button(format!("{}  Solar", icons::SUN), |ui| {
                                     ui.add(
                                         egui::Slider::new(&mut session.solar_level, 0..=10)
                                             .text("Solar sensor level from lowest to highest"),
@@ -220,7 +232,7 @@ async fn main() -> Result<(), Error> {
 
                             if ui
                                 .add(
-                                    egui::Button::new("Key Bindings")
+                                    egui::Button::new(format!("{}  Key Bindings", icons::KEYBOARD))
                                         .wrap_mode(egui::TextWrapMode::Extend),
                                 )
                                 .clicked()
@@ -228,13 +240,20 @@ async fn main() -> Result<(), Error> {
                                 session.show_key_bindings = true;
                                 ui.close_menu();
                             }
+
+                            ui.horizontal(|ui|{
+                                ui.label(egui::RichText::new(format!("{}  Show FPS", icons::GAUGE)).color(
+                                    ui.visuals().widgets.inactive.fg_stroke.color
+                                ));
+                                ui.checkbox(&mut session.show_fps, "");
+                            });
                         }
                     });
 
                     ui.menu_button("Settings", |ui| {
                         if ui
                             .add(
-                                egui::Button::new("Configure Hotkeys")
+                                egui::Button::new(format!("{}  Configure Hotkeys", icons::KEYBOARD))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             )
                             .clicked()
@@ -247,7 +266,7 @@ async fn main() -> Result<(), Error> {
                             session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen),
                         );
 
-                        ui.menu_button("Window", |ui| {
+                        ui.menu_button(format!("{}  Window", icons::FRAME_CORNERS), |ui| {
                             let fullscreen_text = if session.display.fullscreen {
                                 "Close Fullscreen"
                             } else {
@@ -286,7 +305,7 @@ async fn main() -> Result<(), Error> {
                         ui.label(format!("Input Source: {source}"));
 
                         if let Some(gilrs) = &session.gilrs {
-                            ui.menu_button("Connected Controllers", |ui| {
+                            ui.menu_button(format!("{}  Connected Controllers", icons::GAME_CONTROLLER), |ui| {
                                 let mut controller_present = false;
 
                                 for (gamepad_id, gamepad) in gilrs.gamepads() {
@@ -324,7 +343,7 @@ async fn main() -> Result<(), Error> {
                             .show(egui_ctx, |ui| {
                                 ui.horizontal(|ui| {
                                     if ui
-                                        .add(egui::Button::new("Keyboard").selected(
+                                        .add(egui::Button::new(format!("{}  Keyboard", icons::KEYBOARD)).selected(
                                             controller_keybinding_tab == KeybindingTab::Keyboard,
                                         ))
                                         .clicked()
@@ -334,7 +353,7 @@ async fn main() -> Result<(), Error> {
 
                                     if session.latest_gamepad_id.is_some()
                                         && ui
-                                            .add(egui::Button::new("Controller").selected(
+                                            .add(egui::Button::new(format!("{}  Keyboard", icons::GAME_CONTROLLER)).selected(
                                                 controller_keybinding_tab == KeybindingTab::Gamepad,
                                             ))
                                             .clicked()
@@ -487,7 +506,7 @@ async fn main() -> Result<(), Error> {
                             };
 
                             if ui
-                                .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
+                                .add(egui::Button::new(format!("{}  {text}", icons::CODE_SIMPLE)).wrap_mode(egui::TextWrapMode::Extend))
                                 .clicked()
                             {
                                 session.lua_editor.opened = !session.lua_editor.opened;
@@ -496,7 +515,8 @@ async fn main() -> Result<(), Error> {
                         }
 
                         let text = format!(
-                            "Screenshot ({})",
+                            "{}  Screenshot ({})",
+                            icons::CAMERA,
                             keycode_to_string(
                                 session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot)
                             )
@@ -509,7 +529,7 @@ async fn main() -> Result<(), Error> {
                             session
                                 .toasts
                                 .success("Screenshot saved")
-                                .duration(Some(Duration::from_secs(5)));
+                                .duration(Some(Duration::from_secs(3)));
                             ui.close_menu();
                         }
 
@@ -522,19 +542,17 @@ async fn main() -> Result<(), Error> {
                         };
 
                         if ui
-                            .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
+                            .add(egui::Button::new(format!("{}  {text}", icons::GIF)).wrap_mode(egui::TextWrapMode::Extend))
                             .clicked()
                         {
                             if session.gif.is_recording() {
-                                if let Some(emulator) = &session.emulator {
-                                    let _ = session
-                                        .gif
-                                        .start(emulator.frontend_ref(), session.get_image_path());
+                                if session.emulator.is_some() {
+                                    let _ = session.gif.stop();
                                     // maybe make this more accurate instead of assuming
                                     session
                                         .toasts
                                         .success("GIF saved")
-                                        .duration(Some(Duration::from_secs(5)));
+                                        .duration(Some(Duration::from_secs(3)));
                                 }
                             } else {
                                 session.open_gif_settings = true;
@@ -545,7 +563,7 @@ async fn main() -> Result<(), Error> {
 
                         if ui
                             .add(
-                                egui::Button::new("Choose Image Save Location")
+                                egui::Button::new(format!("{}  Choose Image Save Location", icons::FOLDER))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             )
                             .clicked()
@@ -591,7 +609,7 @@ async fn main() -> Result<(), Error> {
                             session
                                 .toasts
                                 .success("Screenshot saved")
-                                .duration(Some(Duration::from_secs(5)));
+                                .duration(Some(Duration::from_secs(3)));
                             screenshot(session.get_image_path());
                         }
 
@@ -611,7 +629,7 @@ async fn main() -> Result<(), Error> {
                                     session
                                         .toasts
                                         .success("GIF saved")
-                                        .duration(Some(Duration::from_secs(5)));
+                                        .duration(Some(Duration::from_secs(3)));
                                 } else {
                                     session.open_gif_settings = !session.open_gif_settings;
                                 }
@@ -669,8 +687,8 @@ async fn main() -> Result<(), Error> {
                     if start_recording {
                         if let Some(emulator) = &session.emulator {
                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
-                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(5))),
-                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(5))),
+                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(3))),
+                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(3))),
                             };
                         }
 
@@ -683,7 +701,7 @@ async fn main() -> Result<(), Error> {
                             && let Some(debugger) = emulator.debugger_ref()
                         {
                             let (text, hover) = if debugger.active() {
-                                (
+                                (   // dont know what icons should go here
                                     egui::RichText::new("ON").color(egui::Color32::LIGHT_GREEN),
                                     "Click to close debugger",
                                 )
@@ -693,7 +711,7 @@ async fn main() -> Result<(), Error> {
 
                             let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
                             let title = ui.add(
-                                egui::Label::new(egui::RichText::new("| Debug Mode:").strong())
+                                egui::Label::new(egui::RichText::new(format!("| {}  Debug Mode:", icons::BUG)).strong())
                                     .sense(egui::Sense::click()),
                             );
 
@@ -707,19 +725,25 @@ async fn main() -> Result<(), Error> {
                             }
                         }
 
-                        if session.emulator.is_some() {
+                        if let Some(emulator) = &session.emulator {
+                            let fps = if session.is_running() {
+                                        emulator.get_fps()
+                                    } else {
+                                        0.0
+                                    };
+
                             let (text, hover) = if session.is_paused()
                                 || session
                                     .return_state
                                     .is_some_and(|state| state == EmulatorState::Paused)
                             {
                                 (
-                                    egui::RichText::new("PAUSED").color(egui::Color32::YELLOW),
+                                    egui::RichText::new(icons::PAUSE).color(egui::Color32::YELLOW),
                                     "Click to resume emulator",
                                 )
                             } else {
                                 (
-                                    egui::RichText::new("LIVE").weak(),
+                                    egui::RichText::new(icons::PLAY).weak(),
                                     "Click to pause emulator",
                                 )
                             };
@@ -727,7 +751,7 @@ async fn main() -> Result<(), Error> {
                             let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
                             let title = ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new("| Emulator Status:").strong(),
+                                    egui::RichText::new(format!("| {}  Emulator Status:", icons::MONITOR)).strong(),
                                 )
                                 .sense(egui::Sense::click()),
                             );
@@ -739,11 +763,21 @@ async fn main() -> Result<(), Error> {
                                 .clicked()
                             {
                                 session.toggle_emulator_status();
-                            }
-                        }
 
-                        if recording {
-                            ui.label(egui::RichText::new("RECORDING").color(egui::Color32::RED));
+                                if session.is_paused() {
+                                    session.toasts.warning("Emulator is paused").duration(Some(Duration::from_secs(3)));
+                                } else {
+                                    session.toasts.success("Emulator is running").duration(Some(Duration::from_secs(3)));
+                                }
+                            }
+
+                            if session.show_fps {
+                                ui.label(egui::RichText::new(format!("| {}  FPS: {:.1}", icons::GAUGE, fps)).strong());
+                            }
+
+                            if recording {
+                                ui.label(egui::RichText::new(format!("{}  RECORDING", icons::RECORD)).color(egui::Color32::RED));
+                            }
                         }
                     });
 
@@ -822,14 +856,14 @@ async fn main() -> Result<(), Error> {
                                     session
                                         .toasts
                                         .success("Screenshot saved")
-                                        .duration(Some(Duration::from_secs(5)));
+                                        .duration(Some(Duration::from_secs(3)));
                                 },
                                 ScriptRequest::StartGif => {
                                     if !session.gif.is_recording() {
                                         if emulator.frame_ready() {
                                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
-                                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(5))),
-                                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(5))),
+                                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(3))),
+                                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(3))),
                                             };
 
 
@@ -850,7 +884,7 @@ async fn main() -> Result<(), Error> {
                                         session
                                         .toasts
                                         .success("GIF saved")
-                                        .duration(Some(Duration::from_secs(5)));
+                                        .duration(Some(Duration::from_secs(3)));
                                     }
                                 }
                                 ScriptRequest::Reset => session.state = EmulatorState::Reset,
@@ -859,6 +893,7 @@ async fn main() -> Result<(), Error> {
                                 }
                                 ScriptRequest::Resume => {
                                     session.state = EmulatorState::Running;
+                                    session.toasts.success("Emulator is running").duration(Some(Duration::from_secs(3)));
                                 }
                                 ScriptRequest::SaveState => {
                                     match emulator.save_state() {

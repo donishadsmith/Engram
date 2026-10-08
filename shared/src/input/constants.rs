@@ -147,28 +147,8 @@ pub const BINDABLE_BUTTONS: [Button; 18] = [
 
 pub const DEFAULT_HOT_KEYS: [Bindings; 7] = [
     Bindings {
-        label: "Screenshot",
-        key: KeyCode::F7,
-        button: None,
-    },
-    Bindings {
-        label: "Lua",
-        key: KeyCode::F8,
-        button: None,
-    },
-    Bindings {
-        label: "Debugger",
-        key: KeyCode::F11,
-        button: None,
-    },
-    Bindings {
-        label: "Gif",
-        key: KeyCode::F12,
-        button: None,
-    },
-    Bindings {
-        label: "Fullscreen",
-        key: KeyCode::F6,
+        label: "SaveState",
+        key: KeyCode::F1,
         button: None,
     },
     Bindings {
@@ -177,8 +157,28 @@ pub const DEFAULT_HOT_KEYS: [Bindings; 7] = [
         button: None,
     },
     Bindings {
-        label: "SaveState",
-        key: KeyCode::F1,
+        label: "Lua",
+        key: KeyCode::F8,
+        button: None,
+    },
+    Bindings {
+        label: "Fullscreen",
+        key: KeyCode::F6,
+        button: None,
+    },
+    Bindings {
+        label: "Screenshot",
+        key: KeyCode::F7,
+        button: None,
+    },
+    Bindings {
+        label: "Gif",
+        key: KeyCode::F12,
+        button: None,
+    },
+    Bindings {
+        label: "Debugger",
+        key: KeyCode::F11,
         button: None,
     },
 ];
@@ -233,5 +233,79 @@ pub const DEFAULT_GBA_KEYS: [Bindings; 10] = [
         label: "L",
         key: KeyCode::O,
         button: Some(Button::LeftTrigger),
+    },
+];
+
+// some of these keyboard bindings are kind of awful think more default about mapping
+pub const _DEFAULT_PSX_KEYS: [Bindings; 14] = [
+    Bindings {
+        label: "Up",
+        key: KeyCode::W,
+        button: Some(Button::DPadUp),
+    },
+    Bindings {
+        label: "Left",
+        key: KeyCode::A,
+        button: Some(Button::DPadLeft),
+    },
+    Bindings {
+        label: "Down",
+        key: KeyCode::S,
+        button: Some(Button::DPadDown),
+    },
+    Bindings {
+        label: "Right",
+        key: KeyCode::D,
+        button: Some(Button::DPadRight),
+    },
+    Bindings {
+        label: "Circle",
+        key: KeyCode::L,
+        button: Some(Button::East),
+    },
+    Bindings {
+        label: "Cross",
+        key: KeyCode::K,
+        button: Some(Button::South),
+    },
+    Bindings {
+        label: "Square",
+        key: KeyCode::J,
+        button: Some(Button::West),
+    },
+    Bindings {
+        label: "Triangle",
+        key: KeyCode::I,
+        button: Some(Button::North),
+    },
+    Bindings {
+        label: "Start",
+        key: KeyCode::Enter,
+        button: Some(Button::Start),
+    },
+    Bindings {
+        label: "Select",
+        key: KeyCode::RightShift,
+        button: Some(Button::Select),
+    },
+    Bindings {
+        label: "RightTrigger",
+        key: KeyCode::U,
+        button: Some(Button::RightTrigger),
+    },
+    Bindings {
+        label: "LeftTrigger",
+        key: KeyCode::O,
+        button: Some(Button::LeftTrigger),
+    },
+    Bindings {
+        label: "RightTrigger2",
+        key: KeyCode::Q,
+        button: Some(Button::RightTrigger2),
+    },
+    Bindings {
+        label: "LeftTrigger2",
+        key: KeyCode::E,
+        button: Some(Button::LeftTrigger2),
     },
 ];

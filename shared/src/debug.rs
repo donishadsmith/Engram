@@ -40,10 +40,10 @@ pub enum DebugPage {
 }
 
 impl DebugPage {
-    pub fn to_str(self) -> &'static str {
+    pub fn to_str(self) -> String {
         match self {
-            DebugPage::Audio => "Audio",
-            DebugPage::Video => "Video",
+            DebugPage::Audio => format!("{}  Audio", egui_phosphor::regular::SPEAKER_HIGH),
+            DebugPage::Video => format!("{}  Video", egui_phosphor::regular::VIDEO),
         }
     }
 }

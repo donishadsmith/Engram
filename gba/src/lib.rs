@@ -49,6 +49,9 @@ pub struct GBASession {
     script_engine: ScriptEngine,
     frame_period: Duration,
     frame_deadline: Instant,
+    fps_start: Instant,
+    fps_frames: u64,
+    fps: f64,
 }
 
 impl GBASession {
@@ -75,11 +78,15 @@ impl GBASession {
             script_engine: ScriptEngine::new(),
             frame_deadline,
             frame_period,
+            fps_start: Instant::now(),
+            fps_frames: 0,
+            fps: 0.0,
         })
     }
 
     fn on_frame(&mut self) {
         self.frame_ready = self.gba.take_frame();
+        self.compute_fps(1u64);
 
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, true);
@@ -167,6 +174,17 @@ impl GBASession {
             }
         }
     }
+
+    fn compute_fps(&mut self, frames: u64) {
+        self.fps_frames += frames;
+
+        let elapsed_time = self.fps_start.elapsed().as_secs_f64();
+        if self.fps_start.elapsed().as_secs_f64() >= 1.0 {
+            self.fps = self.fps_frames as f64 / elapsed_time;
+            self.fps_frames = 0;
+            self.fps_start = Instant::now();
+        }
+    }
 }
 
 impl EmulatorSession for GBASession {
@@ -244,6 +262,10 @@ impl EmulatorSession for GBASession {
         self.script_engine = ScriptEngine::new();
         self.frame_deadline = Instant::now() + self.frame_period;
 
+        self.fps_start = Instant::now();
+        self.fps_frames = 0;
+        self.fps = 0.0;
+
         Ok(())
     }
 
@@ -305,6 +327,16 @@ impl EmulatorSession for GBASession {
         let state_path = self.gba.bus.gamepak.sav_path.with_extension("ss1");
         let bytes = read(state_path)?;
         self.gba.load_state(&bytes)
+    }
+
+    fn get_fps(&self) -> f64 {
+        self.fps
+    }
+
+    fn reset_fps(&mut self) {
+        self.fps = 0.0;
+        self.fps_frames = 0;
+        self.fps_start = Instant::now();
     }
 }
 

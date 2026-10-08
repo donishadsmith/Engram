@@ -38,6 +38,9 @@ pub struct GameBoySession {
     script_engine: ScriptEngine,
     frame_period: Duration,
     frame_deadline: Instant,
+    fps_start: Instant,
+    fps_frames: u64,
+    fps: f64,
 }
 
 impl GameBoySession {
@@ -63,6 +66,9 @@ impl GameBoySession {
             script_engine: ScriptEngine::new(),
             frame_period,
             frame_deadline,
+            fps_start: Instant::now(),
+            fps_frames: 0,
+            fps: 0.0,
         })
     }
 
@@ -77,6 +83,7 @@ impl GameBoySession {
 
     fn on_frame(&mut self) {
         self.frame_ready = self.gameboy.take_frame();
+        self.compute_fps(1u64);
 
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, true);
@@ -105,6 +112,17 @@ impl GameBoySession {
 
         if self.gameboy.cpu.breakpoint_hit.is_some() {
             self.set_resume();
+        }
+    }
+
+    fn compute_fps(&mut self, frames: u64) {
+        self.fps_frames += frames;
+
+        let elapsed_time = self.fps_start.elapsed().as_secs_f64();
+        if self.fps_start.elapsed().as_secs_f64() >= 1.0 {
+            self.fps = self.fps_frames as f64 / elapsed_time;
+            self.fps_frames = 0;
+            self.fps_start = Instant::now();
         }
     }
 }
@@ -273,5 +291,15 @@ impl EmulatorSession for GameBoySession {
         let state_path = self.gameboy.cpu.bus.gamepak.sav_path.with_extension("ss1");
         let bytes = read(state_path)?;
         self.gameboy.load_state(&bytes)
+    }
+
+    fn get_fps(&self) -> f64 {
+        self.fps
+    }
+
+    fn reset_fps(&mut self) {
+        self.fps = 0.0;
+        self.fps_frames = 0;
+        self.fps_start = Instant::now();
     }
 }

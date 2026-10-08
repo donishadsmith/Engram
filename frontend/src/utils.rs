@@ -47,7 +47,7 @@ pub fn bindings_grid(
             })
             .enumerate()
         {
-            ui.label(*label);
+            ui.label(&label.to_string().replace("State", " State"));
 
             let text = if *key_rebinding == Some(index) && *target_key_id == Some(key_id) {
                 "".to_string()

@@ -1,6 +1,7 @@
 use chrono::Local;
 use egui::{Context, ScrollArea, Window};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
+use egui_phosphor::regular as icons;
 use rfd::FileDialog;
 use std::{
     fs::{read_to_string, rename, write},
@@ -37,7 +38,7 @@ impl LuaEditor {
             .show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.menu_button("File", |ui| {
-                        if ui.button("Load Script").clicked() {
+                        if ui.button(format!("{}  Load Script", icons::FOLDER)).clicked() {
                             if let Some(path) = open_lua_script() {
                                 match read_to_string(&path) {
                                     Ok(text) => self.code = text,
@@ -48,30 +49,32 @@ impl LuaEditor {
                             }
                         }
 
-                        if ui.button("Save Script").clicked() {
+                        if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() {
                             self.save_lua_script();
                         }
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Help").clicked() {
+                        if ui.button(format!("{}  Help", icons::INFO)).clicked() {
                             self.code = "help()".to_string();
                             run = true;
                         }
 
                         ui.menu_button("Session", |ui| {
-                            if ui.button("Clear All Output").clicked() {
+                            if ui.button(format!("{}  Clear All Output", icons::BROOM)).on_hover_text(
+                                "Clears output in console"
+                            ).clicked() {
                                 self.output.clear();
                             }
 
-                            if ui.button("Terminate All Processes").on_hover_text(
+                            if ui.button(format!("{}  Terminate All Processes", icons::STOP_CIRCLE)).on_hover_text(
                                 "Terminates all hooks and clears all watchpoints and breakpoints"
                             ).clicked() {
                                 self.termination_request = true;
                             }
                         });
 
-                        if ui.button("Run").clicked() {
+                        if ui.button(format!("{}  Run", icons::PLAY)).clicked() {
                             run = true;
                         }
                     });

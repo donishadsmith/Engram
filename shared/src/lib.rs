@@ -147,6 +147,10 @@ pub trait EmulatorSession {
     fn load_state(&mut self) -> Result<(), Error>;
 
     fn save_state(&mut self) -> Result<(), Error>;
+
+    fn get_fps(&self) -> f64;
+
+    fn reset_fps(&mut self);
 }
 
 pub trait ScriptTarget: Emulator {

@@ -38,7 +38,6 @@ pub enum InputSource {
     Keyboard,
     Gamepad,
 }
-
 pub struct Session {
     pub state: EmulatorState,
     pub emulator: Option<Box<dyn EmulatorSession>>,
@@ -64,6 +63,7 @@ pub struct Session {
     pub input_source: Option<InputSource>,
     pub startup_deadline: Option<Instant>,
     pub paused_due_to_minimize: bool,
+    pub show_fps: bool,
 }
 
 impl Session {
@@ -77,6 +77,7 @@ impl Session {
         let mut display = config.display.clone();
         display.width = Some(display.width.unwrap_or(1280));
         display.height = Some(display.height.unwrap_or(900));
+        let show_fps = config.show_fps;
 
         Self {
             state: EmulatorState::Launch,
@@ -103,6 +104,7 @@ impl Session {
             input_source: None,
             startup_deadline: Some(Instant::now() + Duration::from_secs(1)),
             paused_due_to_minimize: false,
+            show_fps,
         }
     }
 
@@ -231,6 +233,7 @@ impl Session {
             master_volume: Some(self.master_volume),
             gif_settings: self.gif.settings(),
             display: self.display,
+            show_fps: self.show_fps,
         };
 
         save_config(&config)
@@ -254,6 +257,8 @@ impl Session {
 
     pub fn set_running(&mut self) {
         self.state = EmulatorState::Running;
+
+        self.reset_fps();
     }
 
     pub fn is_paused(&self) -> bool {
@@ -390,7 +395,19 @@ impl Session {
         {
             self.paused_due_to_minimize = false;
             self.state = return_state;
+
+            if return_state == EmulatorState::Running {
+                self.reset_fps();
+            }
         }
+    }
+
+    pub fn reset_fps(&mut self) {
+        let Some(emulator) = self.emulator.as_mut() else {
+            return;
+        };
+
+        emulator.reset_fps();
     }
 
     pub fn detect_input_source(
