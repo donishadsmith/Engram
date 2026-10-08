@@ -12,7 +12,10 @@ pub mod components;
 mod debug;
 
 use crate::{
-    components::{gamepak::GamePak, gba::GBA},
+    components::{
+        gamepak::GamePak,
+        gba::{GBA, STATE_MAGIC_NAME},
+    },
     debug::video::PpuDebugger,
 };
 use debug::audio::AudioDebugger;
@@ -22,16 +25,18 @@ use shared::{
     debug::DebugPage,
     render::Screen,
     script::ScriptEngine,
-    utils::error_message,
 };
 use spin_sleep::sleep_until;
 use std::{
+    fs::{read, rename, write},
     io::Error,
     path::PathBuf,
     time::{Duration, Instant},
 };
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
+const ALLOWED_AUDIO_PITCH_DEVIATION: f64 = 0.005;
+const MAX_FRAMES_PER_CALL: u32 = 3;
 
 pub struct GBASession {
     audio: Option<AudioOutput>,
@@ -52,13 +57,11 @@ impl GBASession {
         let ppu_debugger = PpuDebugger::new();
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let apu_sample_cycles = match &audio {
-            Some(audio) => GBA_CLOCK_SPEED / audio.sample_rate,
-            None => 44100,
-        };
-        let gba = GBA::boot(gamepak, apu_sample_cycles);
+        let sample_rate = audio.as_ref().map_or(48000, |audio| audio.sample_rate);
+        let apu_sample_period = GBA_CLOCK_SPEED as f64 / sample_rate as f64;
+        let gba = GBA::boot(gamepak, apu_sample_period);
         let screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
-        let frame_period = Duration::from_secs_f64(1.0 / 59.73);
+        let frame_period = Duration::from_secs_f64(280896.0 / GBA_CLOCK_SPEED as f64);
         let frame_deadline = Instant::now() + frame_period;
 
         Ok(Self {
@@ -76,8 +79,7 @@ impl GBASession {
     }
 
     fn on_frame(&mut self) {
-        self.frame_ready = true;
-        self.gba.take_frame();
+        self.frame_ready = self.gba.take_frame();
 
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, true);
@@ -116,10 +118,28 @@ impl GBASession {
         }
     }
 
-    fn audio_needs_samples(&self) -> bool {
-        self.audio.as_ref().is_some_and(|audio| {
-            AUDIO_BUFFER_CAPACITY - audio.producer.slots() < AUDIO_TARGET_OCCUPANCY
+    // https://github.com/libretro/docs/blob/master/archive/ratecontrol.pdf
+    fn dynamic_rate_control(&mut self) {
+        let Some(audio) = &self.audio else { return };
+
+        let current_occupancy = (AUDIO_BUFFER_CAPACITY - audio.producer.slots()) as f64;
+        let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
+            / (AUDIO_TARGET_OCCUPANCY as f64))
+            .clamp(-1.0, 1.0);
+        let ideal_sample_period = GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64;
+        self.gba.apu_sample_period =
+            ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
+    }
+
+    fn audio_level(&self) -> usize {
+        self.audio.as_ref().map_or(AUDIO_TARGET_OCCUPANCY, |audio| {
+            AUDIO_BUFFER_CAPACITY - audio.producer.slots()
         })
+    }
+
+    fn catch_up(&self) -> bool {
+        Instant::now() > self.frame_deadline + self.frame_period
+            || self.audio_level() < AUDIO_TARGET_OCCUPANCY / 2
     }
 
     fn tick(&mut self, volume: u8) {
@@ -142,6 +162,7 @@ impl GBASession {
 
             if self.gba.bus.ppu.frame_ready {
                 self.on_frame();
+
                 return true;
             }
         }
@@ -153,12 +174,14 @@ impl EmulatorSession for GBASession {
         self.frame_ready = false;
         self.gba.keypad = input.try_into().unwrap_or([false; 10]);
 
-        if self.audio.is_some() {
-            // fixing a very dumb frame pacing issue for the audio loop
-            // cause the audio side never checked frame completion
-            while self.audio_needs_samples() && self.run_frame(volume) {}
-        } else {
-            self.run_frame(volume);
+        self.dynamic_rate_control();
+
+        let mut frames = 1;
+        if self.run_frame(volume) {
+            while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
+                self.frame_deadline += self.frame_period;
+                frames += 1;
+            }
         }
 
         let breakpoint_action = self
@@ -177,10 +200,13 @@ impl EmulatorSession for GBASession {
 
         self.draw();
 
-        if self.audio.is_none() {
-            sleep_until(self.frame_deadline);
-            self.frame_deadline += self.frame_period;
+        let current_time = Instant::now();
+        if current_time > self.frame_deadline + self.frame_period * MAX_FRAMES_PER_CALL {
+            self.frame_deadline = current_time;
         }
+
+        sleep_until(self.frame_deadline);
+        self.frame_deadline += self.frame_period;
 
         Ok(state)
     }
@@ -209,11 +235,9 @@ impl EmulatorSession for GBASession {
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
         self.audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let apu_sample_cycles = match &self.audio {
-            Some(audio) => GBA_CLOCK_SPEED / audio.sample_rate,
-            None => 44100,
-        };
-        self.gba = GBA::boot(gamepak, apu_sample_cycles);
+        let sample_rate = self.audio.as_ref().map_or(44100, |audio| audio.sample_rate);
+        let apu_sample_period = GBA_CLOCK_SPEED as f64 / sample_rate as f64;
+        self.gba = GBA::boot(gamepak, apu_sample_period);
         self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
         self.frame_ready = false;
         self.active_debug = None;
@@ -271,15 +295,16 @@ impl EmulatorSession for GBASession {
 
     // probably for the playstation since it will be quite some time before save states are supported
     fn save_state(&mut self) -> Result<(), Error> {
-        Err(error_message(
-            "Save states are not supported for this system yet".to_string(),
-        ))
+        let state_path = self.gba.bus.gamepak.sav_path.with_extension("ss1");
+        let tmp_path = state_path.with_extension("tmp");
+        write(&tmp_path, self.gba.save_state(STATE_MAGIC_NAME)?)?;
+        rename(&tmp_path, &state_path)
     }
 
     fn load_state(&mut self) -> Result<(), Error> {
-        Err(error_message(
-            "Save states are not supported for this system yet".to_string(),
-        ))
+        let state_path = self.gba.bus.gamepak.sav_path.with_extension("ss1");
+        let bytes = read(state_path)?;
+        self.gba.load_state(&bytes)
     }
 }
 

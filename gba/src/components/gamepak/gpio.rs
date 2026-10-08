@@ -3,8 +3,10 @@
 
 use crate::components::gamepak::{rtc::Rtc, solar::SolarSensor};
 
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
+#[derive(Deserialize, Serialize)]
 pub struct Gpio {
     data: u16, // sck, sio, cs
     direction: u16,

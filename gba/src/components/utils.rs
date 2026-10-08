@@ -8,7 +8,7 @@ use crate::components::{
 
 pub fn create_bus(backup_type: BackupType) -> Bus {
     let gamepak = GamePak::mock(backup_type);
-    let mut bus = Bus::new(gamepak, 512);
+    let mut bus = Bus::new(gamepak, 512.0);
     // lazy fix for timer test to pass
     bus.scheduler.clear_all_events();
 

@@ -232,6 +232,7 @@ impl AudioDebugger {
                 apu.fifo_a
                     .history
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
                     .collect::<Vec<[f64; 2]>>(),
@@ -242,6 +243,7 @@ impl AudioDebugger {
                 apu.fifo_a
                     .occupancy
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &size)| [index as f64, size as f64])
                     .collect::<Vec<[f64; 2]>>(),
@@ -277,6 +279,7 @@ impl AudioDebugger {
                 apu.fifo_b
                     .history
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
                     .collect::<Vec<[f64; 2]>>(),
@@ -287,6 +290,7 @@ impl AudioDebugger {
                 apu.fifo_b
                     .occupancy
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &size)| [index as f64, size as f64])
                     .collect::<Vec<[f64; 2]>>(),
@@ -325,6 +329,7 @@ impl AudioDebugger {
                 "Channel 1 Samples",
                 apu.psg_history[0]
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
                     .collect::<Vec<[f64; 2]>>(),
@@ -347,6 +352,7 @@ impl AudioDebugger {
                 "Channel 2 Samples",
                 apu.psg_history[1]
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
                     .collect::<Vec<[f64; 2]>>(),
@@ -368,6 +374,7 @@ impl AudioDebugger {
                 "Channel 3 Samples",
                 apu.psg_history[2]
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
                     .collect::<Vec<[f64; 2]>>(),
@@ -389,6 +396,7 @@ impl AudioDebugger {
                 "Channel 4 Samples",
                 apu.psg_history[3]
                     .iter()
+                    .step_by(4)
                     .enumerate()
                     .map(|(index, &sample)| [index as f64, sample as f64])
                     .collect::<Vec<[f64; 2]>>(),

@@ -5,20 +5,26 @@ use crate::components::{
     dma::Trigger,
     gamepak::GamePak,
 };
+
+use serde::{Deserialize, Serialize};
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::to_rbg_single,
     script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
-    structs::{BreakpointData, DataTransfer, FrameData, WatchpointData},
     traits::BitOps,
+    utils::error_message,
 };
-use std::{io::Error, mem::take};
+use std::{
+    io::Error,
+    mem::{swap, take},
+};
 
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA1";
 pub const HBLANK_OFFSET: u64 = 1006;
 pub const CYCLES_PER_SCANLINE: u64 = 1232;
 pub const APU_SEQUENCER: u64 = 32768;
 
-#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Debug)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Debug, Deserialize, Serialize)]
 pub enum Event {
     Hblank,
     HblankEnd,
@@ -27,16 +33,21 @@ pub enum Event {
     ApuSequencer,
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct GBA {
     pub bus: Bus,
     pub cpu: Arm7tdmi,
+    #[serde(skip)]
     pub scripted_keypad: Option<[bool; 10]>,
+    #[serde(skip)]
     pub keypad: [bool; 10],
-    apu_sample_period: u32,
+    #[serde(skip)]
+    pub apu_sample_period: f64,
+    apu_sample_remainder: f64,
 }
 
 impl GBA {
-    pub fn boot(gamepak: GamePak, apu_sample_period: u32) -> Self {
+    pub fn boot(gamepak: GamePak, apu_sample_period: f64) -> Self {
         let mut bus = Bus::new(gamepak, apu_sample_period);
         bus.skip_boot();
 
@@ -49,6 +60,7 @@ impl GBA {
             scripted_keypad: None,
             keypad: [false; 10],
             apu_sample_period,
+            apu_sample_remainder: 0.0,
         }
     }
 
@@ -136,10 +148,12 @@ impl GBA {
                             .bus
                             .scheduler
                             .push(event, deadline + CYCLES_PER_SCANLINE),
-                        Event::ApuSample => self
-                            .bus
-                            .scheduler
-                            .push(event, deadline + self.apu_sample_period as u64),
+                        Event::ApuSample => {
+                            self.apu_sample_remainder += self.apu_sample_period;
+                            let cycles = self.apu_sample_remainder as u64;
+                            self.apu_sample_remainder -= cycles as f64;
+                            self.bus.scheduler.push(event, deadline + cycles)
+                        }
                         Event::ApuSequencer => {
                             self.bus.scheduler.push(event, deadline + APU_SEQUENCER)
                         }
@@ -189,49 +203,66 @@ impl GBA {
         take(&mut self.bus.watchpoint_pause)
     }
 
-    fn load_data_transfer(&mut self, data: DataTransfer) {
-        self.bus.watchpoint_queue = data.watchpoint_data.watchpoint_queue;
-        self.bus.watchpoint_hits = data.watchpoint_data.watchpoint_hits;
-        self.bus.watchpoint_pause = data.watchpoint_data.watchpoint_pause;
-
-        self.cpu.breakpoint_queue = data.breakpoint_data.breakpoint_queue;
-        self.cpu.breakpoint_hit = data.breakpoint_data.breakpoint_hit;
-        self.cpu.resume_from = data.breakpoint_data.resume_from;
-
-        self.bus.ppu.frame = data.frame_data.frame;
-        self.bus.ppu.frontend = data.frame_data.frontend;
-
-        self.bus.gamepak.rom = data.rom.to_vec();
-        self.bus.gamepak.sav_path = data.sav_path;
-        self.scripted_keypad = data.scripted_keypad.and_then(|k| k.try_into().ok());
-    }
-
-    fn send_data_transfer(&self) -> DataTransfer {
-        let watchpoint_data = WatchpointData {
-            watchpoint_queue: self.bus.watchpoint_queue.clone(),
-            watchpoint_hits: self.bus.watchpoint_hits.clone(),
-            watchpoint_pause: self.bus.watchpoint_pause,
-        };
-
-        let breakpoint_data = BreakpointData {
-            breakpoint_queue: self.cpu.breakpoint_queue.clone(),
-            breakpoint_hit: self.cpu.breakpoint_hit.clone(),
-            resume_from: self.cpu.resume_from.clone(),
-        };
-
-        let frame_data = FrameData {
-            frame: self.bus.ppu.frame.clone(),
-            frontend: self.bus.ppu.frontend.clone(),
-        };
-
-        DataTransfer {
-            breakpoint_data,
-            watchpoint_data,
-            frame_data,
-            rom: self.bus.gamepak.rom.clone().into_boxed_slice(),
-            sav_path: self.bus.gamepak.sav_path.clone(),
-            scripted_keypad: self.scripted_keypad.and_then(|k| k.try_into().ok()),
+    pub fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
+        let magic_len = STATE_MAGIC_NAME.len();
+        if bytes.len() < magic_len || &bytes[..magic_len] != STATE_MAGIC_NAME {
+            return Err(error_message(
+                "Not a Game Boy Advance save state".to_string(),
+            ));
         }
+
+        let decompressed_data = lz4_flex::decompress_size_prepended(&bytes[magic_len..])
+            .map_err(|err| error_message(format!("Invalid save state: {err}")))?;
+        let mut data: GBA = postcard::from_bytes(&decompressed_data)
+            .map_err(|err| error_message(format!("Invalid save state: {err}")))?;
+
+        if self.bus.gamepak.header != data.bus.gamepak.header {
+            return Err(error_message(
+                "Save state is for a different game".to_string(),
+            ));
+        }
+
+        self.save()?;
+
+        // struct that I made was roundabout-ish, but the worse part was that I realized couldn't save trace
+        swap(
+            &mut data.bus.watchpoint_queue,
+            &mut self.bus.watchpoint_queue,
+        );
+        swap(&mut data.bus.watchpoint_hits, &mut self.bus.watchpoint_hits);
+        data.bus.watchpoint_pause = self.bus.watchpoint_pause;
+
+        swap(
+            &mut data.cpu.breakpoint_queue,
+            &mut self.cpu.breakpoint_queue,
+        );
+        data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
+        data.cpu.resume_from = self.cpu.resume_from;
+
+        swap(&mut data.bus.ppu.frame, &mut self.bus.ppu.frame);
+        swap(&mut data.bus.ppu.frontend, &mut self.bus.ppu.frontend);
+
+        swap(&mut data.bus.gamepak.rom, &mut self.bus.gamepak.rom);
+        swap(
+            &mut data.bus.gamepak.sav_path,
+            &mut self.bus.gamepak.sav_path,
+        );
+        data.scripted_keypad = self.scripted_keypad;
+
+        data.apu_sample_period = self.apu_sample_period;
+        swap(&mut data.bus.trace, &mut self.bus.trace);
+        data.apu_sample_remainder = self.apu_sample_remainder;
+
+        data.bus.ppu.transparant_background = self.bus.ppu.transparant_background;
+        data.bus.ppu.transparant_sprite_background = self.bus.ppu.transparant_sprite_background;
+
+        data.bus.apu.psg_mute = self.bus.apu.psg_mute;
+        data.bus.apu.fifo_a.mute = self.bus.apu.fifo_a.mute;
+        data.bus.apu.fifo_b.mute = self.bus.apu.fifo_b.mute;
+
+        *self = data;
+
+        Ok(())
     }
 }
 

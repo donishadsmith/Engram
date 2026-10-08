@@ -59,6 +59,8 @@ async fn main() -> Result<(), Error> {
 
         session.record_window_size();
 
+        session.pause_on_minimize();
+
         let gamepad_update = session.drain_gamepad_events();
 
         if let (Some(connected), Some(text)) = (gamepad_update.connected, gamepad_update.event_text)
@@ -188,7 +190,7 @@ async fn main() -> Result<(), Error> {
                                 ui.close_menu();
                             }
 
-                            ui.menu_button("State", |ui| {
+                            ui.menu_button("States", |ui| {
                                 if ui.button("Save State").clicked() {
                                     match emulator.save_state() {
                                         Ok(()) => session.toasts.success("State saved"),
@@ -245,21 +247,34 @@ async fn main() -> Result<(), Error> {
                             session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen),
                         );
 
-                        let text = if session.display.fullscreen {
-                            "Close Fullscreen"
-                        } else {
-                            "Fullscreen"
-                        };
+                        ui.menu_button("Window", |ui| {
+                            let fullscreen_text = if session.display.fullscreen {
+                                "Close Fullscreen"
+                            } else {
+                                "Fullscreen"
+                            };
 
-                        if ui
-                            .add(
-                                egui::Button::new(format!("{} ({})", text, hotkey))
-                                    .wrap_mode(egui::TextWrapMode::Extend),
-                            )
-                            .clicked()
-                        {
-                            session.toggle_fullscreen();
-                        }
+                            if ui
+                                .add(
+                                    egui::Button::new(format!("{} ({})", fullscreen_text, hotkey))
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                )
+                                .clicked()
+                            {
+                                session.toggle_fullscreen();
+                            }
+
+                            if ui
+                                .add(
+                                    egui::Button::new("Restore Default Size")
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                )
+                                .clicked()
+                            {
+                                set_fullscreen(false);
+                                request_new_screen_size(1280.0 / screen_dpi_scale(), 900.0 / screen_dpi_scale())
+                            }
+                        });
 
                         ui.separator();
 
@@ -783,6 +798,10 @@ async fn main() -> Result<(), Error> {
                     if let Some(emulator) = &mut session.emulator
                         && let Some(script_engine) = emulator.script_engine()
                     {
+                        if script_engine.take_clear_request() {
+                            session.lua_editor.output.clear();
+                        }
+
                         let lines = script_engine.take_output();
                         if !lines.is_empty() {
                             session.lua_editor.push_output(lines);
@@ -840,6 +859,18 @@ async fn main() -> Result<(), Error> {
                                 }
                                 ScriptRequest::Resume => {
                                     session.state = EmulatorState::Running;
+                                }
+                                ScriptRequest::SaveState => {
+                                    match emulator.save_state() {
+                                        Ok(()) => session.toasts.success("State saved"),
+                                        Err(err) => session.toasts.error(format!("Save state failed: {err}")),
+                                    };
+                                }
+                                ScriptRequest::LoadState => {
+                                     match emulator.load_state() {
+                                        Ok(()) => session.toasts.success("State loaded"),
+                                        Err(err) => session.toasts.error(format!("Load state failed: {err}")),
+                                    };
                                 }
                             }
                         }

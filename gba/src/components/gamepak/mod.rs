@@ -18,6 +18,7 @@ use std::{
     path::PathBuf,
 };
 
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 // https://github.com/visualboyadvance-m/visualboyadvance-m/issues/1187; magic string = SIIRTC_V001; confirmed in rom dump of emerical and megaman 4.5;
@@ -77,7 +78,7 @@ fn has_rtc(rom: &[u8]) -> bool {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 pub enum BackupChip {
     None,
     Eeprom(Eeprom),
@@ -98,8 +99,11 @@ fn has_solar(rom: &[u8]) -> bool {
     )
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct GamePak {
+    #[serde(skip)]
     pub rom: Vec<u8>,
+    #[serde(skip)]
     pub sav_path: PathBuf,
     pub header: [u8; 32],
     pub gpio: Gpio,

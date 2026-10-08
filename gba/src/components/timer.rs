@@ -1,12 +1,14 @@
 use crate::components::gba::Event;
+use serde::{Deserialize, Serialize};
 use shared::{scheduler::EventScheduler, traits::BitOps};
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum IncrementTimerMode {
     Cascade,
     Prescaler(u16),
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Timer {
     pub id: u8,
     pub counter: u16,
@@ -119,6 +121,7 @@ impl Timer {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Timers {
     pub timers: [Timer; 4],
 }

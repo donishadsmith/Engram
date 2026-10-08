@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 // https://github.com/ioncodes/ayyboy-advance/blob/master/gba-core/src/cartridge/eeprom.rs
@@ -6,7 +7,7 @@ use shared::traits::BitOps;
 const EEPROM_64KBIT: usize = 8192;
 pub const EEPROM_4KBIT: usize = 512;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum Command {
     Read,
     Write,
@@ -22,7 +23,7 @@ impl Command {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum EepromMode {
     Idle,
     Command(u8),
@@ -42,9 +43,10 @@ enum EepromMode {
     },
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 pub struct Eeprom {
     pub memory: Vec<u8>,
+    #[serde(skip)]
     pub updated: bool,
     mode: EepromMode,
     pub size_known: bool,

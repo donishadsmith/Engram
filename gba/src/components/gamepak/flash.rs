@@ -8,6 +8,7 @@
 // https://dillonbeliveau.com/2020/06/05/GBA-FLASH.html <- amazing resource!!!
 
 // pokemon uses this
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 const MACRONIX_64K_ID: u16 = 0x1CC2;
@@ -16,7 +17,7 @@ const MACRONIX_128K_ID: u16 = 0x09C2;
 const SECTOR_SIZE: usize = 4096;
 const BANK_SIZE: usize = 0x10000;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 enum FlashMode {
     Normal,
     ChipId,
@@ -25,13 +26,13 @@ enum FlashMode {
     Bank,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 pub enum FlashSize {
     Flash64k,
     Flash128k,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 enum WriteSequence {
     Ready,
     ReceivedAA,
@@ -39,9 +40,10 @@ enum WriteSequence {
     AwaitArgument,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 pub struct Flash {
     pub memory: Vec<u8>,
+    #[serde(skip)]
     pub updated: bool,
     pub bank: usize,
     mode: FlashMode,

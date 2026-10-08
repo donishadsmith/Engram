@@ -4,7 +4,7 @@ use crate::components::{
         SharpSm83,
         registers::{Register8Bits, Register16Bits},
     },
-    gamepak::{GamePak, Header, mbc::prelude::Mbc},
+    gamepak::{GamePak, mbc::prelude::Mbc},
 };
 
 use serde::{Deserialize, Serialize};
@@ -12,16 +12,14 @@ use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::{PixelFormat, to_rbg_single},
     script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
-    structs::{BreakpointData, DataTransfer, FrameData, WatchpointData},
     utils::error_message,
 };
 use std::{
-    cell::{Cell, RefCell},
     io::Error,
-    mem::take,
+    mem::{swap, take},
 };
 
-const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB1";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB1";
 pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
@@ -174,64 +172,6 @@ impl GameBoy {
         take(&mut self.cpu.bus.ppu.frame_ready)
     }
 
-    fn load_data_transfer(&mut self, data: DataTransfer) {
-        self.cpu.bus.watchpoint_queue = RefCell::new(data.watchpoint_data.watchpoint_queue);
-        self.cpu.bus.watchpoint_hits = RefCell::new(data.watchpoint_data.watchpoint_hits);
-        self.cpu.bus.watchpoint_pause = Cell::new(data.watchpoint_data.watchpoint_pause);
-
-        self.cpu.breakpoint_queue = data.breakpoint_data.breakpoint_queue;
-        self.cpu.breakpoint_hit = data.breakpoint_data.breakpoint_hit;
-        self.cpu.resume_from = data.breakpoint_data.resume_from;
-
-        self.cpu.bus.ppu.frame = data.frame_data.frame;
-        self.cpu.bus.ppu.frontend = data.frame_data.frontend;
-
-        self.cpu.bus.gamepak.header = Header::new(&data.rom);
-        self.cpu.bus.gamepak.mbc.set_rom(data.rom);
-        self.cpu.bus.gamepak.sav_path = data.sav_path;
-        self.scripted_keypad = data.scripted_keypad.and_then(|k| k.try_into().ok());
-    }
-
-    fn send_data_transfer(&self) -> DataTransfer {
-        let watchpoint_data = WatchpointData {
-            watchpoint_queue: self.cpu.bus.watchpoint_queue.borrow().clone(),
-            watchpoint_hits: self.cpu.bus.watchpoint_hits.borrow().clone(),
-            watchpoint_pause: self.cpu.bus.watchpoint_pause.get(),
-        };
-
-        let breakpoint_data = BreakpointData {
-            breakpoint_queue: self.cpu.breakpoint_queue.clone(),
-            breakpoint_hit: self.cpu.breakpoint_hit.clone(),
-            resume_from: self.cpu.resume_from.clone(),
-        };
-
-        let frame_data = FrameData {
-            frame: self.cpu.bus.ppu.frame.clone(),
-            frontend: self.cpu.bus.ppu.frontend.clone(),
-        };
-
-        DataTransfer {
-            breakpoint_data,
-            watchpoint_data,
-            frame_data,
-            rom: self.cpu.bus.gamepak.mbc.get_rom().into(),
-            sav_path: self.cpu.bus.gamepak.sav_path.clone(),
-            scripted_keypad: self.scripted_keypad.map(|k| k.to_vec()),
-        }
-    }
-
-    pub fn save_state(&self) -> Result<Vec<u8>, Error> {
-        let serialized_data = postcard::to_allocvec(self)
-            .map_err(|err| error_message(format!("Failed to create save state: {err}")))?;
-        let compressed_data = lz4_flex::compress_prepend_size(&serialized_data);
-
-        let mut output = Vec::with_capacity(STATE_MAGIC_NAME.len() + compressed_data.len());
-        output.extend_from_slice(STATE_MAGIC_NAME);
-        output.extend_from_slice(&compressed_data);
-
-        Ok(output)
-    }
-
     pub fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
         let magic_len = STATE_MAGIC_NAME.len();
         if bytes.len() < magic_len || &bytes[..magic_len] != STATE_MAGIC_NAME {
@@ -251,7 +191,43 @@ impl GameBoy {
         }
 
         self.save()?;
-        data.load_data_transfer(self.send_data_transfer());
+
+        swap(
+            &mut data.cpu.bus.watchpoint_queue,
+            &mut self.cpu.bus.watchpoint_queue,
+        );
+        swap(
+            &mut data.cpu.bus.watchpoint_hits,
+            &mut self.cpu.bus.watchpoint_hits,
+        );
+        swap(
+            &mut data.cpu.bus.watchpoint_pause,
+            &mut self.cpu.bus.watchpoint_pause,
+        );
+
+        swap(
+            &mut data.cpu.breakpoint_queue,
+            &mut self.cpu.breakpoint_queue,
+        );
+        data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
+        data.cpu.resume_from = self.cpu.resume_from;
+
+        swap(&mut data.cpu.bus.ppu.frame, &mut self.cpu.bus.ppu.frame);
+        swap(
+            &mut data.cpu.bus.ppu.frontend,
+            &mut self.cpu.bus.ppu.frontend,
+        );
+
+        data.cpu
+            .bus
+            .gamepak
+            .mbc
+            .set_rom(self.cpu.bus.gamepak.mbc.get_rom().into());
+        swap(
+            &mut data.cpu.bus.gamepak.sav_path,
+            &mut self.cpu.bus.gamepak.sav_path,
+        );
+        data.scripted_keypad = self.scripted_keypad;
 
         *self = data;
 

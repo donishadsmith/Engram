@@ -15,3 +15,5 @@ spin_sleep.workspace = true
 shared.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
+postcard.workspace = true
+lz4_flex.workspace = true

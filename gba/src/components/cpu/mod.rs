@@ -10,6 +10,7 @@ use crate::components::{
     bios::handle_swi,
     bus::{AccessType, Bus},
 };
+use serde::{Deserialize, Serialize};
 use shared::{EmulatorState, traits::BitOps};
 
 /*
@@ -104,7 +105,7 @@ enum CpuFlag {
     V = 28,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 #[repr(u8)]
 pub enum Condition {
     Eq = 0b0000,
@@ -214,13 +215,13 @@ impl ProcessorMode {
 // https://www.gregorygaines.com/blog/decoding-the-arm7tdmi-instruction-set-game-boy-advance/
 // ***https://www.dwedit.org/files/ARM7TDMI.pdf - Page 30*** <- THIS IS THE ARM7TDMI DATA SHEET
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 enum FetchedInstruction {
     Arm(u32),
     Thumb(u16),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum HaltState {
     Running,
     Halted,
@@ -235,6 +236,7 @@ pub enum SideEffect {
     Swi(u32),
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Registers {
     pub r: [u32; 16],
     pub banked_high_registers: [[u32; 5]; 2],
@@ -455,6 +457,7 @@ impl Registers {
 }
 
 // https://support.arm.com/documentation/ddi0029/g/introduction/about-the-arm7tdmi-core/the-instruction-pipeline
+#[derive(Deserialize, Serialize)]
 struct Pipeline {
     fetched: Option<FetchedInstruction>,
     decoded: Option<DecodedArm>,
@@ -493,6 +496,7 @@ fn decode(opcode: FetchedInstruction) -> DecodedArm {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Arm7tdmi {
     pub registers: Registers,
     pipeline: Pipeline,
@@ -501,8 +505,11 @@ pub struct Arm7tdmi {
     next_fetch_access: AccessType,
     pub intr_wait_resume: bool,
     pub entered_idle_loop: bool,
+    #[serde(skip)]
     pub breakpoint_hit: Option<u32>,
+    #[serde(skip)]
     pub breakpoint_queue: HashMap<u32, EmulatorState>,
+    #[serde(skip)]
     pub resume_from: Option<u32>,
 }
 

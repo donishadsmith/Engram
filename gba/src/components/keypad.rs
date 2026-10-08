@@ -1,5 +1,6 @@
 // https://problemkaputt.de/gbatek-gba-keypad-input.htm
 
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 #[derive(Clone, Copy)]
@@ -29,6 +30,7 @@ const BUTTONS: [KeypadButton; 10] = [
     KeypadButton::L,
 ];
 
+#[derive(Deserialize, Serialize)]
 pub struct Keypad {
     pub keyinput: u16,
     pub keycnt: u16,

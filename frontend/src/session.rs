@@ -63,6 +63,7 @@ pub struct Session {
     pub display: Display,
     pub input_source: Option<InputSource>,
     pub startup_deadline: Option<Instant>,
+    pub paused_due_to_minimize: bool,
 }
 
 impl Session {
@@ -101,6 +102,7 @@ impl Session {
             display,
             input_source: None,
             startup_deadline: Some(Instant::now() + Duration::from_secs(1)),
+            paused_due_to_minimize: false,
         }
     }
 
@@ -258,6 +260,10 @@ impl Session {
         self.state == EmulatorState::Paused
     }
 
+    pub fn is_running(&self) -> bool {
+        self.state == EmulatorState::Running
+    }
+
     pub fn add_transient_state(&mut self, state: EmulatorState) {
         self.return_state = Some(self.state);
         self.state = state
@@ -354,18 +360,36 @@ impl Session {
             && let (Some(screen_width), Some(screen_height)) =
                 (self.display.width, self.display.height)
         {
-            let scale = screen_dpi_scale();
-            request_new_screen_size(screen_width as f32 / scale, screen_height as f32 / scale);
+            request_new_screen_size(
+                screen_width as f32 / screen_dpi_scale(),
+                screen_height as f32 / screen_dpi_scale(),
+            );
         }
     }
 
     pub fn record_window_size(&mut self) {
         if !self.display.fullscreen {
-            let scale = screen_dpi_scale();
-            let (screen_width, screen_height) = (screen_width() * scale, screen_height() * scale);
+            let (screen_width, screen_height) = (
+                screen_width() * screen_dpi_scale(),
+                screen_height() * screen_dpi_scale(),
+            );
 
             self.display.height = Some(screen_height.round() as i32);
             self.display.width = Some(screen_width.round() as i32);
+        }
+    }
+
+    pub fn pause_on_minimize(&mut self) {
+        // awful audio crackle specifically on gba, best easiest solution is just to pause when minimized
+        if screen_width() < 1.0 && self.is_running() {
+            self.add_transient_state(EmulatorState::Paused);
+            self.paused_due_to_minimize = true;
+        } else if self.paused_due_to_minimize
+            && screen_width() > 1.0
+            && let Some(return_state) = self.take_return_state()
+        {
+            self.paused_due_to_minimize = false;
+            self.state = return_state;
         }
     }
 

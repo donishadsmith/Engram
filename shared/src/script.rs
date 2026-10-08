@@ -7,7 +7,7 @@ use mlua::{
     Function, HookTriggers, Lua, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus,
 };
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::VecDeque,
     mem::take,
     time::{Duration, Instant},
@@ -53,8 +53,8 @@ clear_all_watchpoints()
 check_watchpoints()
 
 Emulator controls:
-pause()  resume()  step_instruction()  step_frame()
-reset() screenshot()  start_gif()  stop_gif()
+pause()  resume()  step_instruction()  step_frame()  reset()  clear_output()
+screenshot()  start_gif()  stop_gif()  save_state()  load_state()
 
 Input:
 available_inputs(): table of input buttons
@@ -92,6 +92,8 @@ pub enum ScriptRequest {
     StepInstruction,
     StepFrame,
     Resume,
+    SaveState,
+    LoadState,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -307,6 +309,7 @@ pub struct ScriptEngine {
     requests: Vec<ScriptRequest>,
     step_done: bool,
     stop_processes: bool,
+    clear_output: bool,
 }
 
 impl ScriptEngine {
@@ -338,6 +341,7 @@ impl ScriptEngine {
             requests: Vec::new(),
             step_done: false,
             stop_processes: false,
+            clear_output: false,
         }
     }
 
@@ -383,6 +387,10 @@ impl ScriptEngine {
         }
     }
 
+    pub fn take_clear_request(&mut self) -> bool {
+        take(&mut self.clear_output)
+    }
+
     pub fn execute(
         &mut self,
         target: &mut dyn ScriptTarget,
@@ -399,11 +407,13 @@ impl ScriptEngine {
             requests,
             step_done,
             stop_processes: _,
+            clear_output,
         } = self;
 
         let target = RefCell::new(target);
         let output = RefCell::new(output);
         let requests = RefCell::new(requests);
+        let clear_output = Cell::from_mut(clear_output);
 
         let result = lua.scope(|scope| {
             let print = scope.create_function(|_, vals: Variadic<Value>| {
@@ -603,6 +613,15 @@ impl ScriptEngine {
             })?;
             lua.globals().set("elapsed_cpu_cycles", elapsed_cpu_cycles)?;
 
+            let clear_output= scope.create_function(|_, (): ()| {
+                clear_output.set(true);
+
+                output.borrow_mut().clear();
+
+                Ok(())
+            })?;
+            lua.globals().set("clear_output", clear_output)?;
+
             let set_watchpoint =
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
@@ -669,40 +688,40 @@ impl ScriptEngine {
             lua.globals().set("check_watchpoints", check_watchpoints)?;
 
             let control =
-                |name: &'static str, request: fn() -> ScriptRequest, message: &'static str| {
+                |name: &'static str, request: fn() -> ScriptRequest| {
                     let requests = &requests;
-                    let output = &output;
                     let function = scope.create_function(move |_, (): ()| {
                         requests.borrow_mut().push(request());
-
-                        if !message.is_empty() {
-                            output.borrow_mut().push(message.to_string());
-                        }
-
                         Ok(())
                     })?;
+
                     lua.globals().set(name, function)
                 };
 
-            control("pause", || ScriptRequest::Pause, "emulator paused")?;
-            control("resume", || ScriptRequest::Resume, "emulator resumed")?;
-            control("_step_instruction", || ScriptRequest::StepInstruction, "")?;
-            control("_step_frame", || ScriptRequest::StepFrame, "")?;
-            control("reset", || ScriptRequest::Reset, "")?;
+            control("pause", || ScriptRequest::Pause)?;
+            control("resume", || ScriptRequest::Resume)?;
+            control("_step_instruction", || ScriptRequest::StepInstruction)?;
+            control("_step_frame", || ScriptRequest::StepFrame)?;
+            control("reset", || ScriptRequest::Reset)?;
             control(
                 "screenshot",
                 || ScriptRequest::Screenshot,
-                "screenshot taken",
             )?;
             control(
                 "start_gif",
                 || ScriptRequest::StartGif,
-                "started gif recording",
             )?;
             control(
                 "stop_gif",
                 || ScriptRequest::StopGif,
-                "stopped gif recording",
+            )?;
+            control(
+                "save_state",
+                || ScriptRequest::SaveState,
+            )?;
+            control(
+                "load_state",
+                || ScriptRequest::LoadState,
             )?;
 
             if *step_done && let Some(thread) = running.take() {

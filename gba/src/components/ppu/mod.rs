@@ -4,6 +4,7 @@ pub mod sprites;
 
 use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 use affine::{AffineMatrix, AffineState};
+use serde::{Deserialize, Serialize};
 use shared::{
     render::{Frame, PixelFormat, ScalingMethod},
     structs::GroupedRegisters,
@@ -124,6 +125,7 @@ struct Coordinate {
     y: usize,
 }
 
+#[derive(Default)]
 pub struct BgDebugInfo {
     pub mosaic: bool,
     pub affine: bool,
@@ -148,6 +150,35 @@ impl BgDebugInfo {
     }
 }
 
+fn debug_frames() -> [Frame; 4] {
+    from_fn(|_| Frame {
+        pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        pixel_format: PixelFormat::Rgb555,
+        scaling_method: ScalingMethod::Integer,
+        dimensions_changed: false,
+        buffer_changed: true,
+    })
+}
+
+fn sprite_atlas() -> Frame {
+    Frame {
+        pixels: Box::new([0; 1024 * 512]),
+        width: 1024,
+        height: 512,
+        pixel_format: PixelFormat::Rgb555,
+        scaling_method: ScalingMethod::Integer,
+        buffer_changed: true,
+        dimensions_changed: false,
+    }
+}
+
+fn sprites_data() -> Vec<SpriteAttributes> {
+    Vec::with_capacity(128)
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Ppu {
     pub vram: Box<[u8]>,
     pub palette_ram: Box<[u8]>,
@@ -166,16 +197,26 @@ pub struct Ppu {
     pub color_special_effects: GroupedRegisters<u16>,
     pub mosaic: u16,
     pub vcount: u8,
+    #[serde(skip)]
     pub frontend: Frame, // so many frames
+    #[serde(skip)]
     pub frame: Frame,
+    #[serde(skip, default = "debug_frames")]
     pub debug_frontend: [Frame; 4],
+    #[serde(skip, default = "debug_frames")]
     pub debug_frame: [Frame; 4],
     pub frame_ready: bool,
+    #[serde(skip, default = "sprites_data")]
     pub sprites_data: Vec<SpriteAttributes>,
+    #[serde(skip, default = "sprite_atlas")]
     pub sprite_atlas: Frame,
+    #[serde(skip)]
     pub transparant_sprite_background: bool,
+    #[serde(skip)]
     pub transparant_background: bool,
+    #[serde(skip)]
     pub bg_debug_info: [BgDebugInfo; 4],
+    #[serde(skip)]
     pub debugger_active: bool,
 }
 
@@ -217,35 +258,11 @@ impl Ppu {
                 dimensions_changed: false,
                 buffer_changed: true,
             },
-            debug_frontend: from_fn(|_| Frame {
-                pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
-                width: SCREEN_WIDTH,
-                height: SCREEN_HEIGHT,
-                pixel_format: PixelFormat::Rgb555,
-                scaling_method: ScalingMethod::Integer,
-                dimensions_changed: false,
-                buffer_changed: true,
-            }),
-            debug_frame: from_fn(|_| Frame {
-                pixels: Box::new([0; SCREEN_HEIGHT * SCREEN_WIDTH]),
-                width: SCREEN_WIDTH,
-                height: SCREEN_HEIGHT,
-                pixel_format: PixelFormat::Rgb555,
-                scaling_method: ScalingMethod::Integer,
-                dimensions_changed: false,
-                buffer_changed: true,
-            }),
-            sprite_atlas: Frame {
-                pixels: Box::new([0; 1024 * 512]),
-                width: 1024,
-                height: 512,
-                pixel_format: PixelFormat::Rgb555,
-                scaling_method: ScalingMethod::Integer,
-                buffer_changed: true,
-                dimensions_changed: false,
-            },
+            debug_frontend: debug_frames(),
+            debug_frame: debug_frames(),
+            sprite_atlas: sprite_atlas(),
             frame_ready: false,
-            sprites_data: Vec::with_capacity(128),
+            sprites_data: sprites_data(),
             transparant_sprite_background: true,
             transparant_background: false,
             bg_debug_info: from_fn(|_| BgDebugInfo::new()),

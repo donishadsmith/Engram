@@ -12,7 +12,7 @@ pub struct LuaEditor {
     pub code: String,
     pub opened: bool,
     focused: bool,
-    output: Vec<String>,
+    pub output: Vec<String>,
     pub termination_request: bool,
 }
 

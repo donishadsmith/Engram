@@ -21,6 +21,7 @@ use crate::{
     input::enums::KeyId,
     render::Frame,
     script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit},
+    utils::error_message,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -72,6 +73,21 @@ pub trait Emulator {
     fn clear_all_watchpoints(&mut self);
 
     fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)>;
+
+    fn save_state(&self, state_magic_name: &[u8]) -> Result<Vec<u8>, Error>
+    where
+        Self: Serialize + Deserialize<'static>,
+    {
+        let serialized_data = postcard::to_allocvec(self)
+            .map_err(|err| error_message(format!("Failed to create save state: {err}")))?;
+        let compressed_data = lz4_flex::compress_prepend_size(&serialized_data);
+
+        let mut output = Vec::with_capacity(state_magic_name.len() + compressed_data.len());
+        output.extend_from_slice(state_magic_name);
+        output.extend_from_slice(&compressed_data);
+
+        Ok(output)
+    }
 }
 
 pub trait DebugInterface {

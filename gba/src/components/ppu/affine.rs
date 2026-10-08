@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 use std::ops::AddAssign;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Fixed8Fractional(pub i32);
 
 impl Fixed8Fractional {
@@ -30,7 +31,7 @@ impl AddAssign for Fixed8Fractional {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AffineCoordinate {
     pub x: Fixed8Fractional,
     pub y: Fixed8Fractional,
@@ -64,6 +65,7 @@ impl AffineMatrix {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct AffineState {
     pub programmed_reference: AffineCoordinate,
     pub internal_reference: AffineCoordinate,

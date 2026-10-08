@@ -38,12 +38,14 @@ use shared::{
     utils::zero_arr,
 };
 
+use serde::{Deserialize, Serialize};
+
 const WAIT_STATE_NONSEQUENTIAL: [u8; 4] = [4, 3, 2, 8];
 const WAIT_STATE0_SEQUENTIAL: [u8; 2] = [2, 1];
 const WAIT_STATE1_SEQUENTIAL: [u8; 2] = [4, 1];
 const WAIT_STATE2_SEQUENTIAL: [u8; 2] = [8, 1];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum AccessType {
     Sequential, // Memory address related to previous address, incremented by + 2 (half word) or +4 (word)
     Nonsequential, // Memory address is fetched and has nothing to do with the previous instruction
@@ -102,8 +104,14 @@ fn write_u8_modify_halfword(address: u32, mut halfword: u16, value: u8) -> u16 {
     halfword
 }
 
+fn bios() -> Box<[u8]> {
+    zero_arr::<u8>(0x4000)
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Bus {
     pub scheduler: EventScheduler<Event>,
+    #[serde(skip, default = "bios")]
     _bios: Box<[u8]>,
     pub ewram: Box<[u8]>,
     pub iwram: Box<[u8]>,
@@ -124,17 +132,21 @@ pub struct Bus {
     pub waitcnt: u16,
     haltcnt: Option<u8>,
     internal_memory_control: u32,
+    #[serde(skip)]
     pub trace: Option<Trace>,
     pub interrupt_flag_copy: u16,
     pub interrupt_enable_copy: u16,
     pub interrupt_master_enable_copy: u32,
+    #[serde(skip)]
     pub watchpoint_queue: HashMap<u32, WatchpointArgs>,
+    #[serde(skip)]
     pub watchpoint_hits: Vec<WatchpointHit>,
+    #[serde(skip)]
     pub watchpoint_pause: bool,
 }
 
 impl Bus {
-    pub fn new(gamepak: GamePak, apu_sample_period: u32) -> Self {
+    pub fn new(gamepak: GamePak, apu_sample_period: f64) -> Self {
         let trace = var("GBATRACE")
             .ok()
             .and_then(|str| str.parse().ok())
@@ -152,7 +164,7 @@ impl Bus {
 
         Self {
             scheduler,
-            _bios: zero_arr::<u8>(0x4000),
+            _bios: bios(),
             ewram: zero_arr::<u8>(0x40000),
             iwram: zero_arr::<u8>(0x8000),
             last_instruction_read: 0,

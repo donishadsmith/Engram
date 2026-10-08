@@ -10,7 +10,7 @@
 pub mod components;
 
 use crate::components::{
-    gameboy::{GameBoy, T_CYCLES_PER_FRAME_DOUBLE},
+    gameboy::{GameBoy, STATE_MAGIC_NAME, T_CYCLES_PER_FRAME_DOUBLE},
     gamepak::GamePak,
 };
 use shared::{
@@ -44,10 +44,7 @@ impl GameBoySession {
     pub fn new_session(rom_path: PathBuf) -> Result<Self, Error> {
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let sample_rate = match &audio {
-            Some(audio) => audio.sample_rate,
-            None => 44100,
-        };
+        let sample_rate = audio.as_ref().map_or(48000, |audio| audio.sample_rate);
         let apu_sample_cycles = GB_CLOCK_SPEED / sample_rate;
         let gameboy = GameBoy::boot(gamepak);
         let screen = Screen::new(
@@ -79,10 +76,11 @@ impl GameBoySession {
     }
 
     fn on_frame(&mut self) {
-        self.frame_ready = true;
-        self.gameboy.take_frame();
+        self.frame_ready = self.gameboy.take_frame();
+
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, true);
+
         self.screen.update(&mut self.gameboy.cpu.bus.ppu.frontend);
     }
 
@@ -267,7 +265,7 @@ impl EmulatorSession for GameBoySession {
     fn save_state(&mut self) -> Result<(), Error> {
         let state_path = self.gameboy.cpu.bus.gamepak.sav_path.with_extension("ss1");
         let tmp_path = state_path.with_extension("tmp");
-        write(&tmp_path, self.gameboy.save_state()?)?;
+        write(&tmp_path, self.gameboy.save_state(STATE_MAGIC_NAME)?)?;
         rename(&tmp_path, &state_path)
     }
 

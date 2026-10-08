@@ -1,9 +1,10 @@
+use serde::{Deserialize, Serialize};
 use shared::{
     traits::BitOps,
     utils::{get_halfword_shift, get_word_mask},
 };
 // https://problemkaputt.de/gbatek-gba-dma-transfers.htm
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize, Serialize)]
 pub enum FifoChannel {
     A = 0x040000A0,
     B = 0x040000A4,
@@ -17,7 +18,7 @@ pub enum Trigger {
     Vblank,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum StartTiming {
     Immediately,
     Vblank,
@@ -44,7 +45,7 @@ impl StartTiming {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum GamepakTransfer {
     Normal,
     Drq,
@@ -64,7 +65,7 @@ impl GamepakTransfer {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum TransferType {
     Halfword,
     Word,
@@ -79,7 +80,7 @@ impl TransferType {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum IncrementDmaMode {
     Increment,
     Decrement,
@@ -100,6 +101,7 @@ impl IncrementDmaMode {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Dma {
     id: u8,
     on: bool,
@@ -287,6 +289,7 @@ impl Dma {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct DmaChannels {
     pub channels: [Dma; 4],
 }

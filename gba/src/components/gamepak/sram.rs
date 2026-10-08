@@ -1,8 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 // https://problemkaputt.de/gbatek-gba-cart-backup-sram-fram.htm
 // check this and bus if hamtaro ham ham heartbreak or any megaman battle networks saves dont work
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 pub struct Sram {
     pub memory: Vec<u8>,
+    #[serde(skip)]
     pub updated: bool,
 }
 

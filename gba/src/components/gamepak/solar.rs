@@ -1,10 +1,12 @@
 // https://problemkaputt.de/gbatek-gba-cart-solar-sensor.htm
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 // Shamelessly take mgba's GBA_LUX_LEVELS array
 // https://github.com/mgba-emu/mgba/blob/master/src/gba/cart/gpio.c#L17
 const SOLAR_LEVELS: [u8; 10] = [5, 11, 18, 27, 42, 62, 84, 109, 139, 183];
 
+#[derive(Deserialize, Serialize)]
 pub struct SolarSensor {
     pub level: u8,
     sample: u8,

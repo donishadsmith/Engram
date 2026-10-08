@@ -522,8 +522,11 @@ impl PpuDebugger {
             .min_row_height(0.0)
             .show(ui, |ui| {
                 for index in 0..128 {
+                    let Some(sprite) = gba.bus.ppu.sprites_data.get(index) else {
+                        continue;
+                    };
+
                     let (rect, response) = ui.allocate_exact_size(cell, Sense::hover());
-                    let sprite = &gba.bus.ppu.sprites_data[index];
 
                     if sprite.dimension.width > 0 {
                         let (atlas_x, atlas_y) = ((index % 16) as f32 * 64.0, (index / 16) as f32 * 64.0);

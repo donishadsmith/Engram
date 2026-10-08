@@ -3,10 +3,11 @@
 // https://problemkaputt.de/gbatek-gba-cart-real-time-clock-rtc.htm
 use chrono::{Datelike, Local, Timelike};
 
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 // code is lowkey a bit jank but at least emerald no longer reports a dry battery, maybe refactor this later
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 enum RtcMode {
     Idle,
     Command {
@@ -21,6 +22,7 @@ enum RtcMode {
     },
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct Rtc {
     mode: RtcMode,
     sck_high: bool,

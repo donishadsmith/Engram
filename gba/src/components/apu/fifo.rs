@@ -1,15 +1,29 @@
 use crate::components::dma::{FifoChannel, Trigger};
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 use std::collections::VecDeque;
 
+fn history() -> VecDeque<i8> {
+    VecDeque::with_capacity(2048)
+}
+
+fn occupancy() -> VecDeque<u8> {
+    VecDeque::with_capacity(2048)
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Fifo {
     pub queue: VecDeque<u8>,
     channel_id: FifoChannel,
     pub latched: u8,
     pub enabled: bool,
+    #[serde(skip, default = "history")]
     pub history: VecDeque<i8>,
+    #[serde(skip, default = "occupancy")]
     pub occupancy: VecDeque<u8>,
+    #[serde(skip)]
     pub mute: bool,
+    #[serde(skip)]
     pub debugger_active: bool,
 }
 
@@ -20,8 +34,8 @@ impl Fifo {
             channel_id,
             latched: 0,
             enabled: false,
-            history: VecDeque::with_capacity(2048),
-            occupancy: VecDeque::with_capacity(2048),
+            history: history(),
+            occupancy: occupancy(),
             mute: false,
             debugger_active: false,
         }

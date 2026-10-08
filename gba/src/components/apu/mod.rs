@@ -7,6 +7,7 @@ use std::{array::from_fn, collections::VecDeque};
 use crate::components::dma::FifoChannel;
 use fifo::Fifo;
 use global_control::GlobalControl;
+use serde::{Deserialize, Serialize};
 use shared::{
     EmulatorId,
     psg::{PsgChannel, PsgMixer, convolve::LowPassFilter},
@@ -14,20 +15,31 @@ use shared::{
     traits::BitOps,
 };
 
+fn psg_history() -> [VecDeque<u8>; 4] {
+    from_fn(|_| VecDeque::with_capacity(2048))
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Apu {
     pub global_control: GlobalControl,
     pub psg_mixer: PsgMixer,
     pub psg: PsgChannel,
     pub fifo_a: Fifo,
     pub fifo_b: Fifo,
+    #[serde(skip, default = "psg_history")]
     pub psg_history: [VecDeque<u8>; 4],
     pub psg_registers: GroupedRegisters<u16>,
+    #[serde(skip)]
     pub sample_buffer: Vec<f32>,
     last_psg_update: u64,
     psg_prescaler: u8,
+    #[serde(skip)]
     pub psg_mute: [bool; 4],
+    #[serde(skip, default = "LowPassFilter::new")]
     low_pass_left: LowPassFilter,
+    #[serde(skip, default = "LowPassFilter::new")]
     low_pass_right: LowPassFilter,
+    #[serde(skip)]
     pub debugger_active: bool,
 }
 
@@ -40,7 +52,7 @@ impl Apu {
             fifo_b: Fifo::new(FifoChannel::B),
             sample_buffer: Vec::new(),
             last_psg_update: 0,
-            psg_history: from_fn(|_| VecDeque::with_capacity(2048)),
+            psg_history: psg_history(),
             psg_mixer: PsgMixer::new(),
             psg_registers: GroupedRegisters::new(16, 0x4000060),
             psg_mute: from_fn(|_| false),

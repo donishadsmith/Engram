@@ -1,7 +1,8 @@
 use crate::components::cpu::Condition;
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DataOp {
     And,
     Eor,
@@ -56,7 +57,7 @@ impl DataOp {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum ShiftType {
     LogicalLeft,
     LogicalRight,
@@ -77,50 +78,50 @@ impl ShiftType {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ShiftedRegister {
     pub rm: u8,
     pub shift_type: ShiftType,
     pub shift_amount: ShiftAmount,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum ShiftAmount {
     Immediate(u8),
     Register(u8),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum SdtOffset {
     Immediate(u16),
     Register(ShiftedRegister),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum HalfwordOffset {
     Immediate(u8),
     Register(u8),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Operand2 {
     Immediate { value: u8, rotate: u8 },
     Register(ShiftedRegister),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum BitSize {
     Word,
     Byte,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum TransferAction {
     Load,
     Store,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum AddressingMode {
     DecrementAfter,
     DecrementBefore,
@@ -140,7 +141,7 @@ impl AddressingMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum TransferKind {
     UnsignedHalfword,
     SignedByte,
@@ -158,20 +159,20 @@ impl TransferKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum MsrSource {
     Register(u8),
     Immediate { value: u8, rotate: u8 },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum ThumbBranchType {
     High,
     Low,
 }
 
 // 4-2; Table 4.1.1
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum ArmInstruction {
     DataProcessing {
         opcode: DataOp,
@@ -255,7 +256,7 @@ pub enum ArmInstruction {
     },
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Deserialize, Serialize)]
 pub struct DecodedArm {
     pub condition: Condition,
     pub instruction: ArmInstruction,

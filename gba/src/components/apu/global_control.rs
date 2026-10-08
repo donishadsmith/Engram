@@ -1,4 +1,5 @@
 use crate::components::dma::FifoChannel;
+use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
 
 #[derive(Clone, Copy)]
@@ -27,6 +28,7 @@ impl Volume {
     }
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct GlobalControl {
     pub soundcnt_h: u16,
     pub soundbias: u16,
