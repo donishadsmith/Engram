@@ -188,7 +188,69 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
-                    ui.menu_button("Emulation", |ui| {
+                    ui.add_enabled_ui(session.emulator.is_some(), |ui| {
+                        ui.menu_button("Emulation", |ui| {
+                            if let Some(emulator) = &mut session.emulator {
+                                if ui.button(format!("{}  Reset", icons::ARROWS_COUNTER_CLOCKWISE)).clicked() {
+                                    session.state = EmulatorState::Reset;
+                                    ui.close_menu();
+                                }
+
+                                ui.menu_button(format!("{}  States", icons::FLOPPY_DISK), |ui| {
+                                    if ui.button("Save State").clicked() {
+                                        match emulator.save_state() {
+                                            Ok(()) => session.toasts.success("State saved"),
+                                            Err(err) => session.toasts.error(format!("Save state failed: {err}")),
+                                        };
+                                        ui.close_menu();
+                                    }
+
+                                    if ui.button("Load State").clicked() {
+                                        match emulator.load_state() {
+                                            Ok(()) => session.toasts.success("State loaded"),
+                                            Err(err) => session.toasts.error(format!("Load state failed: {err}")),
+                                        };
+                                        ui.close_menu();
+                                }
+                                });
+
+                                let solar_sensor = emulator.solar_sensor();
+                                ui.add_enabled_ui(solar_sensor.is_some(), |ui| {
+                                    ui.menu_button(format!("{}  Solar", icons::SUN), |ui| {
+                                        ui.add(
+                                            egui::Slider::new(&mut session.solar_level, 0..=10)
+                                                .text("Solar sensor level from lowest to highest"),
+                                        );
+
+                                        if let Some(solar_sensor) = solar_sensor {
+                                            solar_sensor.set_level(session.solar_level);
+                                        }
+                                    }).response.on_disabled_hover_text("Available for ROMs with solar sensing (e.g., Boktai)");
+                                });
+
+                                if ui
+                                    .add(
+                                        egui::Button::new(format!("{}  Key Bindings", icons::KEYBOARD))
+                                            .wrap_mode(egui::TextWrapMode::Extend),
+                                    )
+                                    .clicked()
+                                {
+                                    session.show_key_bindings = true;
+                                    ui.close_menu();
+                                }
+
+                                ui.horizontal(|ui|{
+                                    ui.label(egui::RichText::new(format!("{}  Show FPS", icons::GAUGE)).color(
+                                        ui.visuals().widgets.inactive.fg_stroke.color
+                                    ));
+
+                                    ui.checkbox(&mut session.show_fps, "");
+                                });
+                            }
+                        }).response.on_disabled_hover_text("Accessible when ROM is loaded");
+                    });
+
+                    ui.menu_button("Settings", |ui| {
                         ui.menu_button(format!("{}  Volume", icons::SPEAKER_HIGH), |ui| {
                             ui.add(
                                 egui::Slider::new(&mut session.master_volume, 0..=100)
@@ -196,61 +258,6 @@ async fn main() -> Result<(), Error> {
                             );
                         });
 
-                        if let Some(emulator) = &mut session.emulator {
-                            if ui.button(format!("{}  Reset", icons::ARROWS_COUNTER_CLOCKWISE)).clicked() {
-                                session.state = EmulatorState::Reset;
-                                ui.close_menu();
-                            }
-
-                            ui.menu_button(format!("{}  States", icons::FLOPPY_DISK), |ui| {
-                                if ui.button("Save State").clicked() {
-                                    match emulator.save_state() {
-                                        Ok(()) => session.toasts.success("State saved"),
-                                        Err(err) => session.toasts.error(format!("Save state failed: {err}")),
-                                    };
-                                    ui.close_menu();
-                                }
-
-                                if ui.button("Load State").clicked() {
-                                    match emulator.load_state() {
-                                        Ok(()) => session.toasts.success("State loaded"),
-                                        Err(err) => session.toasts.error(format!("Load state failed: {err}")),
-                                    };
-                                    ui.close_menu();
-                            }
-                            });
-
-                            if let Some(solar_sensor) = emulator.solar_sensor() {
-                                ui.menu_button(format!("{}  Solar", icons::SUN), |ui| {
-                                    ui.add(
-                                        egui::Slider::new(&mut session.solar_level, 0..=10)
-                                            .text("Solar sensor level from lowest to highest"),
-                                    );
-                                    solar_sensor.set_level(session.solar_level);
-                                });
-                            }
-
-                            if ui
-                                .add(
-                                    egui::Button::new(format!("{}  Key Bindings", icons::KEYBOARD))
-                                        .wrap_mode(egui::TextWrapMode::Extend),
-                                )
-                                .clicked()
-                            {
-                                session.show_key_bindings = true;
-                                ui.close_menu();
-                            }
-
-                            ui.horizontal(|ui|{
-                                ui.label(egui::RichText::new(format!("{}  Show FPS", icons::GAUGE)).color(
-                                    ui.visuals().widgets.inactive.fg_stroke.color
-                                ));
-                                ui.checkbox(&mut session.show_fps, "");
-                            });
-                        }
-                    });
-
-                    ui.menu_button("Settings", |ui| {
                         if ui
                             .add(
                                 egui::Button::new(format!("{}  Configure Hotkeys", icons::KEYBOARD))
