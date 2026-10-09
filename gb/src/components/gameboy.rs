@@ -19,7 +19,7 @@ use std::{
     mem::{swap, take},
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB1";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB2";
 pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
@@ -33,10 +33,11 @@ pub struct GameBoy {
     pub keypad: [bool; 8],
     pub remaining_cycles: u32,
     t_cycles: u64,
+    pub apu_sample_period: f64,
 }
 
 impl GameBoy {
-    pub fn boot(gamepak: GamePak) -> Self {
+    pub fn boot(gamepak: GamePak, apu_sample_period: f64) -> Self {
         let checksum = gamepak.header.checksum;
         let cgb_flag = gamepak.header.cgb_flag;
         let bus = Bus::new(gamepak);
@@ -47,10 +48,11 @@ impl GameBoy {
             keypad: [false; 8],
             remaining_cycles: 0,
             t_cycles: 0,
+            apu_sample_period,
         }
     }
 
-    pub fn step(&mut self, apu_sample_cycles: u32) -> u32 {
+    pub fn step(&mut self) -> u32 {
         let pc = self.cpu.registers.program_counter.address.wrapping_sub(1) as u32;
         let hits_before = self.cpu.bus.watchpoint_hits.borrow().len();
 
@@ -83,7 +85,7 @@ impl GameBoy {
         self.cpu
             .bus
             .apu
-            .tick(ppu_t_cycles, apu_sample_cycles, div_apu);
+            .tick(ppu_t_cycles, self.apu_sample_period, div_apu);
 
         let mut hits = self.cpu.bus.watchpoint_hits.borrow_mut();
         for hit in &mut hits[hits_before..] {
@@ -93,16 +95,15 @@ impl GameBoy {
         cpu_t_cycles
     }
 
-    pub fn run(&mut self, apu_sample_cycles: u32) {
+    pub fn run(&mut self) {
         self.replenish_remaining_cycles();
         while self.remaining_cycles > 0 {
-            self.remaining_cycles = self
-                .remaining_cycles
-                .saturating_sub(self.step(apu_sample_cycles));
+            self.remaining_cycles = self.remaining_cycles.saturating_sub(self.step());
 
             if self.cpu.breakpoint_hit.is_some()
                 || self.cpu.bus.watchpoint_pause.get()
                 || self.cpu.bus.ppu.frame_ready
+                || self.cpu.bus.ppu.lcd_off_frame && self.remaining_cycles <= 0
             {
                 return;
             }
@@ -116,6 +117,7 @@ impl GameBoy {
             self.scripted_keypad.unwrap_or(self.keypad),
             &mut self.cpu.bus.interrupt_flag,
         );
+
         self.cpu.bus.gamepak.mbc.tick();
     }
 
@@ -169,7 +171,7 @@ impl GameBoy {
     }
 
     pub fn take_frame(&mut self) -> bool {
-        take(&mut self.cpu.bus.ppu.frame_ready)
+        take(&mut self.cpu.bus.ppu.frame_ready) || take(&mut self.cpu.bus.ppu.lcd_off_frame)
     }
 
     pub fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
@@ -212,11 +214,14 @@ impl GameBoy {
         data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
         data.cpu.resume_from = self.cpu.resume_from;
 
+        data.apu_sample_period = self.apu_sample_period;
+
         swap(&mut data.cpu.bus.ppu.frame, &mut self.cpu.bus.ppu.frame);
         swap(
             &mut data.cpu.bus.ppu.frontend,
             &mut self.cpu.bus.ppu.frontend,
         );
+        data.cpu.bus.ppu.lcd_off_frame = self.cpu.bus.ppu.lcd_off_frame;
 
         data.cpu
             .bus

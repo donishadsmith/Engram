@@ -16,7 +16,8 @@ use crate::components::{
 use shared::{
     Emulator, EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
-    render::Screen,
+    constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL},
+    render::{Frame, Screen},
     script::ScriptEngine,
 };
 use spin_sleep::sleep_until;
@@ -27,13 +28,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-const GB_CLOCK_SPEED: u32 = 4194304;
+const GB_CLOCK_SPEED: f64 = 4194304.0;
 
 pub struct GameBoySession {
     audio: Option<AudioOutput>,
     gameboy: GameBoy,
     screen: Screen,
-    apu_sample_cycles: u32,
     frame_ready: bool,
     script_engine: ScriptEngine,
     frame_period: Duration,
@@ -41,27 +41,27 @@ pub struct GameBoySession {
     fps_start: Instant,
     fps_frames: u64,
     fps: f64,
+    menu_height: f32,
 }
 
 impl GameBoySession {
     pub fn new_session(rom_path: PathBuf) -> Result<Self, Error> {
         let audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let sample_rate = audio.as_ref().map_or(48000, |audio| audio.sample_rate);
-        let apu_sample_cycles = GB_CLOCK_SPEED / sample_rate;
-        let gameboy = GameBoy::boot(gamepak);
+        let sample_rate = audio.as_ref().map_or(48000, |audio| audio.sample_rate) as f64;
+        let apu_sample_period = GB_CLOCK_SPEED / sample_rate;
+        let gameboy = GameBoy::boot(gamepak, apu_sample_period);
         let screen = Screen::new(
             gameboy.cpu.bus.ppu.frame.width,
             gameboy.cpu.bus.ppu.frame.height,
         );
-        let frame_period = Duration::from_secs_f64(1.0 / 59.73);
+        let frame_period = Duration::from_secs_f64(70224.0 / GB_CLOCK_SPEED);
         let frame_deadline = Instant::now() + frame_period;
 
         Ok(Self {
             audio,
             gameboy,
             screen,
-            apu_sample_cycles,
             frame_ready: false,
             script_engine: ScriptEngine::new(),
             frame_period,
@@ -69,6 +69,7 @@ impl GameBoySession {
             fps_start: Instant::now(),
             fps_frames: 0,
             fps: 0.0,
+            menu_height: 0.0,
         })
     }
 
@@ -92,7 +93,8 @@ impl GameBoySession {
     }
 
     fn draw(&mut self) {
-        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
+        self.screen
+            .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
     }
 
     fn step_end(&mut self, volume: u8) {
@@ -101,7 +103,9 @@ impl GameBoySession {
         self.gameboy.take_watchpoint_pause();
         self.script_engine.step_completed();
 
-        if self.gameboy.cpu.bus.ppu.frame_ready {
+        if self.gameboy.cpu.bus.ppu.frame_ready
+            || self.gameboy.cpu.bus.ppu.lcd_off_frame && self.gameboy.remaining_cycles == 0
+        {
             self.on_frame();
         } else {
             self.script_engine
@@ -112,6 +116,52 @@ impl GameBoySession {
 
         if self.gameboy.cpu.breakpoint_hit.is_some() {
             self.set_resume();
+        }
+    }
+
+    // https://github.com/libretro/docs/blob/master/archive/ratecontrol.pdf
+    fn dynamic_rate_control(&mut self) {
+        let Some(audio) = &self.audio else { return };
+        let current_occupancy = (AUDIO_BUFFER_CAPACITY - audio.producer.slots()) as f64;
+        let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
+            / (AUDIO_TARGET_OCCUPANCY as f64))
+            .clamp(-1.0, 1.0);
+        let ideal_sample_period = GB_CLOCK_SPEED as f64 / audio.sample_rate as f64;
+        self.gameboy.apu_sample_period =
+            ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
+    }
+
+    fn audio_level(&self) -> usize {
+        self.audio.as_ref().map_or(AUDIO_TARGET_OCCUPANCY, |audio| {
+            AUDIO_BUFFER_CAPACITY - audio.producer.slots()
+        })
+    }
+
+    fn catch_up(&self) -> bool {
+        Instant::now() > self.frame_deadline + self.frame_period
+            || self.audio_level() < AUDIO_TARGET_OCCUPANCY / 2
+    }
+
+    fn run_frame(&mut self, volume: u8) -> bool {
+        loop {
+            self.gameboy.run();
+            self.drain_audio(volume);
+
+            if self.gameboy.cpu.bus.ppu.frame_ready
+                || self.gameboy.cpu.bus.ppu.lcd_off_frame && self.gameboy.remaining_cycles == 0
+            {
+                self.on_frame();
+            }
+
+            if self.gameboy.cpu.breakpoint_hit.is_some()
+                || self.gameboy.cpu.bus.watchpoint_pause.get()
+            {
+                return false;
+            }
+
+            if self.gameboy.remaining_cycles == 0 {
+                return true;
+            }
         }
     }
 
@@ -133,45 +183,14 @@ impl EmulatorSession for GameBoySession {
         self.gameboy.keypad = input.try_into().unwrap_or([false; 8]);
 
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
-        if self.audio.is_some() {
-            while AUDIO_BUFFER_CAPACITY - self.audio.as_mut().unwrap().producer.slots()
-                < AUDIO_TARGET_OCCUPANCY
-            {
-                self.gameboy.run(self.apu_sample_cycles);
-                self.drain_audio(volume);
+        self.dynamic_rate_control();
 
-                if self.gameboy.cpu.bus.ppu.frame_ready {
-                    self.on_frame();
-                }
-
-                if self.gameboy.cpu.breakpoint_hit.is_some() {
-                    self.set_resume();
-                    break;
-                }
-
-                if self.gameboy.cpu.bus.watchpoint_pause.get() {
-                    break;
-                }
+        let mut frames = 1;
+        if self.run_frame(volume) {
+            while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
+                self.frame_deadline += self.frame_period;
+                frames += 1;
             }
-        } else {
-            let mut cycles = 0;
-            while cycles < T_CYCLES_PER_FRAME_DOUBLE {
-                cycles += self.gameboy.step(self.apu_sample_cycles);
-
-                if self.gameboy.cpu.bus.ppu.frame_ready {
-                    self.on_frame();
-                }
-
-                if self.gameboy.cpu.breakpoint_hit.is_some() {
-                    self.set_resume();
-                    break;
-                }
-
-                if self.gameboy.cpu.bus.watchpoint_pause.get() {
-                    break;
-                }
-            }
-            self.gameboy.end_of_frame();
         }
 
         let breakpoint_action = self
@@ -190,10 +209,13 @@ impl EmulatorSession for GameBoySession {
 
         self.draw();
 
-        if self.audio.is_none() {
-            sleep_until(self.frame_deadline);
-            self.frame_deadline += self.frame_period;
+        let current_time = Instant::now();
+        if current_time > self.frame_deadline + self.frame_period * MAX_FRAMES_PER_CALL {
+            self.frame_deadline = current_time;
         }
+
+        sleep_until(self.frame_deadline);
+        self.frame_deadline += self.frame_period;
 
         Ok(state)
     }
@@ -202,7 +224,8 @@ impl EmulatorSession for GameBoySession {
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, false);
 
-        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend);
+        self.screen
+            .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
     }
 
     fn save_game(&mut self) -> Result<(), Error> {
@@ -212,12 +235,9 @@ impl EmulatorSession for GameBoySession {
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
         self.audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let sample_rate = match &self.audio {
-            Some(audio) => audio.sample_rate,
-            None => 44100,
-        };
-        self.apu_sample_cycles = GB_CLOCK_SPEED / sample_rate;
-        self.gameboy = GameBoy::boot(gamepak);
+        let sample_rate = self.audio.as_ref().map_or(48000, |audio| audio.sample_rate) as f64;
+        let apu_sample_period = GB_CLOCK_SPEED / sample_rate;
+        self.gameboy = GameBoy::boot(gamepak, apu_sample_period);
         self.screen = Screen::new(
             self.gameboy.cpu.bus.ppu.frame.width,
             self.gameboy.cpu.bus.ppu.frame.height,
@@ -229,7 +249,7 @@ impl EmulatorSession for GameBoySession {
         Ok(())
     }
 
-    fn frontend_ref(&self) -> &shared::render::Frame {
+    fn frontend_ref(&self) -> &Frame {
         &self.gameboy.cpu.bus.ppu.frontend
     }
 
@@ -246,7 +266,7 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn step_instruction(&mut self, volume: u8) {
-        self.gameboy.step(self.apu_sample_cycles);
+        self.gameboy.step();
         self.step_end(volume);
     }
 
@@ -255,7 +275,7 @@ impl EmulatorSession for GameBoySession {
 
         let mut cycles = 0;
         while !self.gameboy.cpu.bus.ppu.frame_ready && cycles < T_CYCLES_PER_FRAME_DOUBLE {
-            cycles += self.gameboy.step(self.apu_sample_cycles);
+            cycles += self.gameboy.step();
 
             if self.gameboy.cpu.breakpoint_hit.is_some()
                 || self.gameboy.cpu.bus.watchpoint_pause.get()
@@ -301,5 +321,9 @@ impl EmulatorSession for GameBoySession {
         self.fps = 0.0;
         self.fps_frames = 0;
         self.fps_start = Instant::now();
+    }
+
+    fn set_top_height(&mut self, menu_height: f32) {
+        self.menu_height = menu_height;
     }
 }

@@ -19,7 +19,7 @@ use std::{
     mem::{swap, take},
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA1";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA2";
 pub const HBLANK_OFFSET: u64 = 1006;
 pub const CYCLES_PER_SCANLINE: u64 = 1232;
 pub const APU_SEQUENCER: u64 = 32768;
@@ -43,6 +43,7 @@ pub struct GBA {
     pub keypad: [bool; 10],
     #[serde(skip)]
     pub apu_sample_period: f64,
+    #[serde(skip)]
     apu_sample_remainder: f64,
 }
 

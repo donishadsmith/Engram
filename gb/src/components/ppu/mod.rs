@@ -160,6 +160,7 @@ pub struct Ppu {
     pub frame: Frame,
     #[serde(skip)]
     pub frontend: Frame,
+    pub lcd_off_frame: bool,
 }
 
 impl Ppu {
@@ -216,11 +217,20 @@ impl Ppu {
                 dimensions_changed: false,
                 buffer_changed: true,
             },
+            lcd_off_frame: false,
         }
     }
 
     pub fn tick(&mut self, t_cycles: u32, interrupt_flag: &mut u8) {
         if !Lcdc::from_byte(self.lcdc).enable_lcd {
+            if !self.lcd_off_frame {
+                self.lcd_off_frame = true;
+                self.frontend
+                    .pixels
+                    .fill(if self.is_cgb { 0x7FFF } else { DMG_SHADES[0] });
+                self.frontend.buffer_changed = true;
+            }
+
             return;
         }
 

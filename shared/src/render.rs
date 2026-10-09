@@ -111,9 +111,9 @@ impl Screen {
         frame.buffer_changed = false;
     }
 
-    pub fn draw(&mut self, frame: &Frame) {
+    pub fn draw(&mut self, frame: &Frame, menu_height: f32) {
         let screen_width = screen_width();
-        let screen_height = screen_height();
+        let screen_height = screen_height() - menu_height;
 
         let (width, height) = match frame.scaling_method {
             ScalingMethod::Integer => {
@@ -138,7 +138,7 @@ impl Screen {
         draw_texture_ex(
             &self.texture,
             (screen_width - width) / 2.0,
-            (screen_height - height) / 2.0,
+            menu_height + (screen_height - height) / 2.0,
             WHITE,
             DrawTextureParams {
                 dest_size: Some(vec2(width, height)),

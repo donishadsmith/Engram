@@ -22,8 +22,9 @@ use debug::audio::AudioDebugger;
 use shared::{
     DebugInterface, Emulator, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
+    constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL},
     debug::DebugPage,
-    render::Screen,
+    render::{Frame, Screen},
     script::ScriptEngine,
 };
 use spin_sleep::sleep_until;
@@ -35,8 +36,6 @@ use std::{
 };
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
-const ALLOWED_AUDIO_PITCH_DEVIATION: f64 = 0.005;
-const MAX_FRAMES_PER_CALL: u32 = 3;
 
 pub struct GBASession {
     audio: Option<AudioOutput>,
@@ -52,6 +51,7 @@ pub struct GBASession {
     fps_start: Instant,
     fps_frames: u64,
     fps: f64,
+    menu_height: f32,
 }
 
 impl GBASession {
@@ -81,6 +81,7 @@ impl GBASession {
             fps_start: Instant::now(),
             fps_frames: 0,
             fps: 0.0,
+            menu_height: 0.0,
         })
     }
 
@@ -98,7 +99,8 @@ impl GBASession {
 
     fn draw(&mut self) {
         if self.active_debug.is_none() {
-            self.screen.draw(&self.gba.bus.ppu.frontend);
+            self.screen
+                .draw(&self.gba.bus.ppu.frontend, self.menu_height);
         }
     }
 
@@ -234,7 +236,8 @@ impl EmulatorSession for GBASession {
             .execute(&mut self.gba, EmulatorId::Gba, false);
 
         if self.active_debug.is_none() {
-            self.screen.draw(&self.gba.bus.ppu.frontend);
+            self.screen
+                .draw(&self.gba.bus.ppu.frontend, self.menu_height);
         }
     }
 
@@ -269,7 +272,7 @@ impl EmulatorSession for GBASession {
         Ok(())
     }
 
-    fn frontend_ref(&self) -> &shared::render::Frame {
+    fn frontend_ref(&self) -> &Frame {
         &self.gba.bus.ppu.frontend
     }
 
@@ -337,6 +340,10 @@ impl EmulatorSession for GBASession {
         self.fps = 0.0;
         self.fps_frames = 0;
         self.fps_start = Instant::now();
+    }
+
+    fn set_top_height(&mut self, menu_height: f32) {
+        self.menu_height = menu_height;
     }
 }
 

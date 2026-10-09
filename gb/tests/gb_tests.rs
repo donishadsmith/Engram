@@ -10,10 +10,10 @@ fn blargg_cpu_path(rom: &str) -> PathBuf {
 }
 
 fn run_blargg_rom(path: PathBuf) {
-    let mut gameboy = GameBoy::boot(GamePak::load(path.clone()).unwrap());
+    let mut gameboy = GameBoy::boot(GamePak::load(path.clone()).unwrap(), 87.0);
 
     for _ in 0..2000 {
-        gameboy.run(87);
+        gameboy.run();
         gameboy.take_frame();
 
         let output = &gameboy.cpu.bus.serial_output;

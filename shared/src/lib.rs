@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod config;
+pub mod constants;
 pub mod debug;
 pub mod editor;
 pub mod enums;
@@ -151,6 +152,8 @@ pub trait EmulatorSession {
     fn get_fps(&self) -> f64;
 
     fn reset_fps(&mut self);
+
+    fn set_top_height(&mut self, menu_height: f32);
 }
 
 pub trait ScriptTarget: Emulator {

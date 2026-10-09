@@ -1,13 +1,25 @@
+use arboard::Clipboard;
 use chrono::Local;
-use egui::{Context, ScrollArea, Window};
+use egui::{Context, ScrollArea, Window, text::CursorRange};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_phosphor::regular as icons;
+use macroquad::input::{KeyCode, is_key_down, is_key_pressed};
 use rfd::FileDialog;
 use std::{
     fs::{read_to_string, rename, write},
     mem::take,
     path::PathBuf,
+    time::{Duration, Instant},
 };
+
+const COPY_DELAY: Duration = Duration::from_millis(200);
+
+fn super_key_down() -> bool {
+    is_key_down(KeyCode::LeftControl)
+        || is_key_down(KeyCode::LeftSuper)
+        || is_key_down(KeyCode::RightControl)
+        || is_key_down(KeyCode::RightSuper)
+}
 
 pub struct LuaEditor {
     pub code: String,
@@ -15,10 +27,9 @@ pub struct LuaEditor {
     focused: bool,
     pub output: Vec<String>,
     pub termination_request: bool,
+    pending_copy: Option<(String, Instant)>,
 }
 
-// TODO: continue to find method to get get ctr c and v of content in the editor itself
-// working, clipboard fails, currently limites to egui 31, same issue on windows + linux
 impl LuaEditor {
     pub fn new() -> Self {
         Self {
@@ -27,10 +38,13 @@ impl LuaEditor {
             focused: false,
             output: Vec::new(),
             termination_request: false,
+            pending_copy: None,
         }
     }
 
     pub fn show_ui(&mut self, egui_ctx: &Context) -> Option<String> {
+        self.flush_pending_copy();
+
         let mut opened = self.opened;
         let mut focused = false;
         let mut run = false;
@@ -63,7 +77,7 @@ impl LuaEditor {
                         }
 
                         ui.menu_button("Session", |ui| {
-                            if ui.button(format!("{}  Clear All Output", icons::BROOM)).on_hover_text(
+                            if ui.button(format!("{}  Clear Console", icons::BROOM)).on_hover_text(
                                 "Clears output in console"
                             ).clicked() {
                                 self.output.clear();
@@ -82,23 +96,26 @@ impl LuaEditor {
                     });
                 });
 
-                // probably as good as its gonna get
                 egui::TopBottomPanel::top("Lua")
                     .resizable(true)
-                    .default_height(260.0)
+                    .default_height(200.0)
                     .show_inside(ui, |ui| {
-                        focused = CodeEditor::default()
+                        let editor = CodeEditor::default()
                             .id_source("Lua Editpr")
-                            .with_rows(24)
+                            .with_rows(16)
                             .with_fontsize(14.0)
                             .with_theme(ColorTheme::GITHUB_DARK)
                             .with_syntax(Syntax::lua())
                             .with_numlines(true)
                             .vscroll(true)
-                            .show(ui, &mut self.code)
-                            .response
-                            .has_focus();
+                            .show(ui, &mut self.code);
+
+                        focused = editor.response.has_focus();
+
+                        self.bootleg_copy_shortcut(editor.cursor_range);
                     });
+
+                ui.add_space(3.0);
 
                 ScrollArea::vertical()
                     .id_salt("Lua Output")
@@ -165,6 +182,50 @@ impl LuaEditor {
                     .push(format!("File saved to: {:?}", &destination_path)),
                 Err(e) => self.output.push(e.to_string()),
             }
+        }
+    }
+
+    // found that only way to get copy to clipboard is work is by delaying setting it to clipboard
+    // else it just fails/gets wiped: https://github.com/not-fl3/miniquad/blob/master/src/native/windows/clipboard.rs
+    fn bootleg_copy_shortcut(&mut self, cursor_range: Option<CursorRange>) {
+        let Some(range) = cursor_range else { return };
+
+        if !(super_key_down() && is_key_pressed(KeyCode::C)) {
+            return;
+        }
+
+        let primary = range.primary.ccursor.index;
+        let secondary = range.secondary.ccursor.index;
+        let (start_index, end_index) = (primary.min(secondary), primary.max(secondary));
+
+        if start_index != end_index {
+            let selected_text = self
+                .code
+                .chars()
+                .skip(start_index)
+                .take(end_index - start_index)
+                .collect();
+
+            self.pending_copy = Some((selected_text, Instant::now() + COPY_DELAY));
+        }
+    }
+
+    fn flush_pending_copy(&mut self) {
+        let Some((text, copy_deadline)) = self.pending_copy.take() else {
+            return;
+        };
+
+        if Instant::now() <= copy_deadline {
+            self.pending_copy = Some((text, copy_deadline));
+
+            return;
+        }
+
+        match Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text.clone())) {
+            Ok(()) => {}
+            Err(err) => self
+                .output
+                .push(format!("Failed to copy to clipboard: {err}")),
         }
     }
 }

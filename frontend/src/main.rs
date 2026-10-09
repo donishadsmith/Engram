@@ -173,7 +173,7 @@ async fn main() -> Result<(), Error> {
 
         egui_macroquad::ui(|egui_ctx| {
             egui_ctx.set_pixels_per_point(screen_dpi_scale());
-            egui::TopBottomPanel::top("Menu Bar").show(egui_ctx, |ui| {
+            let menu = egui::TopBottomPanel::top("Menu Bar").show(egui_ctx, |ui| {
                 egui_ctx.set_fonts(fonts.clone());
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
@@ -188,6 +188,7 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
+                    // TODO: find way to fix primary menu item not open on hover when already cliced on another primary menu item
                     ui.add_enabled_ui(session.emulator.is_some(), |ui| {
                         ui.menu_button("Emulation", |ui| {
                             if let Some(emulator) = &mut session.emulator {
@@ -298,7 +299,10 @@ async fn main() -> Result<(), Error> {
                                 .clicked()
                             {
                                 set_fullscreen(false);
-                                request_new_screen_size(1280.0 / screen_dpi_scale(), 900.0 / screen_dpi_scale())
+                                let screen_width = 1280.0 / screen_dpi_scale();
+                                let screen_height = 900.0 / screen_dpi_scale();
+                                request_new_screen_size(screen_width, screen_height);
+                                session.display.fullscreen = false;
                             }
                         });
 
@@ -497,15 +501,11 @@ async fn main() -> Result<(), Error> {
                     }
 
                     ui.menu_button("Tools", |ui| {
-                        if session
-                            .emulator
-                            .as_mut()
-                            .map(|emulator| emulator.script_engine())
-                            .is_some()
-                        {
+                        ui.add_enabled_ui(session.emulator.as_mut().map(|emulator| emulator.script_engine()).is_some() , |ui| {
                             let keycode = keycode_to_string(
                                 session.key_bindings.get_hotkey_bind(Hotkeys::Lua),
                             );
+
                             let text = if session.lua_editor.opened {
                                 format!("Close Lua Editor ({})", keycode)
                             } else {
@@ -519,7 +519,7 @@ async fn main() -> Result<(), Error> {
                                 session.lua_editor.opened = !session.lua_editor.opened;
                                 ui.close_menu();
                             }
-                        }
+                        }).response.on_disabled_hover_text("Accessible when ROM is loaded");
 
                         let text = format!(
                             "{}  Screenshot ({})",
@@ -945,10 +945,11 @@ async fn main() -> Result<(), Error> {
                 session.toasts.show(egui_ctx);
             });
 
-            if let Some(emulator) = &mut session.emulator
-                && let Some(debugger) = emulator.debugger_mut()
-            {
-                debugger.show_ui(egui_ctx);
+            if let Some(emulator) = session.emulator.as_mut() {
+                emulator.set_top_height(menu.response.rect.height());
+                if let Some(debugger) = emulator.debugger_mut() {
+                    debugger.show_ui(egui_ctx);
+                }
             }
         });
 

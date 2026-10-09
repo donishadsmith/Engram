@@ -22,7 +22,7 @@ use shared::{
 pub struct Apu {
     mixer: PsgMixer,
     pub psg: PsgChannel,
-    sample_counter: u32,
+    sample_counter: f64,
     pub sample_buffer: Vec<f32>,
     low_pass_left: LowPassFilter,
     low_pass_right: LowPassFilter,
@@ -40,7 +40,7 @@ impl Apu {
         psg.channel1.write_nrx1(0xBF);
         psg.channel1.write_nrx2(0xF3);
         psg.channel1.write_nrx3(0xFF);
-        psg.channel1.write_nrx4(0xBF);
+        psg.channel1.write_nrx4(0x3F);
         psg.channel2.write_nrx1(0x3F);
         psg.channel2.write_nrx3(0xFF);
         psg.channel2.write_nrx4(0xBF);
@@ -55,14 +55,14 @@ impl Apu {
         Self {
             mixer,
             psg,
-            sample_counter: 0,
+            sample_counter: 0.0,
             sample_buffer: Vec::new(),
             low_pass_left: LowPassFilter::new(),
             low_pass_right: LowPassFilter::new(),
         }
     }
 
-    pub fn tick(&mut self, t_cycles: u32, cycles_per_sample: u32, increase_apu_div_counter: bool) {
+    pub fn tick(&mut self, t_cycles: u32, cycles_per_sample: f64, increase_apu_div_counter: bool) {
         if increase_apu_div_counter {
             self.psg.sequencer();
         };
@@ -75,9 +75,9 @@ impl Apu {
             self.low_pass_right
                 .collect_sample((sample_right as f64) / 60.0);
 
-            self.sample_counter += 1;
+            self.sample_counter += 1.0;
             if self.sample_counter >= cycles_per_sample {
-                self.sample_counter = 0;
+                self.sample_counter -= cycles_per_sample;
 
                 self.sample_buffer
                     .push(self.low_pass_left.convolve() as f32);
