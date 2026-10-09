@@ -17,6 +17,8 @@ pub struct LuaEditor {
     pub termination_request: bool,
 }
 
+// TODO: continue to find method to get get ctr c and v of content in the editor itself
+// working, clipboard fails, currently limites to egui 31, same issue on windows + linux
 impl LuaEditor {
     pub fn new() -> Self {
         Self {
