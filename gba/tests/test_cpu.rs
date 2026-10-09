@@ -14,7 +14,7 @@ fn get_vendored_path(filename: &str) -> PathBuf {
 }
 
 fn initialize_gba(path: PathBuf) -> GBA {
-    GBA::boot(GamePak::load(path).unwrap(), 512)
+    GBA::boot(GamePak::load(path).unwrap(), 512.0)
 }
 
 fn run_custom_instructions(gba: &mut GBA, max_iterations: usize) -> u32 {
