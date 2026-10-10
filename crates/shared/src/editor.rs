@@ -56,7 +56,7 @@ impl LuaEditor {
             .show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.menu_button("File", |ui| {
-                        if ui.button(format!("{}  Load Script", icons::FOLDER)).clicked() {
+                        if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() {
                             if let Some(path) = open_lua_script() {
                                 match read_to_string(&path) {
                                     Ok(text) => self.code = text,

@@ -168,7 +168,7 @@ async fn main() -> Result<(), Error> {
                 egui_ctx.set_fonts(fonts.clone());
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
-                        if ui.button(format!("{} Load ROM", icons::FOLDER)).clicked() {
+                        if ui.button(format!("{} Load ROM", icons::FOLDER_OPEN)).clicked() {
                             session.add_transient_state(EmulatorState::RomSelection);
                             ui.close_menu();
                         }
@@ -203,7 +203,7 @@ async fn main() -> Result<(), Error> {
                                     }
                                 });
 
-                                ui.menu_button(format!("{}  Load State", icons::CLOCK_COUNTER_CLOCKWISE), |ui| {
+                                ui.menu_button(format!("{}  Load State", icons::FILE_ARROW_UP), |ui| {
                                     for (mut slot, state) in save_states.iter().enumerate() {
                                         slot += 1;
                                         let (state_text, exists) = slot_label(state, slot, "Ctrl");
