@@ -28,6 +28,7 @@ pub struct LuaEditor {
     pub output: Vec<String>,
     pub termination_request: bool,
     pending_copy: Option<(String, Instant)>,
+    clipboard: Option<Clipboard>,
 }
 
 impl LuaEditor {
@@ -39,6 +40,7 @@ impl LuaEditor {
             output: Vec::new(),
             termination_request: false,
             pending_copy: None,
+            clipboard: Clipboard::new().ok(),
         }
     }
 
@@ -221,11 +223,16 @@ impl LuaEditor {
             return;
         }
 
-        match Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text.clone())) {
-            Ok(()) => {}
-            Err(err) => self
+        match self
+            .clipboard
+            .as_mut()
+            .map(|clipboard| clipboard.set_text(text.clone()))
+        {
+            Some(Ok(())) => {}
+            Some(Err(err)) => self
                 .output
                 .push(format!("Failed to copy to clipboard: {err}")),
+            None => self.output.push("Clipboard unavailable".to_string()),
         }
     }
 }
