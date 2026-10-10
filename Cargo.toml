@@ -1,11 +1,12 @@
 [workspace]
-members = ["frontend", "gb", "gba", "psx", "shared"]
+members = ["crates/frontend", "crates/gb", "crates/gba", "crates/psx", "crates/shared"]
 resolver = "3"
 
 [workspace.dependencies]
-shared = { path = "shared" }
-gb = { path = "gb" }
-gba = { path = "gba" }
+shared = { path = "crates/shared" }
+gb = { path = "crates/gb" }
+gba = { path = "crates/gba" }
+psx = { path = "crates/psx" }
 egui = "0.31.1"
 egui-macroquad = { version = "0.17.3", default-features = false }
 macroquad = "0.4.16"
