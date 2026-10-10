@@ -35,7 +35,7 @@ pub struct Config {
 fn get_config_path() -> PathBuf {
     config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("engram")
+        .join("Engram")
         .join("config.toml")
 }
 
@@ -46,7 +46,7 @@ fn get_picture_path() -> PathBuf {
 fn get_data_path() -> PathBuf {
     data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("engram")
+        .join("Engram")
 }
 
 pub fn system_dir(system: &str, kind: &str) -> Result<PathBuf, Error> {

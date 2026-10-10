@@ -720,7 +720,7 @@ impl ScriptEngine {
 
             let save_state = scope.create_function(|_, slot: usize| {
                 if slot < 1 || slot > 5 {
-                    output.borrow_mut().push("Only save states 1-5 can be used".to_string());
+                    output.borrow_mut().push(mlua::Error::runtime("Only save states 1-5 can be used").to_string());
                 } else {
                     requests.borrow_mut().push(ScriptRequest::SaveState(slot));
                 }
@@ -731,7 +731,7 @@ impl ScriptEngine {
 
             let load_state = scope.create_function(|_, slot: usize| {
                 if slot < 1 || slot > 5 {
-                    output.borrow_mut().push("Only save states 1-5 can be used".to_string());
+                    output.borrow_mut().push(mlua::Error::runtime("Only save states 1-5 can be used").to_string());
                 } else {
                     requests.borrow_mut().push(ScriptRequest::LoadState(slot));
                 }

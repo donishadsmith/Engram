@@ -66,18 +66,18 @@ sudo apt install -y libwayland-dev libasound2-dev libudev-dev pkg-config
 ```
 
 ## Save Data
-Game saves and save states are stored inside your platform's data directory (via [`dirs::data_dir`](https://docs.rs/dirs/latest/dirs/fn.data_dir.html)), in `engram/saves/` and `engram/states/` respectively:
+Game saves and save states are stored inside your platform's data directory (via [`dirs::data_dir`](https://docs.rs/dirs/latest/dirs/fn.data_dir.html)), in `Engram/saves/` and `Engram/states/` respectively:
 
-- Linux: `$XDG_DATA_HOME/engram/` or `$HOME/.local/share/engram/`
-- MacOS: `$HOME/Library/Application Support/engram/`
-- Windows: `%AppData%\engram\`
+- Linux: `$XDG_DATA_HOME/Engram/` or `$HOME/.local/share/Engram/`
+- MacOS: `$HOME/Library/Application Support/Engram/`
+- Windows: `%AppData%\Engram\`
 
 ## Settings
-Settings are saved to `engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
+Settings are saved to `Engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
 
-- Linux: `$XDG_CONFIG_HOME/engram/` or `$HOME/.config/engram/`
-- MacOS: `$HOME/Library/Application Support/engram/`
-- Windows: `%AppData%\engram\`
+- Linux: `$XDG_CONFIG_HOME/Engram/` or `$HOME/.config/Engram/`
+- MacOS: `$HOME/Library/Application Support/Engram/`
+- Windows: `%AppData%\Engram\`
 
 ## References
 I heavily relied on the prior work of the emulation development community while developing my own emulators. In particular, [mGBA](https://github.com/mgba-emu/mgba), [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance), [rustboyadvance-ng](https://github.com/michelhe/rustboyadvance-ng), [retroboy](https://github.com/smparsons/retroboy), [SameBoy](https://github.com/LIJI32/SameBoy), [Pan Docs](https://gbdev.io/pandocs/), and [GBATEK](https://problemkaputt.de/gbatek.htm) were incredibly helpful. The full list of emulators, documentation, and articles used is in [REFERENCES.md](REFERENCES.md).
