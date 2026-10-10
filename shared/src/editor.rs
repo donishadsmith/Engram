@@ -14,7 +14,7 @@ use std::{
 
 const COPY_DELAY: Duration = Duration::from_millis(200);
 
-fn super_key_down() -> bool {
+pub fn super_key_down() -> bool {
     is_key_down(KeyCode::LeftControl)
         || is_key_down(KeyCode::LeftSuper)
         || is_key_down(KeyCode::RightControl)

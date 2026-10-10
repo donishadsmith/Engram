@@ -54,7 +54,7 @@ check_watchpoints()
 
 Emulator controls:
 pause()  resume()  step_instruction()  step_frame()  reset()  clear_output()
-screenshot()  start_gif()  stop_gif()  save_state()  load_state()
+screenshot()  start_gif()  stop_gif()  save_state(slot)  load_state(slot)
 
 Input:
 available_inputs(): table of input buttons
@@ -92,8 +92,8 @@ pub enum ScriptRequest {
     StepInstruction,
     StepFrame,
     Resume,
-    SaveState,
-    LoadState,
+    SaveState(usize),
+    LoadState(usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -715,14 +715,28 @@ impl ScriptEngine {
                 "stop_gif",
                 || ScriptRequest::StopGif,
             )?;
-            control(
-                "save_state",
-                || ScriptRequest::SaveState,
-            )?;
-            control(
-                "load_state",
-                || ScriptRequest::LoadState,
-            )?;
+
+            let save_state = scope.create_function(|_, slot: usize| {
+                if slot < 1 || slot > 5 {
+                    output.borrow_mut().push("Only save states 1-5 can be used".to_string());
+                } else {
+                    requests.borrow_mut().push(ScriptRequest::SaveState(slot));
+                }
+
+                Ok(())
+            })?;
+            lua.globals().set("save_state", save_state)?;
+
+            let load_state = scope.create_function(|_, slot: usize| {
+                if slot < 1 || slot > 5 {
+                    output.borrow_mut().push("Only save states 1-5 can be used".to_string());
+                } else {
+                    requests.borrow_mut().push(ScriptRequest::LoadState(slot));
+                }
+
+                Ok(())
+            })?;
+            lua.globals().set("load_state", load_state)?;
 
             if *step_done && let Some(thread) = running.take() {
                 *step_done = false;

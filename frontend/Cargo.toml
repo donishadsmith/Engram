@@ -19,3 +19,4 @@ gilrs.workspace = true
 egui-notify.workspace = true
 mlua.workspace = true
 egui-phosphor.workspace = true
+chrono.workspace = true

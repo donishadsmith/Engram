@@ -1,3 +1,5 @@
+use chrono::{DateTime, Local};
+use macroquad::input::{KeyCode, get_keys_pressed, is_key_down};
 use rfd::FileDialog;
 use shared::{
     EmulatorId,
@@ -8,7 +10,15 @@ use shared::{
         utils::{button_to_string, keycode_to_string},
     },
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fs::metadata, path::PathBuf};
+
+pub const STATE_KEYS: [KeyCode; 5] = [
+    KeyCode::F1,
+    KeyCode::F2,
+    KeyCode::F3,
+    KeyCode::F4,
+    KeyCode::F5,
+];
 
 pub fn initialize_debug_hashmap() -> HashMap<EmulatorId, DebugPage> {
     let mut map = HashMap::new();
@@ -71,4 +81,51 @@ pub fn bindings_grid(
             *restore_default_bindings = true;
         }
     });
+}
+
+pub fn shift_key_down() -> bool {
+    is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift)
+}
+
+pub fn detect_state_key() -> Option<usize> {
+    let mut boolean_arr = [false; 5];
+    for (index, key) in STATE_KEYS.iter().enumerate() {
+        boolean_arr[index] = get_keys_pressed().contains(key)
+    }
+
+    boolean_arr.iter().rposition(|&boolean| boolean)
+}
+
+pub fn slot_label(path: &Option<PathBuf>, slot: usize, control_key: &str) -> (String, bool) {
+    let Some(path) = path else {
+        return (
+            format!(
+                "Slot {slot}:  empty ({control_key}+{})",
+                keycode_to_string(STATE_KEYS[slot - 1])
+            ),
+            false,
+        );
+    };
+
+    match metadata(path).and_then(|metadata| metadata.modified()) {
+        Ok(modified) => {
+            let time: DateTime<Local> = modified.into();
+            (
+                format!(
+                    "Slot {slot}:  {} ({control_key}+{})",
+                    time.format("%b %d %H:%M"),
+                    keycode_to_string(STATE_KEYS[slot - 1])
+                ),
+                true,
+            )
+        }
+
+        Err(_) => (
+            format!(
+                "Slot {slot}:  empty ({control_key}+{})",
+                keycode_to_string(STATE_KEYS[slot - 1])
+            ),
+            false,
+        ),
+    }
 }

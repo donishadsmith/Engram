@@ -5,7 +5,7 @@ pub mod utils;
 
 use crate::{
     session::{InputSource, Session},
-    utils::{bindings_grid, file_dialog},
+    utils::{bindings_grid, detect_state_key, file_dialog, shift_key_down, slot_label},
 };
 use egui::FontDefinitions;
 use egui_macroquad;
@@ -14,6 +14,7 @@ use macroquad::prelude::*;
 use shared::{
     EmulatorState,
     config::load_config,
+    editor::super_key_down,
     input::{
         enums::{Hotkeys, Input, InputType, KeyId},
         utils::keycode_to_string,
@@ -21,7 +22,7 @@ use shared::{
     script::ScriptRequest,
     utils::screenshot,
 };
-use std::{io::Error, mem::take, time::Duration};
+use std::{io::Error, mem::take};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum KeybindingTab {
@@ -42,8 +43,9 @@ fn conf() -> Conf {
     }
 }
 
-// TODO: maybe clean up some areas in the future
+// TODO: ok, actually stop being lazy and refactor some time in the future by consolidating certain areas, this is ugly now
 // determine if too many toast messages
+// Also find out how to get cargo to format code with strings, surely there is a way to format the code around the string
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
@@ -70,20 +72,15 @@ async fn main() -> Result<(), Error> {
 
         if let (Some(connected), Some(text)) = (gamepad_update.connected, gamepad_update.event_text)
         {
-            let toast = if connected {
+            if connected {
                 session.toasts.info(text)
             } else {
                 session.toasts.warning(text)
             };
-
-            toast.duration(Some(Duration::from_secs(3)));
         }
 
         if let Some(text) = gamepad_update.active_text {
-            session
-                .toasts
-                .warning(text)
-                .duration(Some(Duration::from_secs(3)));
+            session.toasts.warning(text);
         }
 
         let input_source_changed =
@@ -127,10 +124,7 @@ async fn main() -> Result<(), Error> {
                 )? == EmulatorState::Paused
                 {
                     session.set_paused();
-                    session
-                        .toasts
-                        .info("Emulator is paused")
-                        .duration(Some(Duration::from_secs(3)));
+                    session.toasts.info("Emulator is paused");
                 };
 
                 if let Some(emulator) = &session.emulator {
@@ -144,10 +138,7 @@ async fn main() -> Result<(), Error> {
                 let _ = session.reset();
                 session.take_return_state();
                 session.state = EmulatorState::Running;
-                session
-                    .toasts
-                    .success("Emulator resetted")
-                    .duration(Some(Duration::from_secs(3)));
+                session.toasts.success("Emulator resetted");
             }
             EmulatorState::Quit => {
                 session.gif.stop();
@@ -197,22 +188,36 @@ async fn main() -> Result<(), Error> {
                                     ui.close_menu();
                                 }
 
-                                ui.menu_button(format!("{}  States", icons::FLOPPY_DISK), |ui| {
-                                    if ui.button("Save State").clicked() {
-                                        match emulator.save_state() {
-                                            Ok(()) => session.toasts.success("State saved"),
-                                            Err(err) => session.toasts.error(format!("Save state failed: {err}")),
-                                        };
-                                        ui.close_menu();
-                                    }
+                                let save_states = emulator.current_save_states();
+                                ui.menu_button(format!("{}  Save State", icons::FLOPPY_DISK), |ui| {
+                                    for (mut slot, state) in save_states.iter().enumerate() {
+                                        slot += 1;
+                                        let (state_text, exists) = slot_label(state, slot, "Shift");
+                                        if ui.button(state_text).clicked() {
+                                            let toast_text = format!("Save state {slot}");
+                                            match emulator.save_state(slot) {
+                                                Ok(()) => session.toasts.success(if exists {format!("{} overwritten", toast_text)} else {format!("{} saved", toast_text)}),
+                                                Err(err) => session.toasts.error(format!("Save state {slot} failed: {err}")),
+                                            };
 
-                                    if ui.button("Load State").clicked() {
-                                        match emulator.load_state() {
-                                            Ok(()) => session.toasts.success("State loaded"),
-                                            Err(err) => session.toasts.error(format!("Load state failed: {err}")),
-                                        };
-                                        ui.close_menu();
-                                }
+                                            ui.close_menu();
+                                        }
+                                    }
+                                });
+
+                                ui.menu_button(format!("{}  Load State", icons::CLOCK_COUNTER_CLOCKWISE), |ui| {
+                                    for (mut slot, state) in save_states.iter().enumerate() {
+                                        slot += 1;
+                                        let (state_text, exists) = slot_label(state, slot, "Ctrl");
+                                        if ui.button(state_text).clicked() && exists {
+                                            match emulator.load_state(slot) {
+                                                Ok(()) => session.toasts.success(format!("State {slot} loaded")),
+                                                Err(err) => session.toasts.error(format!("State {slot} failed to load: {err}")),
+                                            };
+
+                                            ui.close_menu();
+                                        }
+                                    }
                                 });
 
                                 let solar_sensor = emulator.solar_sensor();
@@ -467,7 +472,7 @@ async fn main() -> Result<(), Error> {
                                             session.key_bindings.labels(key_id)[index],
                                             session.key_bindings.labels(key_id)[other_index]
                                         ))
-                                        .duration(Some(Duration::from_secs(3)));
+                                        ;
                                 }
                                 None if session.key_bindings.reserved(key_id, input) => {
                                     let used_by = match key_id {
@@ -481,7 +486,7 @@ async fn main() -> Result<(), Error> {
                                             input.to_string(),
                                             used_by.to_string()
                                         ))
-                                        .duration(Some(Duration::from_secs(3)));
+                                        ;
 
                                     rebinding_complete = false;
                                 }
@@ -536,7 +541,7 @@ async fn main() -> Result<(), Error> {
                             session
                                 .toasts
                                 .success("Screenshot saved")
-                                .duration(Some(Duration::from_secs(3)));
+                                ;
                             ui.close_menu();
                         }
 
@@ -559,7 +564,7 @@ async fn main() -> Result<(), Error> {
                                     session
                                         .toasts
                                         .success("GIF saved")
-                                        .duration(Some(Duration::from_secs(3)));
+                                        ;
                                 }
                             } else {
                                 session.open_gif_settings = true;
@@ -606,56 +611,60 @@ async fn main() -> Result<(), Error> {
                     let mut toggle_requested = false;
 
                     if !session.show_hotkeys {
-                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen))
+                        if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen))
                         {
                             session.toggle_fullscreen()
                         }
 
-                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
+                        if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                         {
                             session
                                 .toasts
                                 .success("Screenshot saved")
-                                .duration(Some(Duration::from_secs(3)));
+                                ;
                             screenshot(session.get_image_path());
                         }
 
-                        if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Debugger)) {
+                        if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Debugger)) {
                             toggle_requested = true;
                         }
 
                         if session.emulator.is_some() {
-                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua)) {
+                            if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua)) {
                                 session.lua_editor.opened = !session.lua_editor.opened;
                             }
 
-                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
+                            if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
                                 if session.gif.is_recording() {
                                     session.gif.stop();
 
                                     session
                                         .toasts
                                         .success("GIF saved")
-                                        .duration(Some(Duration::from_secs(3)));
+                                        ;
                                 } else {
                                     session.open_gif_settings = !session.open_gif_settings;
                                 }
                             }
 
-                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::SaveState)) {
+                            if shift_key_down() && let Some(mut slot) = detect_state_key() {
                                 if let Some(emulator) = &mut session.emulator {
-                                    match emulator.save_state() {
-                                        Ok(()) => session.toasts.success("State saved"),
-                                        Err(err) => session.toasts.error(format!("Save state failed: {err}")),
+                                    let exists = emulator.current_save_states()[slot].is_some();
+                                    slot += 1;
+                                    let toast_text = format!("Save state {slot}");
+                                    match emulator.save_state(slot) {
+                                        Ok(()) => session.toasts.success(if exists {format!("{} overwritten", toast_text)} else {format!("{} saved", toast_text)}),
+                                        Err(err) => session.toasts.error(format!("Save state {slot} failed: {err}")),
                                     };
                                 }
                             }
 
-                            if is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::LoadState)) {
+                            if super_key_down() && let Some(mut slot) = detect_state_key()  {
                                 if let Some(emulator) = &mut session.emulator {
-                                    match emulator.load_state() {
-                                        Ok(()) => session.toasts.success("State loaded"),
-                                        Err(err) => session.toasts.error(format!("Load state failed: {err}")),
+                                    slot += 1;
+                                    match emulator.load_state(slot) {
+                                        Ok(()) => session.toasts.success(format!("State {slot} loaded")),
+                                        Err(err) => session.toasts.error(format!("State {slot} failed to load: {err}")),
                                     };
                                 }
                             }
@@ -694,8 +703,8 @@ async fn main() -> Result<(), Error> {
                     if start_recording {
                         if let Some(emulator) = &session.emulator {
                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
-                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(3))),
-                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(3))),
+                                Ok(_) => session.toasts.success("GIF recording started"),
+                                Err(_) => session.toasts.success("GIF failed to start"),
                             };
                         }
 
@@ -772,9 +781,9 @@ async fn main() -> Result<(), Error> {
                                 session.toggle_emulator_status();
 
                                 if session.is_paused() {
-                                    session.toasts.warning("Emulator is paused").duration(Some(Duration::from_secs(3)));
+                                    session.toasts.warning("Emulator is paused");
                                 } else {
-                                    session.toasts.success("Emulator is running").duration(Some(Duration::from_secs(3)));
+                                    session.toasts.success("Emulator is running");
                                 }
                             }
 
@@ -856,21 +865,21 @@ async fn main() -> Result<(), Error> {
                                     session
                                         .toasts
                                         .info("Emulator is paused")
-                                        .duration(Some(Duration::from_secs(3)));
+                                        ;
                                 }
                                 ScriptRequest::Screenshot => {
                                     screenshot(session.image_dir.clone());
                                     session
                                         .toasts
                                         .success("Screenshot saved")
-                                        .duration(Some(Duration::from_secs(3)));
+                                        ;
                                 },
                                 ScriptRequest::StartGif => {
                                     if !session.gif.is_recording() {
                                         if emulator.frame_ready() {
                                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
-                                                Ok(_) => session.toasts.success("GIF recording started").duration(Some(Duration::from_secs(3))),
-                                                Err(_) => session.toasts.success("GIF failed to start").duration(Some(Duration::from_secs(3))),
+                                                Ok(_) => session.toasts.success("GIF recording started"),
+                                                Err(_) => session.toasts.success("GIF failed to start"),
                                             };
 
 
@@ -891,7 +900,7 @@ async fn main() -> Result<(), Error> {
                                         session
                                         .toasts
                                         .success("GIF saved")
-                                        .duration(Some(Duration::from_secs(3)));
+                                        ;
                                     }
                                 }
                                 ScriptRequest::Reset => session.state = EmulatorState::Reset,
@@ -900,18 +909,21 @@ async fn main() -> Result<(), Error> {
                                 }
                                 ScriptRequest::Resume => {
                                     session.state = EmulatorState::Running;
-                                    session.toasts.success("Emulator is running").duration(Some(Duration::from_secs(3)));
+                                    session.toasts.success("Emulator is running");
                                 }
-                                ScriptRequest::SaveState => {
-                                    match emulator.save_state() {
-                                        Ok(()) => session.toasts.success("State saved"),
-                                        Err(err) => session.toasts.error(format!("Save state failed: {err}")),
+                                ScriptRequest::SaveState(slot) => {
+                                    let index = slot - 1;
+                                    let exists = emulator.current_save_states()[index].is_some();
+                                    let toast_text = format!("Save state {slot}");
+                                    match emulator.save_state(slot) {
+                                        Ok(()) => session.toasts.success(if exists {format!("{} overwritten", toast_text)} else {format!("{} saved", toast_text)}),
+                                        Err(err) => session.toasts.error(format!("Save state {slot} failed: {err}")),
                                     };
                                 }
-                                ScriptRequest::LoadState => {
-                                     match emulator.load_state() {
-                                        Ok(()) => session.toasts.success("State loaded"),
-                                        Err(err) => session.toasts.error(format!("Load state failed: {err}")),
+                                ScriptRequest::LoadState(slot) => {
+                                    match emulator.load_state(slot) {
+                                        Ok(()) => session.toasts.success(format!("State {slot} loaded")),
+                                        Err(err) => session.toasts.error(format!("State {slot} failed to load: {err}")),
                                     };
                                 }
                             }

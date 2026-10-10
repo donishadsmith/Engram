@@ -298,19 +298,49 @@ impl EmulatorSession for GameBoySession {
         );
     }
 
-    // gonna have a single state to get it working now and then later
-    // do the annoying frontend and file plumbing for multiple states
-    fn save_state(&mut self) -> Result<(), Error> {
-        let state_path = self.gameboy.cpu.bus.gamepak.sav_path.with_extension("ss1");
+    fn save_state(&mut self, slot: usize) -> Result<(), Error> {
+        let state_path = self
+            .gameboy
+            .cpu
+            .bus
+            .gamepak
+            .sav_path
+            .with_extension(format!("ss{slot}"));
         let tmp_path = state_path.with_extension("tmp");
         write(&tmp_path, self.gameboy.save_state(STATE_MAGIC_NAME)?)?;
         rename(&tmp_path, &state_path)
     }
 
-    fn load_state(&mut self) -> Result<(), Error> {
-        let state_path = self.gameboy.cpu.bus.gamepak.sav_path.with_extension("ss1");
+    fn load_state(&mut self, slot: usize) -> Result<(), Error> {
+        let state_path = self
+            .gameboy
+            .cpu
+            .bus
+            .gamepak
+            .sav_path
+            .with_extension(format!("ss{slot}"));
         let bytes = read(state_path)?;
         self.gameboy.load_state(&bytes)
+    }
+
+    fn current_save_states(&self) -> Vec<Option<PathBuf>> {
+        let mut save_states = Vec::with_capacity(5);
+        for slot in 1..6 {
+            let state_path = self
+                .gameboy
+                .cpu
+                .bus
+                .gamepak
+                .sav_path
+                .with_extension(format!("ss{slot}"));
+            if state_path.exists() {
+                save_states.push(Some(state_path));
+            } else {
+                save_states.push(None);
+            }
+        }
+
+        save_states
     }
 
     fn get_fps(&self) -> f64 {

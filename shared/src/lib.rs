@@ -145,9 +145,11 @@ pub trait EmulatorSession {
 
     fn set_resume(&mut self);
 
-    fn load_state(&mut self) -> Result<(), Error>;
+    fn load_state(&mut self, slot: usize) -> Result<(), Error>;
 
-    fn save_state(&mut self) -> Result<(), Error>;
+    fn save_state(&mut self, slot: usize) -> Result<(), Error>;
+
+    fn current_save_states(&self) -> Vec<Option<PathBuf>>;
 
     fn get_fps(&self) -> f64;
 
