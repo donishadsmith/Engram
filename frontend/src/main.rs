@@ -193,14 +193,12 @@ async fn main() -> Result<(), Error> {
                                     for (mut slot, state) in save_states.iter().enumerate() {
                                         slot += 1;
                                         let (state_text, exists) = slot_label(state, slot, "Shift");
-                                        if ui.button(state_text).clicked() {
+                                        if ui.add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
                                             let toast_text = format!("Save state {slot}");
                                             match emulator.save_state(slot) {
                                                 Ok(()) => session.toasts.success(if exists {format!("{} overwritten", toast_text)} else {format!("{} saved", toast_text)}),
                                                 Err(err) => session.toasts.error(format!("Save state {slot} failed: {err}")),
                                             };
-
-                                            ui.close_menu();
                                         }
                                     }
                                 });
@@ -209,13 +207,11 @@ async fn main() -> Result<(), Error> {
                                     for (mut slot, state) in save_states.iter().enumerate() {
                                         slot += 1;
                                         let (state_text, exists) = slot_label(state, slot, "Ctrl");
-                                        if ui.button(state_text).clicked() && exists {
+                                        if ui.add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() && exists {
                                             match emulator.load_state(slot) {
                                                 Ok(()) => session.toasts.success(format!("State {slot} loaded")),
                                                 Err(err) => session.toasts.error(format!("State {slot} failed to load: {err}")),
                                             };
-
-                                            ui.close_menu();
                                         }
                                     }
                                 });

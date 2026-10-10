@@ -65,6 +65,13 @@ sudo apt update
 sudo apt install -y libwayland-dev libasound2-dev libudev-dev pkg-config
 ```
 
+## Save Data
+Game saves and save states are stored inside your platform's data directory (via [`dirs::data_dir`](https://docs.rs/dirs/latest/dirs/fn.data_dir.html)), in `engram/saves/` and `engram/states/` respectively:
+
+- Linux: `$XDG_DATA_HOME/engram/` or `$HOME/.local/share/engram/`
+- MacOS: `$HOME/Library/Application Support/engram/`
+- Windows: `%AppData%\engram\`
+
 ## Settings
 Settings are saved to `engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
 
