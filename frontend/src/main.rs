@@ -364,7 +364,7 @@ async fn main() -> Result<(), Error> {
 
                                     if session.latest_gamepad_id.is_some()
                                         && ui
-                                            .add(egui::Button::new(format!("{}  Keyboard", icons::GAME_CONTROLLER)).selected(
+                                            .add(egui::Button::new(format!("{}  Controller", icons::GAME_CONTROLLER)).selected(
                                                 controller_keybinding_tab == KeybindingTab::Gamepad,
                                             ))
                                             .clicked()
