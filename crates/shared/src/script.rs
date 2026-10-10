@@ -56,6 +56,8 @@ Emulator controls:
 pause()  resume()  step_instruction()  step_frame()  reset()  clear_output()
 screenshot()  start_gif()  stop_gif()  save_state(slot)  load_state(slot)
 
+- `slot` is a value from 1 to 5
+
 Input:
 available_inputs(): table of input buttons
 set_inputs({a = true, up = true}): buttons held permanantly until released, keyboard/gamepad is ignored;
@@ -845,10 +847,10 @@ impl ScriptEngine {
             Ok(())
         });
 
-        if let Err(e) = result {
+        if let Err(err) = result {
             output
                 .borrow_mut()
-                .push(format!("script engine error: {e}"));
+                .push(format!("script engine error: {err}"));
         }
     }
 }

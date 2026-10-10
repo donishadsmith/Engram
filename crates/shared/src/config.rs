@@ -53,6 +53,7 @@ pub fn system_dir(system: &str, kind: &str) -> Result<PathBuf, Error> {
     let dir = PathBuf::from(load_config().data_dir.unwrap())
         .join(system)
         .join(kind);
+
     create_dir_all(&dir)?;
 
     Ok(dir)

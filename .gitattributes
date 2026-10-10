@@ -1,3 +1,2 @@
-gb/tests/vendored/** linguist-vendored
-gba/tests/vendored/** linguist-vendored
-utils/vendored/** linguist-vendored
+crates/gb/tests/vendored/** linguist-vendored
+crates/gba/tests/vendored/** linguist-vendored

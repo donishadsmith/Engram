@@ -1,18 +1,17 @@
-/target
-# IMPORTANT: NEVER upload Nintendo's copyrighted games
-/roms
-*.gb
-# These roms should be fine though
-!gb/tests/vendored/blargg/**/*.gb
 Cargo.lock
-*.sav
-gb/tests/vendored/blargg/**/*source*
-gb/tests/vendored/blargg/*/source/
-mooneye/
-acid/
 *.txt
 *.bin
 *.sav
 *.gba
-!gba/tests/**/*.gba
-!gba/tests/**/**/*.gba
+*.sav
+*.gb
+*.exe
+/target
+/roms
+!crates/gb/tests/vendored/blargg/**/*.gb
+crates/gb/tests/vendored/blargg/**/*source*
+crates/gb/tests/vendored/blargg/*/source/
+crates/gb/tests/vendored/mooneye/
+crates/gb/tests/vendored/acid/
+!crates/gba/tests/**/*.gba
+!crates/gba/tests/**/**/*.gba
