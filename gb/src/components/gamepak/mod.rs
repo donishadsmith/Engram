@@ -18,7 +18,10 @@ use std::{
 
 use crate::components::gamepak::mbc::prelude::*;
 use serde::{Deserialize, Serialize};
-use shared::utils::{error_message, zero_arr};
+use shared::{
+    config::system_dir,
+    utils::{error_message, zero_arr},
+};
 
 // "RTC" in ASCII
 const MAGIC_NUMBERS: [u8; 4] = [0x52, 0x54, 0x43, 0x31];
@@ -289,7 +292,7 @@ impl GamePak {
         }
 
         let header = Header::new(&rom);
-        let sav_path = rom_path.with_extension("sav");
+        let sav_path = system_dir("gb", "saves")?.join(rom_path.with_extension("sav"));
         let (ram, rtc_save_state) = Self::read_sav(&sav_path, &header)?;
         let mbc = MbcType::byte_to_struct(rom, ram, rtc_save_state, header.has_rumble);
 

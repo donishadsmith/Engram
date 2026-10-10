@@ -22,7 +22,8 @@ use debug::audio::AudioDebugger;
 use shared::{
     DebugInterface, Emulator, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
-    constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL},
+    config::system_dir,
+    constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL, SAVE_STATE_SLOTS},
     debug::DebugPage,
     render::{Frame, Screen},
     script::ScriptEngine,
@@ -52,6 +53,7 @@ pub struct GBASession {
     fps_frames: u64,
     fps: f64,
     menu_height: f32,
+    state_dir: PathBuf,
 }
 
 impl GBASession {
@@ -66,6 +68,7 @@ impl GBASession {
         let screen = Screen::new(gba.bus.ppu.frame.width, gba.bus.ppu.frame.height);
         let frame_period = Duration::from_secs_f64(280896.0 / GBA_CLOCK_SPEED as f64);
         let frame_deadline = Instant::now() + frame_period;
+        let state_dir = system_dir("gba", "states")?;
 
         Ok(Self {
             audio,
@@ -82,6 +85,7 @@ impl GBASession {
             fps_frames: 0,
             fps: 0.0,
             menu_height: 0.0,
+            state_dir,
         })
     }
 
@@ -95,6 +99,20 @@ impl GBASession {
         if self.active_debug.is_none() {
             self.screen.update(&mut self.gba.bus.ppu.frontend);
         }
+    }
+
+    fn state_path(&self, slot: usize) -> Result<PathBuf, Error> {
+        let rom_stem = self
+            .gba
+            .bus
+            .gamepak
+            .sav_path
+            .file_stem()
+            .ok_or_else(|| Error::other("ROM path has no file name"))?;
+
+        Ok(self
+            .state_dir
+            .join(format!("{}.ss{slot}", rom_stem.to_string_lossy())))
     }
 
     fn draw(&mut self) {
@@ -319,45 +337,22 @@ impl EmulatorSession for GBASession {
     }
 
     fn save_state(&mut self, slot: usize) -> Result<(), Error> {
-        let state_path = self
-            .gba
-            .bus
-            .gamepak
-            .sav_path
-            .with_extension(format!("ss{slot}"));
-        let tmp_path = state_path.with_extension("tmp");
+        let state_path = self.state_path(slot)?;
+        let tmp_path = state_path.with_extension(format!("ss{slot}.tmp"));
+
         write(&tmp_path, self.gba.save_state(STATE_MAGIC_NAME)?)?;
         rename(&tmp_path, &state_path)
     }
 
     fn load_state(&mut self, slot: usize) -> Result<(), Error> {
-        let state_path = self
-            .gba
-            .bus
-            .gamepak
-            .sav_path
-            .with_extension(format!("ss{slot}"));
-        let bytes = read(state_path)?;
+        let bytes = read(self.state_path(slot)?)?;
         self.gba.load_state(&bytes)
     }
 
     fn current_save_states(&self) -> Vec<Option<PathBuf>> {
-        let mut save_states = Vec::with_capacity(5);
-        for slot in 1..6 {
-            let state_path = self
-                .gba
-                .bus
-                .gamepak
-                .sav_path
-                .with_extension(format!("ss{slot}"));
-            if state_path.exists() {
-                save_states.push(Some(state_path));
-            } else {
-                save_states.push(None);
-            }
-        }
-
-        save_states
+        (1..=SAVE_STATE_SLOTS)
+            .map(|slot| self.state_path(slot).ok().filter(|path| path.exists()))
+            .collect()
     }
 
     fn get_fps(&self) -> f64 {

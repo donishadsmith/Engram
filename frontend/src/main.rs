@@ -311,6 +311,17 @@ async fn main() -> Result<(), Error> {
                             }
                         });
 
+                        if ui
+                            .add(
+                                egui::Button::new(format!("{}  Choose Data Save Location", icons::FOLDER))
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            )
+                            .clicked()
+                        {
+                            session.set_data_dir = true;
+                            ui.close_menu();
+                        }
+
                         ui.separator();
 
                         let source = match session.input_source {
@@ -585,6 +596,32 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
+                    let mut flush_configs = false;
+                    if session.set_data_dir {
+                        egui::Window::new("Choose Data Location")
+                            .open(&mut session.set_data_dir)
+                            .show(egui_ctx, |ui| {
+                                egui::Grid::new("Choose File Location").num_columns(1).show(
+                                    ui,
+                                    |ui| {
+                                        if ui.button("Set Location").clicked() {
+                                            if let Some(path) = rfd::FileDialog::new()
+                                                .set_directory(&session.data_dir)
+                                                .pick_folder()
+                                            {
+                                                session.data_dir = path;
+                                                flush_configs = true;
+
+                                            }
+                                        }
+
+                                        ui.monospace(session.data_dir.display().to_string())
+                                            .on_hover_text("Game saves and save states are located here")
+                                    },
+                                );
+                            });
+                    }
+
                     if session.set_image_dir {
                         egui::Window::new("Choose Image File Location")
                             .open(&mut session.set_image_dir)
@@ -598,6 +635,8 @@ async fn main() -> Result<(), Error> {
                                                 .pick_folder()
                                             {
                                                 session.image_dir = path;
+                                                flush_configs = true;
+
                                             }
                                         }
 
@@ -606,6 +645,11 @@ async fn main() -> Result<(), Error> {
                                     },
                                 );
                             });
+                    }
+
+                    // will flush other things too but good enough than the directories
+                    if flush_configs {
+                        let _ = session.save_configs();
                     }
 
                     let mut toggle_requested = false;

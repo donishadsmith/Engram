@@ -19,7 +19,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use shared::traits::BitOps;
+use shared::{config::system_dir, traits::BitOps};
 
 // https://github.com/visualboyadvance-m/visualboyadvance-m/issues/1187; magic string = SIIRTC_V001; confirmed in rom dump of emerical and megaman 4.5;
 const SEIKO_RTC: &'static [u8; 11] = b"SIIRTC_V001";
@@ -114,7 +114,7 @@ impl GamePak {
     pub fn load(rom_path: PathBuf) -> Result<Self, Error> {
         let rom = std::fs::read(&rom_path)?;
 
-        let sav_path = rom_path.with_extension("sav");
+        let sav_path = system_dir("gba", "saves")?.join(rom_path.with_extension("sav"));
         let mut backup_chip = detect_save_type(&rom).to_enum();
         Self::read_sav(&sav_path, &mut backup_chip)?;
         let header = rom

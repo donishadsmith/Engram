@@ -16,7 +16,8 @@ use crate::components::{
 use shared::{
     Emulator, EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
-    constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL},
+    config::system_dir,
+    constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL, SAVE_STATE_SLOTS},
     render::{Frame, Screen},
     script::ScriptEngine,
 };
@@ -42,6 +43,7 @@ pub struct GameBoySession {
     fps_frames: u64,
     fps: f64,
     menu_height: f32,
+    state_dir: PathBuf,
 }
 
 impl GameBoySession {
@@ -57,6 +59,7 @@ impl GameBoySession {
         );
         let frame_period = Duration::from_secs_f64(70224.0 / GB_CLOCK_SPEED);
         let frame_deadline = Instant::now() + frame_period;
+        let state_dir = system_dir("gb", "states")?;
 
         Ok(Self {
             audio,
@@ -70,6 +73,7 @@ impl GameBoySession {
             fps_frames: 0,
             fps: 0.0,
             menu_height: 0.0,
+            state_dir,
         })
     }
 
@@ -90,6 +94,21 @@ impl GameBoySession {
             .execute(&mut self.gameboy, EmulatorId::Gb, true);
 
         self.screen.update(&mut self.gameboy.cpu.bus.ppu.frontend);
+    }
+
+    fn state_path(&self, slot: usize) -> Result<PathBuf, Error> {
+        let rom_stem = self
+            .gameboy
+            .cpu
+            .bus
+            .gamepak
+            .sav_path
+            .file_stem()
+            .ok_or_else(|| Error::other("ROM path has no file name"))?;
+
+        Ok(self
+            .state_dir
+            .join(format!("{}.ss{slot}", rom_stem.to_string_lossy())))
     }
 
     fn draw(&mut self) {
@@ -299,48 +318,22 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn save_state(&mut self, slot: usize) -> Result<(), Error> {
-        let state_path = self
-            .gameboy
-            .cpu
-            .bus
-            .gamepak
-            .sav_path
-            .with_extension(format!("ss{slot}"));
-        let tmp_path = state_path.with_extension("tmp");
+        let state_path = self.state_path(slot)?;
+        let tmp_path = state_path.with_extension(format!("ss{slot}.tmp"));
+
         write(&tmp_path, self.gameboy.save_state(STATE_MAGIC_NAME)?)?;
         rename(&tmp_path, &state_path)
     }
 
     fn load_state(&mut self, slot: usize) -> Result<(), Error> {
-        let state_path = self
-            .gameboy
-            .cpu
-            .bus
-            .gamepak
-            .sav_path
-            .with_extension(format!("ss{slot}"));
-        let bytes = read(state_path)?;
+        let bytes = read(self.state_path(slot)?)?;
         self.gameboy.load_state(&bytes)
     }
 
     fn current_save_states(&self) -> Vec<Option<PathBuf>> {
-        let mut save_states = Vec::with_capacity(5);
-        for slot in 1..6 {
-            let state_path = self
-                .gameboy
-                .cpu
-                .bus
-                .gamepak
-                .sav_path
-                .with_extension(format!("ss{slot}"));
-            if state_path.exists() {
-                save_states.push(Some(state_path));
-            } else {
-                save_states.push(None);
-            }
-        }
-
-        save_states
+        (1..=SAVE_STATE_SLOTS)
+            .map(|slot| self.state_path(slot).ok().filter(|path| path.exists()))
+            .collect()
     }
 
     fn get_fps(&self) -> f64 {

@@ -1,4 +1,4 @@
-use dirs::{config_dir, picture_dir};
+use dirs::{config_dir, data_dir, picture_dir};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -29,6 +29,7 @@ pub struct Config {
     pub gif_settings: BTreeMap<String, u8>,
     pub display: Display,
     pub show_fps: bool,
+    pub data_dir: Option<String>,
 }
 
 fn get_config_path() -> PathBuf {
@@ -42,6 +43,21 @@ fn get_picture_path() -> PathBuf {
     picture_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
+fn get_data_path() -> PathBuf {
+    data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("engram")
+}
+
+pub fn system_dir(system: &str, kind: &str) -> Result<PathBuf, Error> {
+    let dir = PathBuf::from(load_config().data_dir.unwrap())
+        .join(system)
+        .join(kind);
+    create_dir_all(&dir)?;
+
+    Ok(dir)
+}
+
 pub fn load_config() -> Config {
     //dbg!(get_config_path());
     let mut config: Config = read_to_string(get_config_path())
@@ -51,6 +67,10 @@ pub fn load_config() -> Config {
 
     if config.image_dir.is_none() {
         config.image_dir = Some(get_picture_path().into_os_string().into_string().unwrap())
+    }
+
+    if config.data_dir.is_none() {
+        config.data_dir = Some(get_data_path().into_os_string().into_string().unwrap())
     }
 
     config

@@ -44,7 +44,9 @@ pub struct Session {
     pub rom_path: Option<PathBuf>,
     pub gif: GifRecorder,
     pub image_dir: PathBuf,
+    pub data_dir: PathBuf,
     pub set_image_dir: bool,
+    pub set_data_dir: bool,
     pub key_bindings: KeyBindings,
     pub show_key_bindings: bool,
     pub show_hotkeys: bool,
@@ -86,10 +88,12 @@ impl Session {
             gif: GifRecorder::new(gif_settings),
             key_bindings: KeyBindings::new().load_keys(&config),
             image_dir: PathBuf::from(config.image_dir.unwrap()),
+            data_dir: PathBuf::from(config.data_dir.unwrap()),
             show_key_bindings: false,
             show_hotkeys: false,
             open_gif_settings: false,
             set_image_dir: false,
+            set_data_dir: false,
             master_volume,
             solar_level,
             last_debug_page: initialize_debug_hashmap(),
@@ -224,6 +228,13 @@ impl Session {
             hotkeys: save_keys.hotkeys,
             image_dir: Some(
                 self.image_dir
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
+            ),
+            data_dir: Some(
+                self.data_dir
                     .clone()
                     .into_os_string()
                     .into_string()
