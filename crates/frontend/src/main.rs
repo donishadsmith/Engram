@@ -5,7 +5,10 @@ pub mod utils;
 
 use crate::{
     session::{InputSource, Session},
-    utils::{bindings_grid, detect_state_key, file_dialog, shift_key_down, slot_label},
+    utils::{
+        bindings_grid, detect_state_key, file_dialog, load_slots_with_toast, save_slots_with_toast,
+        shift_key_down, slot_label,
+    },
 };
 use egui::FontDefinitions;
 use egui_macroquad;
@@ -14,6 +17,7 @@ use macroquad::prelude::*;
 use shared::{
     EmulatorState,
     config::load_config,
+    constants::SAVE_STATE_SLOTS,
     editor::super_key_down,
     input::{
         enums::{Hotkeys, Input, InputType, KeyId},
@@ -188,30 +192,20 @@ async fn main() -> Result<(), Error> {
                                     ui.close_menu();
                                 }
 
-                                let save_states = emulator.current_save_states();
                                 ui.menu_button(format!("{}  Save State", icons::FLOPPY_DISK), |ui| {
-                                    for (mut slot, state) in save_states.iter().enumerate() {
-                                        slot += 1;
-                                        let (state_text, exists) = slot_label(state, slot, "Shift");
+                                    for slot in 1..=SAVE_STATE_SLOTS {
+                                        let (state_text, _) = slot_label(emulator, slot, "Shift");
                                         if ui.add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
-                                            let toast_text = format!("Save state {slot}");
-                                            match emulator.save_state(slot) {
-                                                Ok(()) => session.toasts.success(if exists {format!("{} overwritten", toast_text)} else {format!("{} saved", toast_text)}),
-                                                Err(err) => session.toasts.error(format!("Save state {slot} failed: {err}")),
-                                            };
+                                            save_slots_with_toast(emulator, &mut session.toasts, slot);
                                         }
                                     }
                                 });
 
                                 ui.menu_button(format!("{}  Load State", icons::FILE_ARROW_UP), |ui| {
-                                    for (mut slot, state) in save_states.iter().enumerate() {
-                                        slot += 1;
-                                        let (state_text, exists) = slot_label(state, slot, "Ctrl");
-                                        if ui.add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() && exists {
-                                            match emulator.load_state(slot) {
-                                                Ok(()) => session.toasts.success(format!("State {slot} loaded")),
-                                                Err(err) => session.toasts.error(format!("State {slot} failed to load: {err}")),
-                                            };
+                                    for slot in 1..=SAVE_STATE_SLOTS {
+                                        let (state_text, exists) = slot_label(emulator, slot, "Ctrl");
+                                        if ui.add_enabled(exists, egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
+                                           load_slots_with_toast(emulator, &mut session.toasts, slot);
                                         }
                                     }
                                 });
@@ -687,25 +681,15 @@ async fn main() -> Result<(), Error> {
                                 }
                             }
 
-                            if shift_key_down() && let Some(mut slot) = detect_state_key() {
+                            if shift_key_down() && let Some(slot) = detect_state_key() {
                                 if let Some(emulator) = &mut session.emulator {
-                                    let exists = emulator.current_save_states()[slot].is_some();
-                                    slot += 1;
-                                    let toast_text = format!("Save state {slot}");
-                                    match emulator.save_state(slot) {
-                                        Ok(()) => session.toasts.success(if exists {format!("{} overwritten", toast_text)} else {format!("{} saved", toast_text)}),
-                                        Err(err) => session.toasts.error(format!("Save state {slot} failed: {err}")),
-                                    };
+                                    save_slots_with_toast(emulator, &mut session.toasts, slot);
                                 }
                             }
 
-                            if super_key_down() && let Some(mut slot) = detect_state_key()  {
+                            if super_key_down() && let Some(slot) = detect_state_key()  {
                                 if let Some(emulator) = &mut session.emulator {
-                                    slot += 1;
-                                    match emulator.load_state(slot) {
-                                        Ok(()) => session.toasts.success(format!("State {slot} loaded")),
-                                        Err(err) => session.toasts.error(format!("State {slot} failed to load: {err}")),
-                                    };
+                                    load_slots_with_toast(emulator, &mut session.toasts, slot);
                                 }
                             }
                         }
@@ -744,7 +728,7 @@ async fn main() -> Result<(), Error> {
                         if let Some(emulator) = &session.emulator {
                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
                                 Ok(_) => session.toasts.success("GIF recording started"),
-                                Err(_) => session.toasts.success("GIF failed to start"),
+                                Err(_) => session.toasts.error("GIF failed to start"),
                             };
                         }
 
@@ -919,7 +903,7 @@ async fn main() -> Result<(), Error> {
                                         if emulator.frame_ready() {
                                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
                                                 Ok(_) => session.toasts.success("GIF recording started"),
-                                                Err(_) => session.toasts.success("GIF failed to start"),
+                                                Err(_) => session.toasts.error("GIF failed to start"),
                                             };
 
 
@@ -951,21 +935,8 @@ async fn main() -> Result<(), Error> {
                                     session.state = EmulatorState::Running;
                                     session.toasts.success("Emulator is running");
                                 }
-                                ScriptRequest::SaveState(slot) => {
-                                    let index = slot - 1;
-                                    let exists = emulator.current_save_states()[index].is_some();
-                                    let toast_text = format!("Save state {slot}");
-                                    match emulator.save_state(slot) {
-                                        Ok(()) => session.toasts.success(if exists {format!("{} overwritten", toast_text)} else {format!("{} saved", toast_text)}),
-                                        Err(err) => session.toasts.error(format!("Save state {slot} failed: {err}")),
-                                    };
-                                }
-                                ScriptRequest::LoadState(slot) => {
-                                    match emulator.load_state(slot) {
-                                        Ok(()) => session.toasts.success(format!("State {slot} loaded")),
-                                        Err(err) => session.toasts.error(format!("State {slot} failed to load: {err}")),
-                                    };
-                                }
+                                ScriptRequest::SaveState(slot) => save_slots_with_toast(emulator, &mut session.toasts, slot),
+                                ScriptRequest::LoadState(slot) => load_slots_with_toast(emulator, &mut session.toasts, slot)
                             }
                         }
 

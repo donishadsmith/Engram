@@ -1,8 +1,9 @@
 use chrono::{DateTime, Local};
+use egui_notify::Toasts;
 use macroquad::input::{KeyCode, get_keys_pressed, is_key_down};
 use rfd::FileDialog;
 use shared::{
-    EmulatorId,
+    EmulatorId, EmulatorSession,
     debug::DebugPage,
     input::{
         KeyBindings,
@@ -93,11 +94,18 @@ pub fn detect_state_key() -> Option<usize> {
         boolean_arr[index] = get_keys_pressed().contains(key)
     }
 
-    boolean_arr.iter().rposition(|&boolean| boolean)
+    boolean_arr
+        .iter()
+        .rposition(|&boolean| boolean)
+        .and_then(|slot| Some(slot + 1))
 }
 
-pub fn slot_label(path: &Option<PathBuf>, slot: usize, control_key: &str) -> (String, bool) {
-    let Some(path) = path else {
+pub fn slot_label(
+    emulator: &mut Box<dyn EmulatorSession>,
+    slot: usize,
+    control_key: &str,
+) -> (String, bool) {
+    let Some(path) = get_state(emulator, slot) else {
         return (
             format!(
                 "Slot {slot}:  empty ({control_key}+{})",
@@ -128,4 +136,37 @@ pub fn slot_label(path: &Option<PathBuf>, slot: usize, control_key: &str) -> (St
             false,
         ),
     }
+}
+
+pub fn get_state(emulator: &mut Box<dyn EmulatorSession>, slot: usize) -> Option<PathBuf> {
+    emulator.current_save_states().remove(slot - 1)
+}
+
+pub fn save_slots_with_toast(
+    emulator: &mut Box<dyn EmulatorSession>,
+    toasts: &mut Toasts,
+    slot: usize,
+) {
+    match emulator.save_state(slot) {
+        Ok(()) => toasts.success(format!(
+            "Save state {slot} {}",
+            if get_state(emulator, slot).is_some() {
+                "overwritten"
+            } else {
+                "saved"
+            }
+        )),
+        Err(err) => toasts.error(format!("Save state {slot} failed: {err}")),
+    };
+}
+
+pub fn load_slots_with_toast(
+    emulator: &mut Box<dyn EmulatorSession>,
+    toasts: &mut Toasts,
+    slot: usize,
+) {
+    match emulator.load_state(slot) {
+        Ok(()) => toasts.success(format!("State {slot} loaded")),
+        Err(err) => toasts.error(format!("State {slot} failed to load: {err}")),
+    };
 }

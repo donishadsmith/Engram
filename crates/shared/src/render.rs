@@ -112,8 +112,11 @@ impl Screen {
     }
 
     pub fn draw(&mut self, frame: &Frame, menu_height: f32) {
-        let screen_width = screen_width();
-        let screen_height = screen_height() - menu_height;
+        // completely forgot to account for dpi!!
+        let dpi = screen_dpi_scale();
+        let menu_height = (menu_height * dpi).round();
+        let screen_width = (screen_width() * dpi).round();
+        let screen_height = (screen_height() * dpi).round() - menu_height;
 
         let (width, height) = match frame.scaling_method {
             ScalingMethod::Integer => {
@@ -128,20 +131,20 @@ impl Screen {
                 let aspect_ratio = aspect_width as f32 / aspect_heigth as f32;
 
                 if (screen_width / screen_height) > aspect_ratio {
-                    (screen_height * aspect_ratio, screen_height)
+                    ((screen_height * aspect_ratio).round(), screen_height)
                 } else {
-                    (screen_width, screen_width / aspect_ratio)
+                    (screen_width, (screen_width / aspect_ratio).round())
                 }
             }
         };
 
         draw_texture_ex(
             &self.texture,
-            (screen_width - width) / 2.0,
-            menu_height + (screen_height - height) / 2.0,
+            ((screen_width - width) / 2.0).floor() / dpi,
+            (menu_height + ((screen_height - height) / 2.0).floor()) / dpi,
             WHITE,
             DrawTextureParams {
-                dest_size: Some(vec2(width, height)),
+                dest_size: Some(vec2(width / dpi, height / dpi)),
                 ..Default::default()
             },
         );
