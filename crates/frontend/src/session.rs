@@ -270,6 +270,7 @@ impl Session {
         self.state = EmulatorState::Running;
 
         self.reset_fps();
+        self.update_frame_deadline();
     }
 
     pub fn is_paused(&self) -> bool {
@@ -409,6 +410,7 @@ impl Session {
 
             if return_state == EmulatorState::Running {
                 self.reset_fps();
+                self.update_frame_deadline();
             }
         }
     }
@@ -419,6 +421,14 @@ impl Session {
         };
 
         emulator.reset_fps();
+    }
+
+    pub fn update_frame_deadline(&mut self) {
+        let Some(emulator) = self.emulator.as_mut() else {
+            return;
+        };
+
+        emulator.update_frame_deadline();
     }
 
     pub fn detect_input_source(

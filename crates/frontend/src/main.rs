@@ -869,6 +869,7 @@ async fn main() -> Result<(), Error> {
                         }
                     };
 
+                    let mut apply_run_updates = false;
                     if let Some(emulator) = &mut session.emulator
                         && let Some(script_engine) = emulator.script_engine()
                     {
@@ -933,6 +934,7 @@ async fn main() -> Result<(), Error> {
                                 }
                                 ScriptRequest::Resume => {
                                     session.state = EmulatorState::Running;
+                                    apply_run_updates = true;
                                     session.toasts.success("Emulator is running");
                                 }
                                 ScriptRequest::SaveState(slot) => save_slots_with_toast(emulator, &mut session.toasts, slot),
@@ -962,6 +964,11 @@ async fn main() -> Result<(), Error> {
                                 }
                             }
                         }
+                    }
+
+                    if apply_run_updates {
+                        session.reset_fps();
+                        session.update_frame_deadline();
                     }
                 });
 

@@ -156,6 +156,8 @@ pub trait EmulatorSession {
     fn reset_fps(&mut self);
 
     fn set_top_height(&mut self, menu_height: f32);
+
+    fn update_frame_deadline(&mut self);
 }
 
 pub trait ScriptTarget: Emulator {

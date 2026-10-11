@@ -349,4 +349,8 @@ impl EmulatorSession for GameBoySession {
     fn set_top_height(&mut self, menu_height: f32) {
         self.menu_height = menu_height;
     }
+
+    fn update_frame_deadline(&mut self) {
+        self.frame_deadline = Instant::now() + self.frame_period
+    }
 }
