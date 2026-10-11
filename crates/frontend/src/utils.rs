@@ -45,8 +45,8 @@ pub fn initialize_debug_hashmap() -> HashMap<EmulatorId, DebugPage> {
 
 pub fn file_dialog() -> Option<PathBuf> {
     FileDialog::new()
-        .set_title("Select ROM")
-        .add_filter("ROMs", &["gb", "gbc", "gba"])
+        .set_title("Select a ROM")
+        .add_filter("Compatible ROMs", &["gb", "gbc", "gba"])
         .pick_file()
 }
 
