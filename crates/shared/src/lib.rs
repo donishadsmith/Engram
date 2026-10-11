@@ -147,7 +147,7 @@ pub trait EmulatorSession {
 
     fn load_state(&mut self, slot: usize) -> Result<(), Error>;
 
-    fn save_state(&mut self, slot: usize) -> Result<(), Error>;
+    fn save_state(&self, slot: usize) -> Result<(), Error>;
 
     fn current_save_states(&self) -> Vec<Option<PathBuf>>;
 

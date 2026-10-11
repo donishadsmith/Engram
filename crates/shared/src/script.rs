@@ -1,5 +1,6 @@
 use crate::{
     EmulatorId, EmulatorState, ScriptTarget,
+    constants::SAVE_STATE_SLOTS,
     enums::{FetchSource, Width},
     input::constants::DEFAULT_GBA_KEYS,
 };
@@ -55,6 +56,7 @@ check_watchpoints()
 Emulator controls:
 pause()  resume()  step_instruction()  step_frame()  reset()  clear_output()
 screenshot()  start_gif()  stop_gif()  save_state(slot)  load_state(slot)
+delete_state(slot)
 
 - `slot` is a value from 1 to 5
 
@@ -96,6 +98,7 @@ pub enum ScriptRequest {
     Resume,
     SaveState(usize),
     LoadState(usize),
+    DeleteState(usize),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -718,27 +721,24 @@ impl ScriptEngine {
                 || ScriptRequest::StopGif,
             )?;
 
-            let save_state = scope.create_function(|_, slot: usize| {
-                if slot < 1 || slot > 5 {
-                    output.borrow_mut().push(mlua::Error::runtime("Only save states 1-5 can be used").to_string());
-                } else {
-                    requests.borrow_mut().push(ScriptRequest::SaveState(slot));
-                }
+            let state = |name: &'static str, request: fn(usize) -> ScriptRequest| {
+                let requests = &requests;
+                let output = &output;
+                let function = scope.create_function(move |_, slot: usize| {
+                if  !(1..=SAVE_STATE_SLOTS).contains(&slot) {
+                        output.borrow_mut().push(mlua::Error::runtime(format!("Only save states 1-{SAVE_STATE_SLOTS} can be used")).to_string());
+                    } else {
+                        requests.borrow_mut().push(request(slot));
+                    }
 
-                Ok(())
-            })?;
-            lua.globals().set("save_state", save_state)?;
+                    Ok(())
+                })?;
+                lua.globals().set(name, function)
+            };
 
-            let load_state = scope.create_function(|_, slot: usize| {
-                if slot < 1 || slot > 5 {
-                    output.borrow_mut().push(mlua::Error::runtime("Only save states 1-5 can be used").to_string());
-                } else {
-                    requests.borrow_mut().push(ScriptRequest::LoadState(slot));
-                }
-
-                Ok(())
-            })?;
-            lua.globals().set("load_state", load_state)?;
+            state("save_state", ScriptRequest::SaveState)?;
+            state("load_state", ScriptRequest::LoadState)?;
+            state("delete_state", ScriptRequest::DeleteState)?;
 
             if *step_done && let Some(thread) = running.take() {
                 *step_done = false;

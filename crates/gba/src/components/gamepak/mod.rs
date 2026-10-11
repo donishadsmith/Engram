@@ -112,9 +112,9 @@ pub struct GamePak {
 
 impl GamePak {
     pub fn load(rom_path: PathBuf) -> Result<Self, Error> {
-        let rom = std::fs::read(&rom_path)?;
-
-        let sav_path = system_dir("gba", "saves")?.join(rom_path.with_extension("sav"));
+        let rom = read(&rom_path)?;
+        let sav_path =
+            system_dir("gba", "saves")?.join(rom_path.with_extension("sav").file_name().unwrap());
         let mut backup_chip = detect_save_type(&rom).to_enum();
         Self::read_sav(&sav_path, &mut backup_chip)?;
         let header = rom

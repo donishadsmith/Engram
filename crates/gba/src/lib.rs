@@ -336,7 +336,7 @@ impl EmulatorSession for GBASession {
         self.gba.cpu.resume_from = Some(self.gba.cpu.next_executing_address());
     }
 
-    fn save_state(&mut self, slot: usize) -> Result<(), Error> {
+    fn save_state(&self, slot: usize) -> Result<(), Error> {
         let state_path = self.state_path(slot)?;
         let tmp_path = state_path.with_extension(format!("ss{slot}.tmp"));
 

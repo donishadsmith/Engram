@@ -23,7 +23,7 @@ use shared::{
     utils::{error_message, zero_arr},
 };
 
-// "RTC" in ASCII
+// "RTC1" in ASCII
 const MAGIC_NUMBERS: [u8; 4] = [0x52, 0x54, 0x43, 0x31];
 // 4 magic numebers for Mbc3 with timer enabled + 18 RTC states = 22 bytes before the RAM save data
 const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RtcSaveState::BYTE_SIZE;
@@ -292,7 +292,8 @@ impl GamePak {
         }
 
         let header = Header::new(&rom);
-        let sav_path = system_dir("gb", "saves")?.join(rom_path.with_extension("sav"));
+        let sav_path =
+            system_dir("gb", "saves")?.join(rom_path.with_extension("sav").file_name().unwrap());
         let (ram, rtc_save_state) = Self::read_sav(&sav_path, &header)?;
         let mbc = MbcType::byte_to_struct(rom, ram, rtc_save_state, header.has_rumble);
 

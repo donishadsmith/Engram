@@ -6,14 +6,15 @@ pub mod utils;
 use crate::{
     session::{InputSource, Session},
     utils::{
-        bindings_grid, detect_state_key, file_dialog, load_slots_with_toast, save_slots_with_toast,
-        shift_key_down, slot_label,
+        bindings_grid, delete_all_slots_with_toast, delete_slots_lua, delete_slots_with_toast,
+        detect_state_key, file_dialog, load_slots_lua, load_slots_with_toast, save_slots_lua,
+        save_slots_with_toast, shift_key_down, slot_label,
     },
 };
 use egui::FontDefinitions;
 use egui_macroquad;
 use egui_phosphor::regular as icons;
-use macroquad::prelude::*;
+use macroquad::{miniquad::conf::Platform, prelude::*};
 use shared::{
     EmulatorState,
     config::load_config,
@@ -43,6 +44,11 @@ fn conf() -> Conf {
         window_height: display.height.unwrap_or(900),
         fullscreen: display.fullscreen,
         high_dpi: true,
+        // apparantly vsync is kinda sorta togglelable in miniquad: https://docs.rs/miniquad/0.4.11/miniquad/conf/struct.Platform.html
+        platform: Platform {
+            swap_interval: Some(0),
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
@@ -210,6 +216,24 @@ async fn main() -> Result<(), Error> {
                                     }
                                 });
 
+                                ui.menu_button(format!("{}  Delete State", icons::TRASH), |ui| {
+                                    for slot in 1..=SAVE_STATE_SLOTS {
+                                        let (state_text, exists) = slot_label(emulator, slot, "Del");
+                                        if ui.add_enabled(exists, egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
+                                           delete_slots_with_toast(emulator, &mut session.toasts, slot);
+                                        }
+                                    }
+
+                                    ui.separator();
+                                    if ui.add_enabled(
+                                        emulator.current_save_states().iter().any(|x| x.is_some()),
+                                        egui::Button::new("Delete All States").wrap_mode(
+                                            egui::TextWrapMode::Extend
+                                        )).highlight().clicked() {
+                                        delete_all_slots_with_toast(emulator,  &mut session.toasts)
+                                    }
+                                });
+
                                 let solar_sensor = emulator.solar_sensor();
                                 ui.add_enabled_ui(solar_sensor.is_some(), |ui| {
                                     ui.menu_button(format!("{}  Solar", icons::SUN), |ui| {
@@ -226,7 +250,7 @@ async fn main() -> Result<(), Error> {
 
                                 if ui
                                     .add(
-                                        egui::Button::new(format!("{}  Key Bindings", icons::KEYBOARD))
+                                        egui::Button::new(format!("{}  Key/Controller Bindings", icons::KEYBOARD))
                                             .wrap_mode(egui::TextWrapMode::Extend),
                                     )
                                     .clicked()
@@ -301,9 +325,17 @@ async fn main() -> Result<(), Error> {
                             }
                         });
 
+                        ui.horizontal(|ui|{
+                            ui.label(egui::RichText::new(format!("{}  Show Notifications", icons::BELL_RINGING)).color(
+                                ui.visuals().widgets.inactive.fg_stroke.color
+                            ));
+
+                            ui.checkbox(&mut session.show_notifications, "");
+                        });
+
                         if ui
                             .add(
-                                egui::Button::new(format!("{}  Choose Data Save Location", icons::FOLDER))
+                                egui::Button::new(format!("{}  Choose Save Data Location", icons::FOLDER))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             )
                             .clicked()
@@ -645,12 +677,12 @@ async fn main() -> Result<(), Error> {
                     let mut toggle_requested = false;
 
                     if !session.show_hotkeys {
-                        if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen))
+                        if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete)) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen))
                         {
                             session.toggle_fullscreen()
                         }
 
-                        if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
+                        if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete)) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                         {
                             session
                                 .toasts
@@ -659,16 +691,16 @@ async fn main() -> Result<(), Error> {
                             screenshot(session.get_image_path());
                         }
 
-                        if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Debugger)) {
+                        if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete)) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Debugger)) {
                             toggle_requested = true;
                         }
 
                         if session.emulator.is_some() {
-                            if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua)) {
+                            if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete)) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua)) {
                                 session.lua_editor.opened = !session.lua_editor.opened;
                             }
 
-                            if !(shift_key_down() || super_key_down()) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
+                            if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete)) && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) {
                                 if session.gif.is_recording() {
                                     session.gif.stop();
 
@@ -690,6 +722,12 @@ async fn main() -> Result<(), Error> {
                             if super_key_down() && let Some(slot) = detect_state_key()  {
                                 if let Some(emulator) = &mut session.emulator {
                                     load_slots_with_toast(emulator, &mut session.toasts, slot);
+                                }
+                            }
+
+                            if is_key_down(KeyCode::Delete) && let Some(slot) = detect_state_key()  {
+                                if let Some(emulator) = &mut session.emulator {
+                                    delete_slots_with_toast(emulator, &mut session.toasts, slot);
                                 }
                             }
                         }
@@ -887,24 +925,23 @@ async fn main() -> Result<(), Error> {
                                 ScriptRequest::Pause => {
                                     // cant reuse functions for pause and running due to a classic borrow checker no no
                                     session.state = EmulatorState::Paused;
-                                    session
-                                        .toasts
-                                        .info("Emulator is paused")
-                                        ;
+                                    session.lua_editor.push_output(vec!["emulator is paused".to_string()]);
                                 }
                                 ScriptRequest::Screenshot => {
                                     screenshot(session.image_dir.clone());
-                                    session
-                                        .toasts
-                                        .success("Screenshot saved")
-                                        ;
+                                    session.lua_editor.push_output(vec!["screenshot saved".to_string()]);
                                 },
                                 ScriptRequest::StartGif => {
                                     if !session.gif.is_recording() {
                                         if emulator.frame_ready() {
                                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
-                                                Ok(_) => session.toasts.success("GIF recording started"),
-                                                Err(_) => session.toasts.error("GIF failed to start"),
+                                                Ok(_) => session.lua_editor.push_output(vec!["GIF recording started".to_string()]),
+                                                Err(_) => session.lua_editor.push_output(vec![
+                                               mlua::Error::RuntimeError(
+                                                    "GIF failed to start".to_string()
+                                                )
+                                                .to_string(),
+                                            ])
                                             };
 
 
@@ -920,12 +957,7 @@ async fn main() -> Result<(), Error> {
                                 }
                                 ScriptRequest::StopGif => {
                                     if session.gif.is_recording() {
-                                        session.gif.stop();
-
-                                        session
-                                        .toasts
-                                        .success("GIF saved")
-                                        ;
+                                       session.lua_editor.push_output(vec!["GIF saved".to_string()]);
                                     }
                                 }
                                 ScriptRequest::Reset => session.state = EmulatorState::Reset,
@@ -935,10 +967,32 @@ async fn main() -> Result<(), Error> {
                                 ScriptRequest::Resume => {
                                     session.state = EmulatorState::Running;
                                     apply_run_updates = true;
-                                    session.toasts.success("Emulator is running");
+                                    session.lua_editor.push_output(vec!["emulator is running".to_string()]);
                                 }
-                                ScriptRequest::SaveState(slot) => save_slots_with_toast(emulator, &mut session.toasts, slot),
-                                ScriptRequest::LoadState(slot) => load_slots_with_toast(emulator, &mut session.toasts, slot)
+                                ScriptRequest::SaveState(slot) => {
+                                    let (mut message, success ) = save_slots_lua(emulator, slot, true);
+                                    if !success {
+                                        message = mlua::Error::RuntimeError(message).to_string();
+                                    }
+
+                                    session.lua_editor.push_output(vec![message]);
+                                },
+                                ScriptRequest::LoadState(slot) => {
+                                    let (mut message, success ) = load_slots_lua(emulator, slot, true);
+                                    if !success {
+                                        message = mlua::Error::RuntimeError(message).to_string();
+                                    }
+
+                                    session.lua_editor.push_output(vec![message]);
+                                },
+                                ScriptRequest::DeleteState(slot) => {
+                                    let (mut message, success ) = delete_slots_lua(emulator, slot, true);
+                                    if !success {
+                                        message = mlua::Error::RuntimeError(message).to_string();
+                                    }
+
+                                    session.lua_editor.push_output(vec![message]);
+                                }
                             }
                         }
 
@@ -972,7 +1026,13 @@ async fn main() -> Result<(), Error> {
                     }
                 });
 
-                session.toasts.show(egui_ctx);
+
+                // dont feel like going back and conditionally adding toast messages so clearing at the end will have to do
+                if session.show_notifications {
+                    session.toasts.show(egui_ctx);
+                } else {
+                    session.toasts.dismiss_all_toasts();
+                }
             });
 
             if let Some(emulator) = session.emulator.as_mut() {

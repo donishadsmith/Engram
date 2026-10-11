@@ -66,6 +66,7 @@ pub struct Session {
     pub startup_deadline: Option<Instant>,
     pub paused_due_to_minimize: bool,
     pub show_fps: bool,
+    pub show_notifications: bool,
 }
 
 impl Session {
@@ -109,6 +110,7 @@ impl Session {
             startup_deadline: Some(Instant::now() + Duration::from_secs(1)),
             paused_due_to_minimize: false,
             show_fps,
+            show_notifications: config.show_notifications.unwrap_or(true),
         }
     }
 
@@ -245,6 +247,7 @@ impl Session {
             gif_settings: self.gif.settings(),
             display: self.display,
             show_fps: self.show_fps,
+            show_notifications: Some(self.show_notifications),
         };
 
         save_config(&config)
