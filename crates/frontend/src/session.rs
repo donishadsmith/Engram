@@ -65,6 +65,7 @@ pub struct Session {
     pub show_fps: bool,
     pub show_notifications: bool,
     pub destructive_action_popup: bool,
+    pub skip_toast: bool,
 }
 
 impl Session {
@@ -108,6 +109,7 @@ impl Session {
             show_notifications: config.show_notifications.unwrap_or(true),
             // realizing that my poor and impulsive cotrol over a mouse requires this
             destructive_action_popup: config.destructive_action_popup.unwrap_or(false),
+            skip_toast: false,
         }
     }
 

@@ -92,8 +92,13 @@ impl LuaEditor {
                             }
                         });
 
-                        if ui.button(format!("{}  Run", icons::PLAY)).clicked() {
+                        if ui.button(format!("{}  Run (LeftShift+Enter)", icons::PLAY)).clicked() {
                             run = true;
+                        }
+
+                        // getting tired of having to click run
+                        if is_key_down(KeyCode::LeftShift) && is_key_pressed(KeyCode::Enter) {
+                            run = true
                         }
                     });
                 });

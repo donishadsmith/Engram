@@ -41,6 +41,7 @@ pub enum DestructiveAction {
     Overwrite(usize),
     Delete(usize),
     DeleteAll,
+    Reset,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -60,6 +61,7 @@ pub struct UiState {
     pub open_gif_settings: bool,
     pub set_dirs: bool,
     pub start_recording: bool,
+    pub debug_toggled: bool,
 }
 
 impl UiState {
@@ -75,6 +77,7 @@ impl UiState {
             open_gif_settings: false,
             set_dirs: false,
             start_recording: false,
+            debug_toggled: false,
         }
     }
 }
