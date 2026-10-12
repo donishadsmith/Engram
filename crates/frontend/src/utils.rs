@@ -289,3 +289,14 @@ pub fn delete_all_slots_with_toast(emulator: &mut Box<dyn EmulatorSession>, toas
         _ => toasts.success(format!("Number of save states deleted: {n_deleted}")),
     };
 }
+
+pub fn thin_separator(ui: &mut egui::Ui) {
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 6.0), egui::Sense::hover());
+
+    ui.painter().hline(
+        rect.x_range(),
+        rect.center().y,
+        egui::Stroke::new(0.5, ui.visuals().weak_text_color()),
+    );
+}

@@ -3,7 +3,7 @@
 [![Run Tests](https://github.com/donishadsmith/Engram/actions/workflows/test.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/test.yml)
 [![Publish](https://github.com/donishadsmith/Engram/actions/workflows/build.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/build.yml)
 
-A Gameboy Advance & Game Boy/Game Boy Color emulator.
+A Game Boy Advance & Game Boy/Game Boy Color emulator.
 
 <table align="center">
   <tr>

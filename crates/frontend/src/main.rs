@@ -9,7 +9,7 @@ use crate::{
         DestructiveAction, bindings_grid, delete_all_slots_with_toast, delete_slots_lua,
         delete_slots_with_toast, detect_state_key, file_dialog, load_slots_lua,
         load_slots_with_toast, save_slots_lua, save_slots_with_toast, shift_key_down, slot_label,
-        state_exists,
+        state_exists, thin_separator,
     },
 };
 use egui::FontDefinitions;
@@ -191,16 +191,19 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
-                    // TODO: find way to fix primary menu item not open on hover when already cliced on another primary menu item
-                    ui.add_enabled_ui(session.emulator.is_some(), |ui| {
-                        ui.menu_button("Emulation", |ui| {
-                            if let Some(emulator) = &mut session.emulator {
-                                if ui.button(format!("{}  Reset", icons::ARROWS_COUNTER_CLOCKWISE)).clicked() {
-                                    session.state = EmulatorState::Reset;
-                                    ui.close_menu();
-                                }
+                    let has_emulator = session.emulator.is_some();
+                    ui.menu_button("Emulation", |ui| {
+                        if ui
+                            .add_enabled(has_emulator, egui::Button::new(format!("{}  Reset", icons::ARROWS_COUNTER_CLOCKWISE)))
+                            .clicked()
+                        {
+                            session.state = EmulatorState::Reset;
+                            ui.close_menu();
+                        }
 
-                                ui.menu_button(format!("{}  Save State", icons::FLOPPY_DISK), |ui| {
+                        ui.add_enabled_ui(has_emulator, |ui| {
+                            ui.menu_button(format!("{}  Save State", icons::FLOPPY_DISK), |ui| {
+                                if let Some(emulator) = &mut session.emulator {
                                     for slot in 1..=SAVE_STATE_SLOTS {
                                         let (state_text, exists) = slot_label(emulator, slot, "Shift");
                                         if ui.add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
@@ -212,22 +215,30 @@ async fn main() -> Result<(), Error> {
                                             }
                                         }
                                     }
-                                });
+                                }
+                            });
+                        });
 
-                                ui.menu_button(format!("{}  Load State", icons::FILE_ARROW_UP), |ui| {
+                        ui.add_enabled_ui(has_emulator, |ui| {
+                            ui.menu_button(format!("{}  Load State", icons::FILE_ARROW_UP), |ui| {
+                                if let Some(emulator) = &mut session.emulator {
                                     for slot in 1..=SAVE_STATE_SLOTS {
                                         let (state_text, exists) = slot_label(emulator, slot, "Ctrl");
                                         if ui.add_enabled(exists, egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
-                                           load_slots_with_toast(emulator, &mut session.toasts, slot);
+                                            load_slots_with_toast(emulator, &mut session.toasts, slot);
                                         }
                                     }
-                                });
+                                }
+                            });
+                        });
 
-                                ui.menu_button(format!("{}  Delete State", icons::TRASH), |ui| {
+                        ui.add_enabled_ui(has_emulator, |ui| {
+                            ui.menu_button(format!("{}  Delete State", icons::TRASH), |ui| {
+                                if let Some(emulator) = &mut session.emulator {
                                     for slot in 1..=SAVE_STATE_SLOTS {
                                         let (state_text, exists) = slot_label(emulator, slot, "Del");
                                         if ui.add_enabled(exists, egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
-                                            if session.destructive_action_popup && exists {
+                                            if session.destructive_action_popup {
                                                 destructive_action = Some(DestructiveAction::Delete(slot));
                                                 ui.close_menu();
                                             } else {
@@ -237,47 +248,122 @@ async fn main() -> Result<(), Error> {
                                     }
 
                                     ui.separator();
-                                    if ui.add_enabled(
-                                        emulator.current_save_states().iter().any(|x| x.is_some()),
-                                        egui::Button::new("Delete All States").wrap_mode(
-                                            egui::TextWrapMode::Extend
-                                        )).highlight().clicked() {
+
+                                    if ui
+                                        .add_enabled(
+                                            emulator.current_save_states().iter().any(|x| x.is_some()),
+                                            egui::Button::new("Delete All States").wrap_mode(egui::TextWrapMode::Extend),
+                                        )
+                                        .highlight()
+                                        .clicked()
+                                    {
                                         if session.destructive_action_popup {
                                             destructive_action = Some(DestructiveAction::DeleteAll);
                                             ui.close_menu();
                                         } else {
-                                            delete_all_slots_with_toast(emulator,  &mut session.toasts);
+                                            delete_all_slots_with_toast(emulator, &mut session.toasts);
                                         }
                                     }
-                                });
+                                }
+                            });
+                        });
 
-                                let solar_sensor = emulator.solar_sensor();
-                                ui.add_enabled_ui(solar_sensor.is_some(), |ui| {
-                                    ui.menu_button(format!("{}  Solar", icons::SUN), |ui| {
-                                        ui.add(
-                                            egui::Slider::new(&mut session.solar_level, 0..=10)
-                                                .text("Solar sensor level from lowest to highest"),
-                                        );
+                        let solar_sensor = session.emulator.as_mut().and_then(|emulator| emulator.solar_sensor());
+                        ui.add_enabled_ui(solar_sensor.is_some(), |ui| {
+                            ui.menu_button(format!("{}  Solar", icons::SUN), |ui| {
+                                ui.add(
+                                    egui::Slider::new(&mut session.solar_level, 0..=10)
+                                        .text("Solar sensor level from lowest to highest"),
+                                );
 
-                                        if let Some(solar_sensor) = solar_sensor {
-                                            solar_sensor.set_level(session.solar_level);
-                                        }
-                                    }).response.on_disabled_hover_text("Available for ROMs with solar sensing (e.g., Boktai)");
-                                });
+                                if let Some(solar_sensor) = solar_sensor {
+                                    solar_sensor.set_level(session.solar_level);
+                                }
+                            })
+                            .response
+                            .on_disabled_hover_text("Available for ROMs with solar sensing (e.g., Boktai)");
+                        });
 
-                                ui.horizontal(|ui|{
-                                    ui.add_space(2.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(2.0);
 
-                                    ui.label(egui::RichText::new(format!("{}  Show FPS", icons::GAUGE)).color(
-                                        ui.visuals().widgets.inactive.fg_stroke.color
-                                    ));
+                            ui.label(egui::RichText::new(format!("{}  Show FPS", icons::GAUGE)).color(
+                                ui.visuals().widgets.inactive.fg_stroke.color,
+                            ));
 
-                                    ui.add_space(80.0);
+                            ui.add_space(80.0);
 
-                                    ui.checkbox(&mut session.show_fps, "");
-                                });
+                            ui.checkbox(&mut session.show_fps, "");
+                        });
+                    });
+
+                    ui.menu_button("Tools", |ui| {
+                        ui.add_enabled_ui(session.emulator.as_mut().map(|emulator| emulator.script_engine()).is_some() , |ui| {
+                            let keycode = keycode_to_string(
+                                session.key_bindings.get_hotkey_bind(Hotkeys::Lua),
+                            );
+
+                            let text = if session.lua_editor.opened {
+                                format!("Close Lua Editor ({})", keycode)
+                            } else {
+                                format!("Open Lua Editor ({})", keycode)
+                            };
+
+                            if ui
+                                .add(egui::Button::new(format!("{}  {text}", icons::CODE_SIMPLE)).wrap_mode(egui::TextWrapMode::Extend))
+                                .clicked()
+                            {
+                                session.lua_editor.opened = !session.lua_editor.opened;
+                                ui.close_menu();
                             }
                         }).response.on_disabled_hover_text("Accessible when ROM is loaded");
+
+                        let text = format!(
+                            "{}  Screenshot ({})",
+                            icons::CAMERA,
+                            keycode_to_string(
+                                session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot)
+                            )
+                        );
+                        if ui
+                            .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
+                            .clicked()
+                        {
+                            screenshot(session.get_image_path());
+                            session
+                                .toasts
+                                .success("Screenshot saved")
+                                ;
+                            ui.close_menu();
+                        }
+
+                        let keycode =
+                            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
+                        let text = if session.gif.is_recording() {
+                            format!("Stop GIF ({})", keycode)
+                        } else {
+                            format!("Record GIF ({})", keycode)
+                        };
+
+                        if ui
+                            .add(egui::Button::new(format!("{}  {text}", icons::GIF)).wrap_mode(egui::TextWrapMode::Extend))
+                            .clicked()
+                        {
+                            if session.gif.is_recording() {
+                                if session.emulator.is_some() {
+                                    let _ = session.gif.stop();
+                                    // maybe make this more accurate instead of assuming
+                                    session
+                                        .toasts
+                                        .success("GIF saved")
+                                        ;
+                                }
+                            } else {
+                                session.open_gif_settings = true;
+                            }
+
+                            ui.close_menu();
+                        }
                     });
 
                     ui.menu_button("Settings", |ui| {
@@ -289,7 +375,7 @@ async fn main() -> Result<(), Error> {
                         });
 
                         ui.menu_button(format!("{}  Key/Controller Bindings", icons::KEYBOARD), |ui| {
-                            if ui.add(egui::Button::new("GB/GBA").wrap_mode(egui::TextWrapMode::Extend)).clicked() {
+                            if ui.add(egui::Button::new("Game Boy/Game Boy Advance").wrap_mode(egui::TextWrapMode::Extend)).clicked() {
                                 session.show_key_bindings = true;
                                 target_key_id = Some(KeyId::Emulator(EmulatorId::Gba));
                                 ui.close_menu();
@@ -371,12 +457,11 @@ async fn main() -> Result<(), Error> {
 
                         if ui
                             .add(
-                                egui::Button::new(format!("{}  Choose Save Data Location", icons::FOLDER))
+                                egui::Button::new(format!("{}  Choose Data Locations", icons::FOLDER))
                                     .wrap_mode(egui::TextWrapMode::Extend),
-                            )
-                            .on_hover_text("Game saves and save states are located here").clicked()
+                            ).clicked()
                         {
-                            session.set_data_dir = true;
+                            session.set_dirs = true;
                             ui.close_menu();
                         }
 
@@ -570,135 +655,42 @@ async fn main() -> Result<(), Error> {
                         controller_keybinding_tab = KeybindingTab::Keyboard
                     }
 
-                    ui.menu_button("Tools", |ui| {
-                        ui.add_enabled_ui(session.emulator.as_mut().map(|emulator| emulator.script_engine()).is_some() , |ui| {
-                            let keycode = keycode_to_string(
-                                session.key_bindings.get_hotkey_bind(Hotkeys::Lua),
-                            );
-
-                            let text = if session.lua_editor.opened {
-                                format!("Close Lua Editor ({})", keycode)
-                            } else {
-                                format!("Open Lua Editor ({})", keycode)
-                            };
-
-                            if ui
-                                .add(egui::Button::new(format!("{}  {text}", icons::CODE_SIMPLE)).wrap_mode(egui::TextWrapMode::Extend))
-                                .clicked()
-                            {
-                                session.lua_editor.opened = !session.lua_editor.opened;
-                                ui.close_menu();
-                            }
-                        }).response.on_disabled_hover_text("Accessible when ROM is loaded");
-
-                        let text = format!(
-                            "{}  Screenshot ({})",
-                            icons::CAMERA,
-                            keycode_to_string(
-                                session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot)
-                            )
-                        );
-                        if ui
-                            .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
-                            .clicked()
-                        {
-                            screenshot(session.get_image_path());
-                            session
-                                .toasts
-                                .success("Screenshot saved")
-                                ;
-                            ui.close_menu();
-                        }
-
-                        let keycode =
-                            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
-                        let text = if session.gif.is_recording() {
-                            format!("Stop GIF ({})", keycode)
-                        } else {
-                            format!("Record GIF ({})", keycode)
-                        };
-
-                        if ui
-                            .add(egui::Button::new(format!("{}  {text}", icons::GIF)).wrap_mode(egui::TextWrapMode::Extend))
-                            .clicked()
-                        {
-                            if session.gif.is_recording() {
-                                if session.emulator.is_some() {
-                                    let _ = session.gif.stop();
-                                    // maybe make this more accurate instead of assuming
-                                    session
-                                        .toasts
-                                        .success("GIF saved")
-                                        ;
-                                }
-                            } else {
-                                session.open_gif_settings = true;
-                            }
-
-                            ui.close_menu();
-                        }
-
-                        if ui
-                            .add(
-                                egui::Button::new(format!("{}  Choose Image Save Location", icons::FOLDER))
-                                    .wrap_mode(egui::TextWrapMode::Extend),
-                            )
-                            .on_hover_text("GIFs and screenshots are saved here")
-                            .clicked()
-                        {
-                            session.set_image_dir = true;
-                            ui.close_menu();
-                        }
-                    });
-
                     let mut flush_configs = false;
-                    if session.set_data_dir {
-                        egui::Window::new("Choose Data Location")
-                            .open(&mut session.set_data_dir)
+                    if session.set_dirs {
+                        egui::Window::new("Choose Data Locations")
+                            .open(&mut session.set_dirs)
                             .show(egui_ctx, |ui| {
-                                egui::Grid::new("Choose File Location").num_columns(1).show(
-                                    ui,
-                                    |ui| {
-                                        if ui.button("Set Location").clicked() {
-                                            if let Some(path) = rfd::FileDialog::new()
-                                                .set_directory(&session.data_dir)
-                                                .pick_folder()
-                                            {
-                                                session.data_dir = path;
-                                                flush_configs = true;
-
-                                            }
+                                ui.label(egui::RichText::new("Game Saves/Save States").size(16.0).strong());
+                                thin_separator(ui);
+                                ui.horizontal(|ui| {
+                                    if ui.button("Set Location").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new()
+                                            .set_directory(&session.data_dir)
+                                            .pick_folder()
+                                        {
+                                            session.data_dir = path;
+                                            flush_configs = true;
                                         }
+                                    }
+                                    ui.add(egui::Label::new(session.data_dir.display().to_string()).truncate());
+                                });
 
-                                        ui.monospace(session.data_dir.display().to_string())
-                                            .on_hover_text("Game saves and save states are located here")
-                                    },
-                                );
-                            });
-                    }
+                                ui.add_space(8.0);
 
-                    if session.set_image_dir {
-                        egui::Window::new("Choose Image File Location")
-                            .open(&mut session.set_image_dir)
-                            .show(egui_ctx, |ui| {
-                                egui::Grid::new("Choose File Location").num_columns(1).show(
-                                    ui,
-                                    |ui| {
-                                        if ui.button("Set Location").clicked() {
-                                            if let Some(path) = rfd::FileDialog::new()
-                                                .set_directory(&session.image_dir)
-                                                .pick_folder()
-                                            {
-                                                session.image_dir = path;
-                                                flush_configs = true;
-
-                                            }
+                                ui.label(egui::RichText::new("Screenshots/GIFs").size(16.0).strong());
+                                thin_separator(ui);
+                                ui.horizontal(|ui| {
+                                    if ui.button("Set Location").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new()
+                                            .set_directory(&session.image_dir)
+                                            .pick_folder()
+                                        {
+                                            session.image_dir = path;
+                                            flush_configs = true;
                                         }
-
-                                        ui.monospace(session.image_dir.display().to_string())
-                                            .on_hover_text("GIFs and screenshots are saved here")
-                                    },
-                                );
+                                    }
+                                    ui.add(egui::Label::new(session.image_dir.display().to_string()).truncate());
+                                });
                             });
                     }
 

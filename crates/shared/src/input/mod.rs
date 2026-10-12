@@ -27,7 +27,6 @@ pub struct Bindings {
 
 // TODO: probably should clean this up later
 pub struct KeyBindings {
-    gb: Vec<Bindings>,
     gba: Vec<Bindings>,
     hotkeys: Vec<Bindings>,
 }
@@ -35,7 +34,6 @@ pub struct KeyBindings {
 impl KeyBindings {
     pub fn new() -> Self {
         Self {
-            gb: Vec::with_capacity(8),
             gba: Vec::with_capacity(10),
             hotkeys: Vec::with_capacity(2),
         }
@@ -107,7 +105,7 @@ impl KeyBindings {
             Some(&config.gba_gamepad),
             KeyId::Emulator(EmulatorId::Gba),
         );
-        self.gb = self.gba.clone()[..8].to_vec();
+
         self.hotkeys = collect_keys(&DEFAULT_HOT_KEYS, &config.hotkeys, None, KeyId::Hotkeys);
 
         self
@@ -170,6 +168,7 @@ impl KeyBindings {
                 .iter()
                 .find(|b| b.label == input.label)
                 .unwrap();
+
             match input_type {
                 InputType::Gamepad => input.button = default_input.button,
                 InputType::Keyboard => input.key = default_input.key,
