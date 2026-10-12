@@ -361,7 +361,7 @@ pub fn show_destructive_action_popup(
                         ui.label(egui::RichText::new("Delete all save states?").strong());
                     }
                     DestructiveAction::Reset => {
-                        ui.add_space(45.0);
+                        ui.add_space(44.0);
                         ui.label(egui::RichText::new(format!("Hard reset game?")).strong());
                     }
                 };
