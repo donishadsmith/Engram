@@ -61,13 +61,16 @@ pub fn bindings_grid(
     ui: &mut egui::Ui,
     grid_id: &str,
     key_bindings: &KeyBindings,
-    key_id: KeyId,
     input_type: InputType,
     key_rebinding: &mut Option<usize>,
-    target_key_id: &mut Option<KeyId>,
+    target_key_id: Option<KeyId>,
     restore_default_bindings: &mut bool,
 ) {
     egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
+        let Some(key_id) = target_key_id else {
+            return;
+        };
+
         for (index, (label, input)) in key_bindings
             .labels(key_id)
             .iter()
@@ -81,7 +84,7 @@ pub fn bindings_grid(
         {
             ui.label(&label.to_string().replace("State", " State"));
 
-            let text = if *key_rebinding == Some(index) && *target_key_id == Some(key_id) {
+            let text = if *key_rebinding == Some(index) {
                 match input {
                     Input::Key(_) => "Press a key".to_string(),
                     Input::Gamepad(_) => "Press a button".to_string(),
@@ -95,14 +98,12 @@ pub fn bindings_grid(
 
             if ui.button(text).clicked() {
                 *key_rebinding = Some(index);
-                *target_key_id = Some(key_id);
             }
 
             ui.end_row();
         }
 
         if ui.button("Restore Defaults").clicked() {
-            *target_key_id = Some(key_id);
             *restore_default_bindings = true;
         }
     });

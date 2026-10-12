@@ -17,7 +17,7 @@ use egui_macroquad;
 use egui_phosphor::regular as icons;
 use macroquad::{miniquad::conf::Platform, prelude::*};
 use shared::{
-    EmulatorState,
+    EmulatorId, EmulatorState,
     config::load_config,
     constants::SAVE_STATE_SLOTS,
     editor::super_key_down,
@@ -265,17 +265,6 @@ async fn main() -> Result<(), Error> {
                                     }).response.on_disabled_hover_text("Available for ROMs with solar sensing (e.g., Boktai)");
                                 });
 
-                                if ui
-                                    .add(
-                                        egui::Button::new(format!("{}  Key/Controller Bindings", icons::KEYBOARD))
-                                            .wrap_mode(egui::TextWrapMode::Extend),
-                                    )
-                                    .clicked()
-                                {
-                                    session.show_key_bindings = true;
-                                    ui.close_menu();
-                                }
-
                                 ui.horizontal(|ui|{
                                     ui.add_space(2.0);
 
@@ -299,6 +288,14 @@ async fn main() -> Result<(), Error> {
                             );
                         });
 
+                        ui.menu_button(format!("{}  Key/Controller Bindings", icons::KEYBOARD), |ui| {
+                            if ui.add(egui::Button::new("GB/GBA").wrap_mode(egui::TextWrapMode::Extend)).clicked() {
+                                session.show_key_bindings = true;
+                                target_key_id = Some(KeyId::Emulator(EmulatorId::Gba));
+                                ui.close_menu();
+                            }
+                        });
+
                         if ui
                             .add(
                                 egui::Button::new(format!("{}  Configure Hotkeys", icons::KEYBOARD))
@@ -307,6 +304,7 @@ async fn main() -> Result<(), Error> {
                             .clicked()
                         {
                             session.show_hotkeys = true;
+                            target_key_id = Some(KeyId::Hotkeys);
                             ui.close_menu();
                         }
 
@@ -423,51 +421,46 @@ async fn main() -> Result<(), Error> {
                         }
                     });
 
-                    if let Some(emulator) = &session.emulator {
-                        let key_id = emulator.id().to_key_id().map_to_shared_key_id();
-                        egui::Window::new("Controller Bindings")
-                            .open(&mut session.show_key_bindings)
-                            .show(egui_ctx, |ui| {
-                                ui.horizontal(|ui| {
-                                    if ui
-                                        .add(egui::Button::new(format!("{}  Keyboard", icons::KEYBOARD)).selected(
-                                            controller_keybinding_tab == KeybindingTab::Keyboard,
+                    egui::Window::new("Controller Bindings")
+                        .open(&mut session.show_key_bindings)
+                        .show(egui_ctx, |ui| {
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .add(egui::Button::new(format!("{}  Keyboard", icons::KEYBOARD)).selected(
+                                        controller_keybinding_tab == KeybindingTab::Keyboard,
+                                    ))
+                                    .clicked()
+                                {
+                                    controller_keybinding_tab = KeybindingTab::Keyboard;
+                                }
+
+                                if session.latest_gamepad_id.is_some()
+                                    && ui
+                                        .add(egui::Button::new(format!("{}  Controller", icons::GAME_CONTROLLER)).selected(
+                                            controller_keybinding_tab == KeybindingTab::Gamepad,
                                         ))
                                         .clicked()
-                                    {
-                                        controller_keybinding_tab = KeybindingTab::Keyboard;
-                                    }
-
-                                    if session.latest_gamepad_id.is_some()
-                                        && ui
-                                            .add(egui::Button::new(format!("{}  Controller", icons::GAME_CONTROLLER)).selected(
-                                                controller_keybinding_tab == KeybindingTab::Gamepad,
-                                            ))
-                                            .clicked()
-                                    {
-                                        controller_keybinding_tab = KeybindingTab::Gamepad;
-                                    }
-                                });
-                                ui.separator();
-
-                                bindings_grid(
-                                    ui,
-                                    "Controller Bindings",
-                                    &session.key_bindings,
-                                    key_id,
-                                    if controller_keybinding_tab == KeybindingTab::Gamepad {
-                                        InputType::Gamepad
-                                    } else {
-                                        InputType::Keyboard
-                                    },
-                                    &mut key_rebinding,
-                                    &mut target_key_id,
-                                    &mut restore_default_bindings,
-                                );
+                                {
+                                    controller_keybinding_tab = KeybindingTab::Gamepad;
+                                }
                             });
-                    } else {
-                        session.show_key_bindings = false;
-                    }
+                            ui.separator();
+
+                            bindings_grid(
+                                ui,
+                                "Controller Bindings",
+                                &session.key_bindings,
+                                if controller_keybinding_tab == KeybindingTab::Gamepad {
+                                    InputType::Gamepad
+                                } else {
+                                    InputType::Keyboard
+                                },
+                                &mut key_rebinding,
+                                target_key_id,
+                                &mut restore_default_bindings,
+                            );
+                        });
+
 
                     egui::Window::new("Hotkey Bindings")
                         .open(&mut session.show_hotkeys)
@@ -476,10 +469,9 @@ async fn main() -> Result<(), Error> {
                                 ui,
                                 "Hotkey Bindings",
                                 &session.key_bindings,
-                                KeyId::Hotkeys,
                                 InputType::Keyboard,
                                 &mut key_rebinding,
-                                &mut target_key_id,
+                                target_key_id,
                                 &mut restore_default_bindings,
                             );
                         });
@@ -497,7 +489,6 @@ async fn main() -> Result<(), Error> {
                         }
 
                         restore_default_bindings = false;
-                        target_key_id = None;
                         key_rebinding = None;
                     }
 
@@ -566,7 +557,6 @@ async fn main() -> Result<(), Error> {
 
                             if rebinding_complete {
                                 key_rebinding = None;
-                                target_key_id = None;
                             }
                         }
                     }
@@ -574,6 +564,10 @@ async fn main() -> Result<(), Error> {
                     if !session.show_key_bindings && !session.show_hotkeys {
                         key_rebinding = None;
                         target_key_id = None;
+                    }
+
+                    if session.show_key_bindings && controller_keybinding_tab == KeybindingTab::Gamepad && session.latest_gamepad_id.is_none() {
+                        controller_keybinding_tab = KeybindingTab::Keyboard
                     }
 
                     ui.menu_button("Tools", |ui| {
