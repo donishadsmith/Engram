@@ -8,7 +8,6 @@ license-file = "LICENSE"
 [dependencies]
 shared.workspace = true
 chrono.workspace = true
-macroquad.workspace = true
 spin_sleep.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true

@@ -10,7 +10,6 @@ chrono.workspace = true
 egui.workspace = true
 egui-macroquad.workspace = true
 egui_plot.workspace = true
-macroquad.workspace = true
 spin_sleep.workspace = true
 shared.workspace = true
 serde.workspace = true
