@@ -6,9 +6,10 @@ pub mod utils;
 use crate::{
     session::{InputSource, Session},
     utils::{
-        bindings_grid, delete_all_slots_with_toast, delete_slots_lua, delete_slots_with_toast,
-        detect_state_key, file_dialog, load_slots_lua, load_slots_with_toast, save_slots_lua,
-        save_slots_with_toast, shift_key_down, slot_label,
+        DestructiveAction, bindings_grid, delete_all_slots_with_toast, delete_slots_lua,
+        delete_slots_with_toast, detect_state_key, file_dialog, load_slots_lua,
+        load_slots_with_toast, save_slots_lua, save_slots_with_toast, shift_key_down, slot_label,
+        state_exists,
     },
 };
 use egui::FontDefinitions;
@@ -64,6 +65,7 @@ async fn main() -> Result<(), Error> {
     let mut restore_default_bindings = false;
     let mut force_clear_inputs = false;
     let mut controller_keybinding_tab = KeybindingTab::Keyboard;
+    let mut destructive_action: Option<DestructiveAction> = None;
     let mut fonts = FontDefinitions::default();
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
 
@@ -148,7 +150,7 @@ async fn main() -> Result<(), Error> {
                 let _ = session.reset();
                 session.take_return_state();
                 session.state = EmulatorState::Running;
-                session.toasts.success("Emulator resetted");
+                session.toasts.success("Emulator reset");
             }
             EmulatorState::Quit => {
                 session.gif.stop();
@@ -200,9 +202,14 @@ async fn main() -> Result<(), Error> {
 
                                 ui.menu_button(format!("{}  Save State", icons::FLOPPY_DISK), |ui| {
                                     for slot in 1..=SAVE_STATE_SLOTS {
-                                        let (state_text, _) = slot_label(emulator, slot, "Shift");
+                                        let (state_text, exists) = slot_label(emulator, slot, "Shift");
                                         if ui.add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
-                                            save_slots_with_toast(emulator, &mut session.toasts, slot);
+                                            if session.destructive_action_popup && exists {
+                                                destructive_action = Some(DestructiveAction::Overwrite(slot));
+                                                ui.close_menu();
+                                            } else {
+                                                save_slots_with_toast(emulator, &mut session.toasts, slot);
+                                            }
                                         }
                                     }
                                 });
@@ -220,7 +227,12 @@ async fn main() -> Result<(), Error> {
                                     for slot in 1..=SAVE_STATE_SLOTS {
                                         let (state_text, exists) = slot_label(emulator, slot, "Del");
                                         if ui.add_enabled(exists, egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
-                                           delete_slots_with_toast(emulator, &mut session.toasts, slot);
+                                            if session.destructive_action_popup && exists {
+                                                destructive_action = Some(DestructiveAction::Delete(slot));
+                                                ui.close_menu();
+                                            } else {
+                                                delete_slots_with_toast(emulator, &mut session.toasts, slot);
+                                            }
                                         }
                                     }
 
@@ -230,7 +242,12 @@ async fn main() -> Result<(), Error> {
                                         egui::Button::new("Delete All States").wrap_mode(
                                             egui::TextWrapMode::Extend
                                         )).highlight().clicked() {
-                                        delete_all_slots_with_toast(emulator,  &mut session.toasts)
+                                        if session.destructive_action_popup {
+                                            destructive_action = Some(DestructiveAction::DeleteAll);
+                                            ui.close_menu();
+                                        } else {
+                                            delete_all_slots_with_toast(emulator,  &mut session.toasts);
+                                        }
                                     }
                                 });
 
@@ -260,9 +277,13 @@ async fn main() -> Result<(), Error> {
                                 }
 
                                 ui.horizontal(|ui|{
+                                    ui.add_space(2.0);
+
                                     ui.label(egui::RichText::new(format!("{}  Show FPS", icons::GAUGE)).color(
                                         ui.visuals().widgets.inactive.fg_stroke.color
                                     ));
+
+                                    ui.add_space(80.0);
 
                                     ui.checkbox(&mut session.show_fps, "");
                                 });
@@ -326,11 +347,28 @@ async fn main() -> Result<(), Error> {
                         });
 
                         ui.horizontal(|ui|{
+                            ui.add_space(2.0);
+
                             ui.label(egui::RichText::new(format!("{}  Show Notifications", icons::BELL_RINGING)).color(
                                 ui.visuals().widgets.inactive.fg_stroke.color
-                            ));
+                            )).on_hover_text("Enable/Disable toast notifications.");
+
+                            ui.add_space(45.0);
 
                             ui.checkbox(&mut session.show_notifications, "");
+                        });
+
+                        ui.horizontal(|ui|{
+                            ui.add_space(2.0);
+
+                            // no dialog box icon :(
+                            ui.label(egui::RichText::new(format!("{}  Destructive Action Pop-up", icons::WARNING)).color(
+                                ui.visuals().widgets.inactive.fg_stroke.color
+                            )).on_hover_text("Dialog box pops up whenever overwritting or deleting a save state.");
+
+                            ui.add_space(5.0);
+
+                            ui.checkbox(&mut session.destructive_action_popup, "");
                         });
 
                         if ui
@@ -338,7 +376,7 @@ async fn main() -> Result<(), Error> {
                                 egui::Button::new(format!("{}  Choose Save Data Location", icons::FOLDER))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             )
-                            .clicked()
+                            .on_hover_text("Game saves and save states are located here").clicked()
                         {
                             session.set_data_dir = true;
                             ui.close_menu();
@@ -611,6 +649,7 @@ async fn main() -> Result<(), Error> {
                                 egui::Button::new(format!("{}  Choose Image Save Location", icons::FOLDER))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             )
+                            .on_hover_text("GIFs and screenshots are saved here")
                             .clicked()
                         {
                             session.set_image_dir = true;
@@ -715,7 +754,11 @@ async fn main() -> Result<(), Error> {
 
                             if shift_key_down() && let Some(slot) = detect_state_key() {
                                 if let Some(emulator) = &mut session.emulator {
-                                    save_slots_with_toast(emulator, &mut session.toasts, slot);
+                                    if session.destructive_action_popup && state_exists(emulator, slot) {
+                                        destructive_action = Some(DestructiveAction::Overwrite(slot));
+                                    } else {
+                                        save_slots_with_toast(emulator, &mut session.toasts, slot);
+                                    }
                                 }
                             }
 
@@ -727,10 +770,61 @@ async fn main() -> Result<(), Error> {
 
                             if is_key_down(KeyCode::Delete) && let Some(slot) = detect_state_key()  {
                                 if let Some(emulator) = &mut session.emulator {
-                                    delete_slots_with_toast(emulator, &mut session.toasts, slot);
+                                    if session.destructive_action_popup && state_exists(emulator, slot) {
+                                        destructive_action = Some(DestructiveAction::Delete(slot));
+                                    } else {
+                                        delete_slots_with_toast(emulator, &mut session.toasts, slot);
+                                    }
                                 }
                             }
                         }
+                    }
+
+                    // i think these are mostly, kinda centered? horizontal_centered didnt work as expected, learn that later
+                    if let Some(action) = destructive_action && let Some(emulator) = &mut session.emulator {
+                        egui::Window::new(egui::RichText::new(format!("{}  Destructive Action", icons::WARNING)).strong().color(egui::Color32::RED))
+                        .collapsible(false)
+                        .resizable(false)
+                        .show(egui_ctx, |ui| {
+                            ui.horizontal(|ui| {
+                                match action {
+                                    DestructiveAction::Overwrite(slot) => {
+                                        ui.add_space(31.0);
+                                        ui.label(egui::RichText::new(format!("Overwrite save slot {slot}?")).strong());
+                                    },
+                                    DestructiveAction::Delete(slot) => {
+                                        ui.add_space(38.0);
+                                        ui.label(egui::RichText::new(format!("Delete save slot {slot}?")).strong());
+                                    },
+                                    DestructiveAction::DeleteAll => {
+                                        ui.add_space(30.0);
+                                        ui.label(egui::RichText::new("Delete all save states?").strong());
+                                    }
+                                };
+                            });
+
+                            ui.add_space(10.0);
+
+                            ui.horizontal(|ui| {
+                                ui.add_space(50.0);
+
+                                if ui.button(egui::RichText::new("Yes").strong()).clicked() {
+                                    match action {
+                                        DestructiveAction::Overwrite(slot) => save_slots_with_toast(emulator, &mut session.toasts, slot),
+                                        DestructiveAction::Delete(slot) => delete_slots_with_toast(emulator, &mut session.toasts, slot),
+                                        DestructiveAction::DeleteAll => delete_all_slots_with_toast(emulator, &mut session.toasts),
+                                    };
+
+                                    destructive_action = None;
+                                }
+
+                                ui.add_space(20.0);
+
+                                if ui.button(egui::RichText::new("No").strong()).clicked() {
+                                    destructive_action = None;
+                                }
+                            });
+                        });
                     }
 
                     let mut start_recording = false;
@@ -960,7 +1054,10 @@ async fn main() -> Result<(), Error> {
                                        session.lua_editor.push_output(vec!["GIF saved".to_string()]);
                                     }
                                 }
-                                ScriptRequest::Reset => session.state = EmulatorState::Reset,
+                                ScriptRequest::Reset => {
+                                    session.lua_editor.push_output(vec!["emulator reset".to_string()]);
+                                    session.state = EmulatorState::Reset
+                                },
                                 ScriptRequest::StepInstruction | ScriptRequest::StepFrame => {
                                     session.pending_steps.push_back(request)
                                 }

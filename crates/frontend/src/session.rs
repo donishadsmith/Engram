@@ -67,6 +67,7 @@ pub struct Session {
     pub paused_due_to_minimize: bool,
     pub show_fps: bool,
     pub show_notifications: bool,
+    pub destructive_action_popup: bool,
 }
 
 impl Session {
@@ -111,6 +112,8 @@ impl Session {
             paused_due_to_minimize: false,
             show_fps,
             show_notifications: config.show_notifications.unwrap_or(true),
+            // realizing that my poor and impulsive cotrol over a mouse requires this
+            destructive_action_popup: config.destructive_action_popup.unwrap_or(false),
         }
     }
 
@@ -248,6 +251,7 @@ impl Session {
             display: self.display,
             show_fps: self.show_fps,
             show_notifications: Some(self.show_notifications),
+            destructive_action_popup: Some(self.destructive_action_popup),
         };
 
         save_config(&config)

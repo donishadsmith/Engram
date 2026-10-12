@@ -31,6 +31,7 @@ pub struct Config {
     pub show_fps: bool,
     pub data_dir: Option<String>,
     pub show_notifications: Option<bool>,
+    pub destructive_action_popup: Option<bool>,
 }
 
 fn get_config_path() -> PathBuf {

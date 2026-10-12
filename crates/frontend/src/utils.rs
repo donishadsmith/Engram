@@ -35,6 +35,13 @@ pub const STATE_KEYS: [KeyCode; 12] = [
     KeyCode::F12,
 ];
 
+#[derive(Clone, Copy)]
+pub enum DestructiveAction {
+    Overwrite(usize),
+    Delete(usize),
+    DeleteAll,
+}
+
 pub fn initialize_debug_hashmap() -> HashMap<EmulatorId, DebugPage> {
     let mut map = HashMap::new();
 
@@ -157,6 +164,10 @@ pub fn slot_label(
 
 pub fn get_state(emulator: &mut Box<dyn EmulatorSession>, slot: usize) -> Option<PathBuf> {
     emulator.current_save_states().remove(slot - 1)
+}
+
+pub fn state_exists(emulator: &mut Box<dyn EmulatorSession>, slot: usize) -> bool {
+    get_state(emulator, slot).is_some()
 }
 
 pub fn save_slots_with_toast(
