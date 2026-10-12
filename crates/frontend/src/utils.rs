@@ -1,4 +1,5 @@
 use chrono::{DateTime, Local};
+use egui::FontDefinitions;
 use egui_notify::Toasts;
 use macroquad::input::{KeyCode, get_keys_pressed, is_key_down};
 use rfd::FileDialog;
@@ -40,6 +41,42 @@ pub enum DestructiveAction {
     Overwrite(usize),
     Delete(usize),
     DeleteAll,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum KeybindingTab {
+    Keyboard,
+    Gamepad,
+}
+
+pub struct UiState {
+    pub key_rebinding: Option<usize>,
+    pub target_key_id: Option<KeyId>,
+    pub restore_default_bindings: bool,
+    pub force_clear_inputs: bool,
+    pub controller_keybinding_tab: KeybindingTab,
+    pub destructive_action: Option<DestructiveAction>,
+    pub fonts: FontDefinitions,
+    pub open_gif_settings: bool,
+    pub set_dirs: bool,
+    pub start_recording: bool,
+}
+
+impl UiState {
+    pub fn new() -> Self {
+        Self {
+            key_rebinding: None,
+            target_key_id: None,
+            restore_default_bindings: false,
+            force_clear_inputs: false,
+            controller_keybinding_tab: KeybindingTab::Keyboard,
+            destructive_action: None,
+            fonts: FontDefinitions::default(),
+            open_gif_settings: false,
+            set_dirs: false,
+            start_recording: false,
+        }
+    }
 }
 
 pub fn initialize_debug_hashmap() -> HashMap<EmulatorId, DebugPage> {

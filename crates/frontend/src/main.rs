@@ -6,13 +6,12 @@ pub mod utils;
 use crate::{
     session::{InputSource, Session},
     utils::{
-        DestructiveAction, bindings_grid, delete_all_slots_with_toast, delete_slots_lua,
-        delete_slots_with_toast, detect_state_key, file_dialog, load_slots_lua,
+        DestructiveAction, KeybindingTab, UiState, bindings_grid, delete_all_slots_with_toast,
+        delete_slots_lua, delete_slots_with_toast, detect_state_key, file_dialog, load_slots_lua,
         load_slots_with_toast, save_slots_lua, save_slots_with_toast, shift_key_down, slot_label,
         state_exists, thin_separator,
     },
 };
-use egui::FontDefinitions;
 use egui_macroquad;
 use egui_phosphor::regular as icons;
 use macroquad::{miniquad::conf::Platform, prelude::*};
@@ -29,12 +28,6 @@ use shared::{
     utils::screenshot,
 };
 use std::{io::Error, mem::take};
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum KeybindingTab {
-    Keyboard,
-    Gamepad,
-}
 
 fn conf() -> Conf {
     let display = load_config().display;
@@ -60,14 +53,9 @@ fn conf() -> Conf {
 #[macroquad::main(conf)]
 async fn main() -> Result<(), Error> {
     let mut session = Session::new();
-    let mut key_rebinding: Option<usize> = None;
-    let mut target_key_id: Option<KeyId> = None;
-    let mut restore_default_bindings = false;
-    let mut force_clear_inputs = false;
-    let mut controller_keybinding_tab = KeybindingTab::Keyboard;
-    let mut destructive_action: Option<DestructiveAction> = None;
-    let mut fonts = FontDefinitions::default();
-    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    let mut ui_state = UiState::new();
+
+    egui_phosphor::add_to_fonts(&mut ui_state.fonts, egui_phosphor::Variant::Regular);
 
     loop {
         session.save()?;
@@ -95,8 +83,10 @@ async fn main() -> Result<(), Error> {
             session.toasts.warning(text);
         }
 
-        let input_source_changed =
-            session.detect_input_source(gamepad_update.last_pressed, key_rebinding.is_some());
+        let input_source_changed = session.detect_input_source(
+            gamepad_update.last_pressed,
+            ui_state.key_rebinding.is_some(),
+        );
 
         match session.state {
             EmulatorState::RomSelection => {
@@ -132,7 +122,9 @@ async fn main() -> Result<(), Error> {
             }
             EmulatorState::Running => {
                 if session.run(
-                    gamepad_update.changed | input_source_changed | take(&mut force_clear_inputs),
+                    gamepad_update.changed
+                        | input_source_changed
+                        | take(&mut ui_state.force_clear_inputs),
                 )? == EmulatorState::Paused
                 {
                     session.set_paused();
@@ -177,7 +169,7 @@ async fn main() -> Result<(), Error> {
         egui_macroquad::ui(|egui_ctx| {
             egui_ctx.set_pixels_per_point(screen_dpi_scale());
             let menu = egui::TopBottomPanel::top("Menu Bar").show(egui_ctx, |ui| {
-                egui_ctx.set_fonts(fonts.clone());
+                egui_ctx.set_fonts(ui_state.fonts.clone());
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button(format!("{} Load ROM", icons::FOLDER_OPEN)).clicked() {
@@ -208,7 +200,7 @@ async fn main() -> Result<(), Error> {
                                         let (state_text, exists) = slot_label(emulator, slot, "Shift");
                                         if ui.add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
                                             if session.destructive_action_popup && exists {
-                                                destructive_action = Some(DestructiveAction::Overwrite(slot));
+                                                ui_state.destructive_action = Some(DestructiveAction::Overwrite(slot));
                                                 ui.close_menu();
                                             } else {
                                                 save_slots_with_toast(emulator, &mut session.toasts, slot);
@@ -239,7 +231,7 @@ async fn main() -> Result<(), Error> {
                                         let (state_text, exists) = slot_label(emulator, slot, "Del");
                                         if ui.add_enabled(exists, egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend)).clicked() {
                                             if session.destructive_action_popup {
-                                                destructive_action = Some(DestructiveAction::Delete(slot));
+                                                ui_state.destructive_action = Some(DestructiveAction::Delete(slot));
                                                 ui.close_menu();
                                             } else {
                                                 delete_slots_with_toast(emulator, &mut session.toasts, slot);
@@ -258,7 +250,7 @@ async fn main() -> Result<(), Error> {
                                         .clicked()
                                     {
                                         if session.destructive_action_popup {
-                                            destructive_action = Some(DestructiveAction::DeleteAll);
+                                            ui_state.destructive_action = Some(DestructiveAction::DeleteAll);
                                             ui.close_menu();
                                         } else {
                                             delete_all_slots_with_toast(emulator, &mut session.toasts);
@@ -359,7 +351,7 @@ async fn main() -> Result<(), Error> {
                                         ;
                                 }
                             } else {
-                                session.open_gif_settings = true;
+                                ui_state.open_gif_settings = true;
                             }
 
                             ui.close_menu();
@@ -377,7 +369,7 @@ async fn main() -> Result<(), Error> {
                         ui.menu_button(format!("{}  Key/Controller Bindings", icons::KEYBOARD), |ui| {
                             if ui.add(egui::Button::new("Game Boy/Game Boy Advance").wrap_mode(egui::TextWrapMode::Extend)).clicked() {
                                 session.show_key_bindings = true;
-                                target_key_id = Some(KeyId::Emulator(EmulatorId::Gba));
+                                ui_state.target_key_id = Some(KeyId::Emulator(EmulatorId::Gba));
                                 ui.close_menu();
                             }
                         });
@@ -390,7 +382,7 @@ async fn main() -> Result<(), Error> {
                             .clicked()
                         {
                             session.show_hotkeys = true;
-                            target_key_id = Some(KeyId::Hotkeys);
+                            ui_state.target_key_id = Some(KeyId::Hotkeys);
                             ui.close_menu();
                         }
 
@@ -461,7 +453,7 @@ async fn main() -> Result<(), Error> {
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             ).clicked()
                         {
-                            session.set_dirs = true;
+                            ui_state.set_dirs = true;
                             ui.close_menu();
                         }
 
@@ -512,21 +504,21 @@ async fn main() -> Result<(), Error> {
                             ui.horizontal(|ui| {
                                 if ui
                                     .add(egui::Button::new(format!("{}  Keyboard", icons::KEYBOARD)).selected(
-                                        controller_keybinding_tab == KeybindingTab::Keyboard,
+                                        ui_state.controller_keybinding_tab == KeybindingTab::Keyboard,
                                     ))
                                     .clicked()
                                 {
-                                    controller_keybinding_tab = KeybindingTab::Keyboard;
+                                    ui_state.controller_keybinding_tab = KeybindingTab::Keyboard;
                                 }
 
                                 if session.latest_gamepad_id.is_some()
                                     && ui
                                         .add(egui::Button::new(format!("{}  Controller", icons::GAME_CONTROLLER)).selected(
-                                            controller_keybinding_tab == KeybindingTab::Gamepad,
+                                            ui_state.controller_keybinding_tab == KeybindingTab::Gamepad,
                                         ))
                                         .clicked()
                                 {
-                                    controller_keybinding_tab = KeybindingTab::Gamepad;
+                                    ui_state.controller_keybinding_tab = KeybindingTab::Gamepad;
                                 }
                             });
                             ui.separator();
@@ -535,14 +527,14 @@ async fn main() -> Result<(), Error> {
                                 ui,
                                 "Controller Bindings",
                                 &session.key_bindings,
-                                if controller_keybinding_tab == KeybindingTab::Gamepad {
+                                if ui_state.controller_keybinding_tab == KeybindingTab::Gamepad {
                                     InputType::Gamepad
                                 } else {
                                     InputType::Keyboard
                                 },
-                                &mut key_rebinding,
-                                target_key_id,
-                                &mut restore_default_bindings,
+                                &mut ui_state.key_rebinding,
+                                ui_state.target_key_id,
+                                &mut ui_state.restore_default_bindings,
                             );
                         });
 
@@ -555,17 +547,17 @@ async fn main() -> Result<(), Error> {
                                 "Hotkey Bindings",
                                 &session.key_bindings,
                                 InputType::Keyboard,
-                                &mut key_rebinding,
-                                target_key_id,
-                                &mut restore_default_bindings,
+                                &mut ui_state.key_rebinding,
+                                ui_state.target_key_id,
+                                &mut ui_state.restore_default_bindings,
                             );
                         });
 
-                    if restore_default_bindings {
-                        if let Some(key_id) = target_key_id {
+                    if ui_state.restore_default_bindings {
+                        if let Some(key_id) = ui_state.target_key_id {
                             session.key_bindings.restore_defaults(
                                 key_id,
-                                if controller_keybinding_tab == KeybindingTab::Gamepad {
+                                if ui_state.controller_keybinding_tab == KeybindingTab::Gamepad {
                                     InputType::Gamepad
                                 } else {
                                     InputType::Keyboard
@@ -573,12 +565,12 @@ async fn main() -> Result<(), Error> {
                             );
                         }
 
-                        restore_default_bindings = false;
-                        key_rebinding = None;
+                        ui_state.restore_default_bindings = false;
+                        ui_state.key_rebinding = None;
                     }
 
-                    if let (Some(index), Some(key_id)) = (key_rebinding, target_key_id) {
-                        let possible_input = match controller_keybinding_tab {
+                    if let (Some(index), Some(key_id)) = (ui_state.key_rebinding, ui_state.target_key_id) {
+                        let possible_input = match ui_state.controller_keybinding_tab {
                             KeybindingTab::Gamepad if key_id != KeyId::Hotkeys => {
                                 if let Some(button) = gamepad_update.last_pressed {
                                     Some(Input::Gamepad(button))
@@ -641,24 +633,24 @@ async fn main() -> Result<(), Error> {
                             }
 
                             if rebinding_complete {
-                                key_rebinding = None;
+                                ui_state.key_rebinding = None;
                             }
                         }
                     }
 
                     if !session.show_key_bindings && !session.show_hotkeys {
-                        key_rebinding = None;
-                        target_key_id = None;
+                        ui_state.key_rebinding = None;
+                        ui_state.target_key_id = None;
                     }
 
-                    if session.show_key_bindings && controller_keybinding_tab == KeybindingTab::Gamepad && session.latest_gamepad_id.is_none() {
-                        controller_keybinding_tab = KeybindingTab::Keyboard
+                    if session.show_key_bindings && ui_state.controller_keybinding_tab == KeybindingTab::Gamepad && session.latest_gamepad_id.is_none() {
+                        ui_state.controller_keybinding_tab = KeybindingTab::Keyboard
                     }
 
                     let mut flush_configs = false;
-                    if session.set_dirs {
+                    if ui_state.set_dirs {
                         egui::Window::new("Choose Data Locations")
-                            .open(&mut session.set_dirs)
+                            .open(&mut ui_state.set_dirs)
                             .show(egui_ctx, |ui| {
                                 ui.label(egui::RichText::new("Game Saves/Save States").size(16.0).strong());
                                 thin_separator(ui);
@@ -734,14 +726,14 @@ async fn main() -> Result<(), Error> {
                                         .success("GIF saved")
                                         ;
                                 } else {
-                                    session.open_gif_settings = !session.open_gif_settings;
+                                    ui_state.open_gif_settings = !ui_state.open_gif_settings;
                                 }
                             }
 
                             if shift_key_down() && let Some(slot) = detect_state_key() {
                                 if let Some(emulator) = &mut session.emulator {
                                     if session.destructive_action_popup && state_exists(emulator, slot) {
-                                        destructive_action = Some(DestructiveAction::Overwrite(slot));
+                                        ui_state.destructive_action = Some(DestructiveAction::Overwrite(slot));
                                     } else {
                                         save_slots_with_toast(emulator, &mut session.toasts, slot);
                                     }
@@ -757,7 +749,7 @@ async fn main() -> Result<(), Error> {
                             if is_key_down(KeyCode::Delete) && let Some(slot) = detect_state_key()  {
                                 if let Some(emulator) = &mut session.emulator {
                                     if session.destructive_action_popup && state_exists(emulator, slot) {
-                                        destructive_action = Some(DestructiveAction::Delete(slot));
+                                        ui_state.destructive_action = Some(DestructiveAction::Delete(slot));
                                     } else {
                                         delete_slots_with_toast(emulator, &mut session.toasts, slot);
                                     }
@@ -767,7 +759,7 @@ async fn main() -> Result<(), Error> {
                     }
 
                     // i think these are mostly, kinda centered? horizontal_centered didnt work as expected, learn that later
-                    if let Some(action) = destructive_action && let Some(emulator) = &mut session.emulator {
+                    if let Some(action) = ui_state.destructive_action && let Some(emulator) = &mut session.emulator {
                         egui::Window::new(egui::RichText::new(format!("{}  Destructive Action", icons::WARNING)).strong().color(egui::Color32::RED))
                         .collapsible(false)
                         .resizable(false)
@@ -779,7 +771,7 @@ async fn main() -> Result<(), Error> {
                                         ui.label(egui::RichText::new(format!("Overwrite save slot {slot}?")).strong());
                                     },
                                     DestructiveAction::Delete(slot) => {
-                                        ui.add_space(38.0);
+                                        ui.add_space(39.0);
                                         ui.label(egui::RichText::new(format!("Delete save slot {slot}?")).strong());
                                     },
                                     DestructiveAction::DeleteAll => {
@@ -801,21 +793,20 @@ async fn main() -> Result<(), Error> {
                                         DestructiveAction::DeleteAll => delete_all_slots_with_toast(emulator, &mut session.toasts),
                                     };
 
-                                    destructive_action = None;
+                                    ui_state.destructive_action = None;
                                 }
 
                                 ui.add_space(20.0);
 
                                 if ui.button(egui::RichText::new("No").strong()).clicked() {
-                                    destructive_action = None;
+                                    ui_state.destructive_action = None;
                                 }
                             });
                         });
                     }
 
-                    let mut start_recording = false;
                     egui::Window::new("GIF Settings")
-                        .open(&mut session.open_gif_settings)
+                        .open(&mut ui_state.open_gif_settings)
                         .show(egui_ctx, |ui| {
                             egui::Grid::new("GIF Settings")
                                 .num_columns(1)
@@ -834,15 +825,13 @@ async fn main() -> Result<(), Error> {
 
                                     ui.end_row();
 
-                                    if session.emulator.is_some() {
-                                        if ui.button("Start Recording").clicked() {
-                                            start_recording = true;
-                                        }
+                                    if ui.add_enabled(session.emulator.is_some(), egui::Button::new("Start Recording")).clicked() {
+                                        ui_state.start_recording = true;
                                     }
                                 });
                         });
 
-                    if start_recording {
+                    if ui_state.start_recording {
                         if let Some(emulator) = &session.emulator {
                             match session.gif.start(emulator.frontend_ref(), session.image_dir.clone()) {
                                 Ok(_) => session.toasts.success("GIF recording started"),
@@ -850,7 +839,8 @@ async fn main() -> Result<(), Error> {
                             };
                         }
 
-                        session.open_gif_settings = false;
+                        ui_state.start_recording = false;
+                        ui_state.open_gif_settings = false;
                     }
 
                     let recording = session.gif.is_recording();
