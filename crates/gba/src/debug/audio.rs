@@ -538,6 +538,7 @@ impl AudioDebugger {
 
     fn mute_channels(&self, gba: &mut GBA) {
         gba.bus.apu.psg_mute.copy_from_slice(&self.mute[0..4]);
+        gba.bus.apu.psg_mixer.changed = true;
         gba.bus.apu.fifo_a.mute = self.mute[4];
         gba.bus.apu.fifo_b.mute = self.mute[5];
     }

@@ -1,15 +1,17 @@
 use crate::EmulatorId;
 use crate::psg::{noise::NoiseChannel, pulse::PulseChannel, wave::WaveChannel};
 use crate::traits::BitOps;
+use blip_buf::BlipBuf;
 use serde::{Deserialize, Serialize};
 
 // added to shared painful refactor after lazily copying and pasting the psg channels from the gb to the gba
 // shouldve done from the start
-pub mod convolve;
 pub mod noise;
 pub mod pulse;
 pub mod sound_control;
 pub mod wave;
+
+const PSG_SCALE: f32 = (i16::MAX / 60) as f32;
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum PsgChannelRegister {
@@ -130,6 +132,7 @@ pub struct PsgMixer {
     pub nr50: u8,
     pub nr51: u8,
     pub on: bool,
+    pub changed: bool,
 }
 
 impl PsgMixer {
@@ -138,6 +141,7 @@ impl PsgMixer {
             nr50: 0,
             nr51: 0,
             on: false,
+            changed: true,
         }
     }
 
@@ -147,6 +151,8 @@ impl PsgMixer {
             PsgMixerRegister::Nr51 => self.nr51 = value,
             PsgMixerRegister::Nr52 => self.on = value.is_set(7),
         }
+
+        self.changed = true;
     }
 
     pub fn status(&self, enabled: [bool; 4]) -> u8 {
@@ -159,8 +165,8 @@ impl PsgMixer {
     }
 
     pub fn mix(&self, samples: [u8; 4]) -> (f32, f32) {
-        let mut left = 0.0;
-        let mut right = 0.0;
+        let mut left = 0.0f32;
+        let mut right = 0.0f32;
         for (index, sample) in samples.into_iter().enumerate() {
             if self.nr51.is_set(4 + index) {
                 left += sample as f32;
@@ -185,5 +191,80 @@ impl PsgMixer {
     }
     pub fn panned_right(&self, channel: usize) -> bool {
         self.nr51.is_set(channel)
+    }
+}
+
+pub struct PsgOutput {
+    left: BlipBuf,
+    right: BlipBuf,
+    previous_left_sample: i32,
+    previous_right_sample: i32,
+    pub cycle: u32,
+    sample_rate: f64,
+}
+
+impl PsgOutput {
+    pub fn new(sample_rate: f64) -> Self {
+        let mut left = BlipBuf::new(4096);
+        let mut right = BlipBuf::new(4096);
+
+        let _ = left.set_rates(4194304.0, sample_rate);
+        let _ = right.set_rates(4194304.0, sample_rate);
+
+        Self {
+            left,
+            right,
+            previous_left_sample: 0,
+            previous_right_sample: 0,
+            cycle: 0,
+            sample_rate,
+        }
+    }
+
+    pub fn add_samples(&mut self, samples: (f32, f32)) {
+        let left = (samples.0 * PSG_SCALE) as i32;
+        let right = (samples.1 * PSG_SCALE) as i32;
+        if left != self.previous_left_sample {
+            let _ = self
+                .left
+                .add_delta(self.cycle, left - self.previous_left_sample);
+            self.previous_left_sample = left;
+        }
+
+        if right != self.previous_right_sample {
+            let _ = self
+                .right
+                .add_delta(self.cycle, right - self.previous_right_sample);
+            self.previous_right_sample = right;
+        }
+    }
+
+    pub fn read_samples(&mut self, sample_buffer: &mut Vec<f32>) {
+        let _ = self.left.end_frame(self.cycle);
+        let _ = self.right.end_frame(self.cycle);
+        self.cycle = 0;
+
+        let mut left = [0i16; 8];
+        let mut right = [0i16; 8];
+
+        let n_samples = self.left.read_samples(&mut left, false);
+        self.right.read_samples(&mut right, false);
+
+        for index in 0..n_samples {
+            sample_buffer.push(left[index] as f32 / 32768.0);
+            sample_buffer.push(right[index] as f32 / 32768.0);
+        }
+    }
+
+    pub fn set_cycles_per_sample(&mut self, cycles_per_sample: f64) {
+        let clock_rate = cycles_per_sample * self.sample_rate;
+        let _ = self.left.set_rates(clock_rate, self.sample_rate);
+        let _ = self.right.set_rates(clock_rate, self.sample_rate);
+    }
+}
+
+impl Default for PsgOutput {
+    fn default() -> Self {
+        PsgOutput::new(48000.0)
     }
 }

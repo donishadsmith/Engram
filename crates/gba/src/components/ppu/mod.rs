@@ -497,18 +497,28 @@ impl Ppu {
 
             for bg in bg_lines {
                 if !bg.on || mask.is_clear(bg.id) {
-                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
+                    if self.debugger_active {
+                        self.debug_frame[bg.id].pixels
+                            [self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
+                    }
+
                     continue;
                 }
 
                 let Some(index) = bg.palette_indices[pixel] else {
-                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
+                    if self.debugger_active {
+                        self.debug_frame[bg.id].pixels
+                            [self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
+                    }
+
                     continue;
                 };
                 let layer_id = LayerId::from_background(bg.id);
 
-                self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
-                    self.fetch_color(index, layer_id, self.transparant_background);
+                if self.debugger_active {
+                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
+                        self.fetch_color(index, layer_id, self.transparant_background);
+                }
 
                 let candidate = Pixel {
                     id: layer_id,
@@ -1123,12 +1133,13 @@ impl Ppu {
         if self.vcount == 160 {
             self.frame_ready = true;
             self.frontend.swap(&mut self.frame);
-            for index in 0..4 {
-                self.debug_frontend[index].swap(&mut self.debug_frame[index]);
-            }
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
             if self.debugger_active {
+                for index in 0..4 {
+                    self.debug_frontend[index].swap(&mut self.debug_frame[index]);
+                }
+
                 self.update_oam_debug_data();
             }
 

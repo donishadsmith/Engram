@@ -156,6 +156,11 @@ impl GBASession {
         let ideal_sample_period = GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64;
         self.gba.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
+        self.gba
+            .bus
+            .apu
+            .psg_output
+            .set_cycles_per_sample(self.gba.apu_sample_period / 4.0);
     }
 
     fn audio_level(&self) -> usize {

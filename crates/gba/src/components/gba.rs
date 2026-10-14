@@ -153,7 +153,7 @@ impl GBA {
                             self.apu_sample_remainder += self.apu_sample_period;
                             let cycles = self.apu_sample_remainder as u64;
                             self.apu_sample_remainder -= cycles as f64;
-                            self.bus.scheduler.push(event, deadline + cycles)
+                            self.bus.scheduler.push(event, deadline + cycles);
                         }
                         Event::ApuSequencer => {
                             self.bus.scheduler.push(event, deadline + APU_SEQUENCER)
@@ -260,6 +260,8 @@ impl GBA {
         data.bus.apu.psg_mute = self.bus.apu.psg_mute;
         data.bus.apu.fifo_a.mute = self.bus.apu.fifo_a.mute;
         data.bus.apu.fifo_b.mute = self.bus.apu.fifo_b.mute;
+        swap(&mut data.bus.apu.psg_output, &mut self.bus.apu.psg_output);
+        data.bus.apu.psg_mixer.changed = true;
 
         *self = data;
 

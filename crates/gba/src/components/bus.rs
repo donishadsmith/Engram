@@ -171,7 +171,7 @@ impl Bus {
             last_bios_fetch: 0xE129F000,
             ppu: Ppu::new(),
             gamepak,
-            apu: Apu::new(),
+            apu: Apu::new(apu_sample_period),
             dma: DmaChannels::new(),
             timers: Timers::new(),
             serial: Serial::new(),

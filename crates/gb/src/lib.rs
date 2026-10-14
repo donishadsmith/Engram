@@ -148,6 +148,12 @@ impl GameBoySession {
         let ideal_sample_period = GB_CLOCK_SPEED as f64 / audio.sample_rate as f64;
         self.gameboy.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
+        self.gameboy
+            .cpu
+            .bus
+            .apu
+            .psg_output
+            .set_cycles_per_sample(self.gameboy.apu_sample_period);
     }
 
     fn audio_level(&self) -> usize {

@@ -100,6 +100,7 @@ pub struct Bus {
     pub watchpoint_queue: HashMap<u32, WatchpointArgs>,
     #[serde(skip)]
     pub watchpoint_hits: Vec<WatchpointHit>,
+    #[serde(skip)]
     pub watchpoint_pause: bool,
 }
 

@@ -10,9 +10,8 @@ use global_control::GlobalControl;
 use serde::{Deserialize, Serialize};
 use shared::{
     EmulatorId,
-    psg::{PsgChannel, PsgMixer, convolve::LowPassFilter},
+    psg::{PsgChannel, PsgMixer, PsgOutput},
     structs::GroupedRegisters,
-    traits::BitOps,
 };
 
 fn psg_history() -> [VecDeque<u8>; 4] {
@@ -24,6 +23,8 @@ pub struct Apu {
     pub global_control: GlobalControl,
     pub psg_mixer: PsgMixer,
     pub psg: PsgChannel,
+    #[serde(skip)]
+    pub psg_output: PsgOutput,
     pub fifo_a: Fifo,
     pub fifo_b: Fifo,
     #[serde(skip, default = "psg_history")]
@@ -35,16 +36,15 @@ pub struct Apu {
     psg_prescaler: u8,
     #[serde(skip)]
     pub psg_mute: [bool; 4],
-    #[serde(skip, default = "LowPassFilter::new")]
-    low_pass_left: LowPassFilter,
-    #[serde(skip, default = "LowPassFilter::new")]
-    low_pass_right: LowPassFilter,
     #[serde(skip)]
     pub debugger_active: bool,
+    #[serde(skip)]
+    pub psg_scratch: Vec<f32>,
+    previous_psg_samples: [u8; 4],
 }
 
 impl Apu {
-    pub fn new() -> Self {
+    pub fn new(sample_rate: f64) -> Self {
         Self {
             global_control: GlobalControl::new(),
             psg: PsgChannel::new(EmulatorId::Gba),
@@ -57,9 +57,10 @@ impl Apu {
             psg_registers: GroupedRegisters::new(16, 0x4000060),
             psg_mute: from_fn(|_| false),
             psg_prescaler: 0,
-            low_pass_left: LowPassFilter::new(),
-            low_pass_right: LowPassFilter::new(),
+            psg_output: PsgOutput::new(sample_rate),
             debugger_active: false,
+            psg_scratch: Vec::new(),
+            previous_psg_samples: [0; 4],
         }
     }
 
@@ -118,29 +119,38 @@ impl Apu {
 
     pub fn advance_psg(&mut self, timestamp: u64) {
         let elapsed_cycles = timestamp - self.last_psg_update;
+        let total = self.psg_prescaler as u64 + elapsed_cycles;
+        let ticks = total / 4;
+        self.psg_prescaler = (total % 4) as u8;
 
-        for _ in 0..elapsed_cycles {
-            self.psg_prescaler = (self.psg_prescaler + 1).get_bit_range(0..2);
-            if self.psg_prescaler == 0 {
-                self.psg.tick();
+        for _ in 0..ticks {
+            self.psg.tick();
+            let mut psg_samples = self.psg.samples();
 
-                let mut psg_samples = self.psg.samples();
+            if psg_samples != self.previous_psg_samples || self.psg_mixer.changed {
+                self.previous_psg_samples = psg_samples;
+                self.psg_mixer.changed = false;
+
                 for (index, muted) in self.psg_mute.iter().enumerate() {
                     if *muted {
-                        psg_samples[index] = 0
+                        psg_samples[index] = 0;
                     }
                 }
 
-                let (left_sample, right_sample) = self.psg_mixer.mix(psg_samples);
-                self.low_pass_left.collect_sample(left_sample as f64);
-                self.low_pass_right.collect_sample(right_sample as f64);
+                let (left, right) = self.psg_mixer.mix(psg_samples);
+                self.psg_output.add_samples((left, right));
             }
+
+            self.psg_output.cycle += 1;
         }
 
         self.last_psg_update = timestamp;
     }
 
     pub fn produce_sample(&mut self) {
+        self.psg_scratch.clear();
+        self.psg_output.read_samples(&mut self.psg_scratch);
+
         if !self.psg_mixer.on {
             self.sample_buffer.push(0.0);
             self.sample_buffer.push(0.0);
@@ -159,12 +169,8 @@ impl Apu {
             }
         }
 
-        let psg_scale = 8.0 * self.global_control.psg_volume();
-        let psg_left = self.low_pass_left.convolve() as f32;
-        let psg_right = self.low_pass_right.convolve() as f32;
-        let mut left = psg_left * psg_scale;
-        let mut right = psg_right * psg_scale;
-
+        let mut fifo_left = 0.0f32;
+        let mut fifo_right = 0.0f32;
         for (fifo, channel) in [
             (&self.fifo_a, FifoChannel::A),
             (&self.fifo_b, FifoChannel::B),
@@ -178,15 +184,20 @@ impl Apu {
             };
 
             if self.global_control.panned_left_fifo(channel) {
-                left += sample;
+                fifo_left += sample;
             }
             if self.global_control.panned_right_fifo(channel) {
-                right += sample;
+                fifo_right += sample;
             }
         }
 
-        self.sample_buffer.push(left.clamp(-512.0, 511.0) / 512.0);
-        self.sample_buffer.push(right.clamp(-512.0, 511.0) / 512.0);
+        let psg_scale = 8.0 * self.global_control.psg_volume();
+        for pair in self.psg_scratch.chunks_exact(2) {
+            let left = pair[0] * 60.0 * psg_scale + fifo_left;
+            let right = pair[1] * 60.0 * psg_scale + fifo_right;
+            self.sample_buffer.push(left.clamp(-512.0, 511.0) / 512.0);
+            self.sample_buffer.push(right.clamp(-512.0, 511.0) / 512.0);
+        }
     }
 
     // huge oopsie, i believe not gating this resulted in many vectors growing without bounds

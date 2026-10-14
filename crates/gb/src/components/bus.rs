@@ -104,7 +104,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(gamepak: GamePak) -> Self {
+    pub fn new(gamepak: GamePak, sample_rate: f64) -> Self {
         let cgb_flag = gamepak.header.cgb_flag;
         let wram_size = if cgb_flag == CgbFlag::Cgb {
             0x8000
@@ -129,7 +129,7 @@ impl Bus {
             gamepak,
             wram: zero_arr::<u8>(wram_size),
             ppu: Ppu::new(cgb_flag == CgbFlag::Cgb),
-            apu: Apu::new(),
+            apu: Apu::new(sample_rate),
             timer: Timer::new(cgb_flag == CgbFlag::Cgb),
             joypad: Joypad::new(),
             hram: zero_arr::<u8>(0x007F),

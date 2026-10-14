@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use shared::{
     EmulatorId,
-    psg::{PsgChannel, PsgMixer, PsgMixerRegister, convolve::LowPassFilter},
+    psg::{PsgChannel, PsgMixer, PsgMixerRegister, PsgOutput},
 };
 
 /*
@@ -20,16 +20,17 @@ use shared::{
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence
 #[derive(Deserialize, Serialize)]
 pub struct Apu {
-    mixer: PsgMixer,
+    pub mixer: PsgMixer,
     pub psg: PsgChannel,
+    #[serde(skip)]
+    pub psg_output: PsgOutput,
     sample_counter: f64,
     pub sample_buffer: Vec<f32>,
-    low_pass_left: LowPassFilter,
-    low_pass_right: LowPassFilter,
+    previous_samples: [u8; 4],
 }
 
 impl Apu {
-    pub fn new() -> Self {
+    pub fn new(sample_rate: f64) -> Self {
         let mut mixer = PsgMixer::new();
         mixer.write(PsgMixerRegister::Nr50, 0x77);
         mixer.write(PsgMixerRegister::Nr51, 0xF3);
@@ -55,10 +56,10 @@ impl Apu {
         Self {
             mixer,
             psg,
+            psg_output: PsgOutput::new(sample_rate),
             sample_counter: 0.0,
             sample_buffer: Vec::new(),
-            low_pass_left: LowPassFilter::new(),
-            low_pass_right: LowPassFilter::new(),
+            previous_samples: [0; 4],
         }
     }
 
@@ -69,20 +70,21 @@ impl Apu {
 
         for _ in 0..t_cycles {
             self.psg.tick();
-            let (sample_left, sample_right) = self.mixer.mix(self.psg.samples());
-            self.low_pass_left
-                .collect_sample((sample_left as f64) / 60.0);
-            self.low_pass_right
-                .collect_sample((sample_right as f64) / 60.0);
+            let samples = self.psg.samples();
+
+            if self.previous_samples != samples || self.mixer.changed {
+                self.mixer.changed = false;
+                self.previous_samples = samples;
+                let (sample_left, sample_right) = self.mixer.mix(samples);
+                self.psg_output.add_samples((sample_left, sample_right));
+            }
+
+            self.psg_output.cycle += 1;
 
             self.sample_counter += 1.0;
             if self.sample_counter >= cycles_per_sample {
                 self.sample_counter -= cycles_per_sample;
-
-                self.sample_buffer
-                    .push(self.low_pass_left.convolve() as f32);
-                self.sample_buffer
-                    .push(self.low_pass_right.convolve() as f32);
+                self.psg_output.read_samples(&mut self.sample_buffer);
             }
         }
     }

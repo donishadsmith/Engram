@@ -19,7 +19,7 @@ use std::{
     mem::{swap, take},
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB2";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB3";
 pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
@@ -40,7 +40,7 @@ impl GameBoy {
     pub fn boot(gamepak: GamePak, apu_sample_period: f64) -> Self {
         let checksum = gamepak.header.checksum;
         let cgb_flag = gamepak.header.cgb_flag;
-        let bus = Bus::new(gamepak);
+        let bus = Bus::new(gamepak, apu_sample_period);
 
         Self {
             cpu: SharpSm83::start(cgb_flag, checksum, bus),
@@ -233,6 +233,12 @@ impl GameBoy {
             &mut self.cpu.bus.gamepak.sav_path,
         );
         data.scripted_keypad = self.scripted_keypad;
+
+        swap(
+            &mut data.cpu.bus.apu.psg_output,
+            &mut self.cpu.bus.apu.psg_output,
+        );
+        data.cpu.bus.apu.mixer.changed = true;
 
         *self = data;
 
