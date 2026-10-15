@@ -34,6 +34,7 @@ pub struct GameBoy {
     pub remaining_cycles: u32,
     t_cycles: u64,
     pub apu_sample_period: f64,
+    pub rumble_strength: f32,
 }
 
 impl GameBoy {
@@ -49,6 +50,7 @@ impl GameBoy {
             remaining_cycles: 0,
             t_cycles: 0,
             apu_sample_period,
+            rumble_strength: 0.0,
         }
     }
 
@@ -70,6 +72,11 @@ impl GameBoy {
 
         let double_speed = self.cpu.bus.key_register & 0x80 != 0;
         let cpu_t_cycles = if double_speed { t_cycles } else { t_cycles * 2 };
+        self.cpu
+            .bus
+            .gamepak
+            .mbc
+            .increment_force_feedback_counter(cpu_t_cycles);
         let ppu_t_cycles = cpu_t_cycles / 2;
 
         self.cpu
@@ -99,6 +106,14 @@ impl GameBoy {
         self.replenish_remaining_cycles();
         while self.remaining_cycles > 0 {
             self.remaining_cycles = self.remaining_cycles.saturating_sub(self.step());
+
+            if self.cpu.bus.ppu.frame_ready
+                || self.cpu.bus.ppu.lcd_off_frame && self.remaining_cycles <= 0
+            {
+                let rumble_count = self.cpu.bus.gamepak.mbc.force_feedback_counter() as f32;
+                self.rumble_strength = (rumble_count / T_CYCLES_PER_FRAME_DOUBLE as f32).min(1.0);
+                self.cpu.bus.gamepak.mbc.reset_rumble_counter();
+            }
 
             if self.cpu.breakpoint_hit.is_some()
                 || self.cpu.bus.watchpoint_pause.get()

@@ -138,6 +138,18 @@ impl Mbc for MbcType {
     fn set_rom(&mut self, rom: Box<[u8]>) {
         trait_functions!(self, mbc, mbc.set_rom(rom))
     }
+
+    fn force_feedback_counter(&self) -> u64 {
+        trait_functions!(self, mbc, mbc.force_feedback_counter())
+    }
+
+    fn increment_force_feedback_counter(&mut self, t_cycles: u32) {
+        trait_functions!(self, mbc, mbc.increment_force_feedback_counter(t_cycles))
+    }
+
+    fn reset_rumble_counter(&mut self) {
+        trait_functions!(self, mbc, mbc.reset_rumble_counter())
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Deserialize, Serialize)]

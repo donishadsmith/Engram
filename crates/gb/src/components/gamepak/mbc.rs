@@ -50,6 +50,14 @@ pub mod prelude {
         fn rtc_save_state(&self) -> Option<RtcSaveState> {
             None
         }
+
+        fn force_feedback_counter(&self) -> u64 {
+            0
+        }
+
+        fn increment_force_feedback_counter(&mut self, _t_cycles: u32) {}
+
+        fn reset_rumble_counter(&mut self) {}
     }
 
     #[derive(PartialEq, Eq, Deserialize, Serialize)]
@@ -695,6 +703,8 @@ pub mod prelude {
         #[serde(skip)]
         ram_updated: bool,
         has_rumble: bool,
+        force_feedback_on: bool,
+        force_feedback_counter: u64,
     }
 
     impl Mbc5 {
@@ -708,6 +718,8 @@ pub mod prelude {
                 ram_enabled: false,
                 ram_updated: false,
                 has_rumble,
+                force_feedback_on: false,
+                force_feedback_counter: 0,
             }
         }
 
@@ -745,6 +757,10 @@ pub mod prelude {
                         value.get_bit_range(0..3) as usize
                     } else {
                         value.get_bit_range(0..4) as usize
+                    };
+
+                    if self.has_rumble {
+                        self.force_feedback_on = value.is_set(3);
                     }
                 }
                 0xA000..=0xBFFF => {
@@ -789,6 +805,20 @@ pub mod prelude {
 
         fn ram_changed(&mut self) -> &mut bool {
             &mut self.ram_updated
+        }
+
+        fn force_feedback_counter(&self) -> u64 {
+            self.force_feedback_counter
+        }
+
+        fn increment_force_feedback_counter(&mut self, t_cycles: u32) {
+            if self.force_feedback_on {
+                self.force_feedback_counter += t_cycles as u64;
+            }
+        }
+
+        fn reset_rumble_counter(&mut self) {
+            self.force_feedback_counter = 0;
         }
     }
 

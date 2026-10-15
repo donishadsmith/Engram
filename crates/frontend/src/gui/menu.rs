@@ -421,6 +421,16 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
                 // for psx warn checking this ignores multidirectional support
             },
         );
+
+        ui.menu_button(
+            format!("{}  Rumble Effect On", icons::VIBRATE),
+            |ui| {
+                ui.checkbox(
+                    &mut session.rumble_effect_on.gameboy,
+                    "Game Boy",
+                );
+            },
+        );
     });
 }
 

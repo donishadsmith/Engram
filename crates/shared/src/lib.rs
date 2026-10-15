@@ -166,6 +166,10 @@ pub trait EmulatorSession {
     fn update_frame_deadline(&mut self);
 
     fn set_analog(&mut self, _analog_sticks: AnalogSticks) {}
+
+    fn force_feedback_strength(&mut self) -> f32 {
+        0.0
+    }
 }
 
 pub trait ScriptTarget: Emulator {

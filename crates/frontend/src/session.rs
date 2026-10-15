@@ -1,5 +1,6 @@
 use egui_notify::{Anchor, Toasts};
-use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
+use gilrs::ff::{BaseEffect, BaseEffectType, EffectBuilder, Repeat, Replay, Ticks};
+use gilrs::{Axis, Button, EventType, GamepadId, Gilrs, ff::Effect};
 use macroquad::{
     input::{get_keys_pressed, prevent_quit},
     miniquad::window::set_fullscreen,
@@ -7,7 +8,7 @@ use macroquad::{
 };
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
-    config::{AnalogToDpad, Config, Display, load_config, save_config},
+    config::{AnalogToDpad, Config, Display, RumbleEffect, load_config, save_config},
     debug::DebugPage,
     editor::LuaEditor,
     input::{
@@ -87,6 +88,8 @@ pub struct Session {
     pub map_analog_to_dpad: AnalogToDpad,
     pub analog_deadzone_radius: f32,
     pub analog_controls: AnalogSticks,
+    pub rumble_effect: Option<Effect>,
+    pub rumble_effect_on: RumbleEffect,
 }
 
 impl Session {
@@ -101,6 +104,28 @@ impl Session {
         display.width = Some(display.width.unwrap_or(1280));
         display.height = Some(display.height.unwrap_or(900));
         let show_fps = config.show_fps;
+        let mut gilrs = Gilrs::new().ok();
+
+        let rumble_effect = if let Some(gilrs) = &mut gilrs {
+            EffectBuilder::new()
+                .add_effect(BaseEffect {
+                    kind: BaseEffectType::Strong {
+                        magnitude: u16::MAX,
+                    },
+                    scheduling: Replay {
+                        play_for: Ticks::from_ms(60),
+                        with_delay: Ticks::from_ms(0),
+                        ..Default::default()
+                    },
+                    envelope: Default::default(),
+                })
+                .repeat(Repeat::Infinitely)
+                .gamepads(&[])
+                .finish(gilrs)
+                .ok()
+        } else {
+            None
+        };
 
         Self {
             state: EmulatorState::Launch,
@@ -118,7 +143,7 @@ impl Session {
             lua_editor: LuaEditor::new(),
             return_state: None,
             pending_steps: VecDeque::new(),
-            gilrs: Gilrs::new().ok(),
+            gilrs,
             latest_gamepad_id: None,
             active_gamepad_changed: false,
             toasts: Toasts::default().with_anchor(Anchor::BottomRight),
@@ -138,6 +163,8 @@ impl Session {
                 left: AnalogStick { x: 0.0, y: 0.0 },
                 right: AnalogStick { x: 0.0, y: 0.0 },
             },
+            rumble_effect,
+            rumble_effect_on: config.rumble_effect_on,
         }
     }
 
@@ -284,6 +311,7 @@ impl Session {
             destructive_action_popup: Some(self.destructive_action_popup),
             analog_deadzone_radius: Some(self.analog_deadzone_radius),
             map_analog_to_dpad: self.map_analog_to_dpad,
+            rumble_effect_on: self.rumble_effect_on,
         };
 
         save_config(&config)
@@ -405,6 +433,16 @@ impl Session {
                     "Controller connected: {}",
                     gilrs.gamepad(gamepad_id).os_name()
                 ));
+            }
+        }
+
+        if let Some(latest_gamepad_id) = self.latest_gamepad_id.as_ref()
+            && let Some(gilrs) = &self.gilrs
+        {
+            if gilrs.gamepad(*latest_gamepad_id).is_ff_supported()
+                && let Some(rumble_effect) = self.rumble_effect.as_mut()
+            {
+                let _ = rumble_effect.add_gamepad(&gilrs.gamepad(*latest_gamepad_id));
             }
         }
 
@@ -622,6 +660,28 @@ impl Session {
         self.input_source = input_source;
 
         input_source_changed
+    }
+
+    pub fn apply_rumble(&mut self) {
+        // i hate proprietary software ecosystems: https://ds4-windows.com/download/ - needed for windows and sony
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        if !self.rumble_effect_on.get(emulator.id()) {
+            return;
+        }
+
+        let Some(rumble_effect) = self.rumble_effect.as_mut() else {
+            return;
+        };
+
+        let rumble_strength = emulator.force_feedback_strength();
+        if rumble_strength > 0.0 {
+            let _ = rumble_effect.set_gain(rumble_strength);
+            let _ = rumble_effect.play();
+        } else {
+            let _ = rumble_effect.stop();
+        }
     }
 }
 

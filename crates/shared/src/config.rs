@@ -38,6 +38,27 @@ impl Default for AnalogToDpad {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(default)]
+pub struct RumbleEffect {
+    pub gameboy: bool,
+}
+
+impl RumbleEffect {
+    pub fn get(self, emulator_id: EmulatorId) -> bool {
+        match emulator_id {
+            EmulatorId::Gb => self.gameboy,
+            EmulatorId::Gba => false,
+        }
+    }
+}
+
+impl Default for RumbleEffect {
+    fn default() -> Self {
+        RumbleEffect { gameboy: true }
+    }
+}
+
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -56,6 +77,7 @@ pub struct Config {
     pub destructive_action_popup: Option<bool>,
     pub analog_deadzone_radius: Option<f32>,
     pub map_analog_to_dpad: AnalogToDpad,
+    pub rumble_effect_on: RumbleEffect,
 }
 
 fn get_config_path() -> PathBuf {

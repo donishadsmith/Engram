@@ -359,4 +359,8 @@ impl EmulatorSession for GameBoySession {
     fn update_frame_deadline(&mut self) {
         self.frame_deadline = Instant::now() + self.frame_period
     }
+
+    fn force_feedback_strength(&mut self) -> f32 {
+        self.gameboy.rumble_strength
+    }
 }

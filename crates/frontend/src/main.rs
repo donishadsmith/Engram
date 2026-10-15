@@ -126,7 +126,9 @@ async fn main() -> Result<(), Error> {
                     if !take(&mut session.skip_toast) {
                         session.toasts.info("Emulator is paused");
                     }
-                };
+                }
+
+                session.apply_rumble();
 
                 if let Some(emulator) = &session.emulator {
                     let frame = emulator.frontend_ref();

@@ -65,6 +65,9 @@ sudo apt update
 sudo apt install -y libwayland-dev libasound2-dev libudev-dev pkg-config
 ```
 
+### Windows
+While Sony controllers inputs work with no additional software, rumble does not. Recommended to use [Ds4 Windows](https://ds4-windows.com/download/) to present it as an Xbox 360 controller. Connect over USB and leave "Hide DS4 Controller" off.
+
 ## Save Data
 Game saves and save states are stored inside your platform's data directory (via [`dirs::data_dir`](https://docs.rs/dirs/latest/dirs/fn.data_dir.html)), in `Engram/{system}/saves/` and `Engram/{system}/states/` respectively:
 
