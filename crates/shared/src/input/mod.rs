@@ -12,6 +12,18 @@ use gilrs::Button;
 use macroquad::input::KeyCode;
 use std::{collections::BTreeMap, io::Error};
 
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct AnalogStick {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct AnalogSticks {
+    pub left: AnalogStick,
+    pub right: AnalogStick,
+}
+
 pub struct SaveKeys {
     pub gba_keyboard: BTreeMap<String, String>,
     pub gba_gamepad: BTreeMap<String, String>,

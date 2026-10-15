@@ -401,6 +401,26 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
                 },
             );
         }
+
+        ui.menu_button(format!("{}  Analog Deadzone Radius", icons::TARGET), |ui| {
+            ui.add(
+                egui::Slider::new(&mut session.analog_deadzone_radius, 0.0..=1.0)
+                    .text("Deadzone Radius"),
+            ).on_hover_text("Increase to combat infamous joystick drift or sticks that take insanely long to center.");
+        });
+
+        ui.menu_button(
+            format!("{}  Map Analog to D-Pad", icons::ARROWS_OUT_CARDINAL),
+            |ui| {
+                ui.checkbox(
+                    &mut session.map_analog_to_dpad.gba,
+                    "Game Boy/Game Boy Advance",
+                )
+                .on_hover_text("Register analog inputs as D-pad controls");
+
+                // for psx warn checking this ignores multidirectional support
+            },
+        );
     });
 }
 

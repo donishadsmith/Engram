@@ -1,5 +1,5 @@
 use egui_notify::{Anchor, Toasts};
-use gilrs::{Button, EventType, GamepadId, Gilrs};
+use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
 use macroquad::{
     input::{get_keys_pressed, prevent_quit},
     miniquad::window::set_fullscreen,
@@ -7,10 +7,12 @@ use macroquad::{
 };
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
-    config::{Config, Display, load_config, save_config},
+    config::{AnalogToDpad, Config, Display, load_config, save_config},
     debug::DebugPage,
     editor::LuaEditor,
-    input::{KeyBindings, enums::Input, utils::get_relevant_key_presses},
+    input::{
+        AnalogStick, AnalogSticks, KeyBindings, enums::Input, utils::get_relevant_key_presses,
+    },
     script::ScriptRequest,
     utils::GifRecorder,
 };
@@ -23,6 +25,20 @@ use std::{
 };
 
 use crate::utils::initialize_debug_hashmap;
+
+pub trait AnalogValue {
+    fn apply_threshold(self, threshold: f32) -> f32;
+}
+
+impl AnalogValue for f32 {
+    fn apply_threshold(self, threshold: f32) -> f32 {
+        if (self * self) > threshold * threshold {
+            self
+        } else {
+            0.0
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct GamepadUpdate {
@@ -38,6 +54,7 @@ pub enum InputSource {
     Keyboard,
     Gamepad,
 }
+
 pub struct Session {
     pub state: EmulatorState,
     pub emulator: Option<Box<dyn EmulatorSession>>,
@@ -66,6 +83,10 @@ pub struct Session {
     pub show_notifications: bool,
     pub destructive_action_popup: bool,
     pub skip_toast: bool,
+    pub analog_to_dpad: Option<Button>,
+    pub map_analog_to_dpad: AnalogToDpad,
+    pub analog_deadzone_radius: f32,
+    pub analog_controls: AnalogSticks,
 }
 
 impl Session {
@@ -110,6 +131,13 @@ impl Session {
             // realizing that my poor and impulsive cotrol over a mouse requires this
             destructive_action_popup: config.destructive_action_popup.unwrap_or(false),
             skip_toast: false,
+            analog_to_dpad: None,
+            map_analog_to_dpad: config.map_analog_to_dpad,
+            analog_deadzone_radius: config.analog_deadzone_radius.unwrap_or(0.25), // some controllers are awful and require higher thresholds
+            analog_controls: AnalogSticks {
+                left: AnalogStick { x: 0.0, y: 0.0 },
+                right: AnalogStick { x: 0.0, y: 0.0 },
+            },
         }
     }
 
@@ -192,7 +220,13 @@ impl Session {
         };
 
         emulator.run(
-            &get_relevant_key_presses(&keymap[..index], gamepad, input_blocked).into_boxed_slice(),
+            &get_relevant_key_presses(
+                &keymap[..index],
+                gamepad,
+                input_blocked,
+                self.analog_to_dpad,
+            )
+            .into_boxed_slice(),
             self.master_volume,
         )
     }
@@ -248,6 +282,8 @@ impl Session {
             show_fps: self.show_fps,
             show_notifications: Some(self.show_notifications),
             destructive_action_popup: Some(self.destructive_action_popup),
+            analog_deadzone_radius: Some(self.analog_deadzone_radius),
+            map_analog_to_dpad: self.map_analog_to_dpad,
         };
 
         save_config(&config)
@@ -345,10 +381,19 @@ impl Session {
                         }
                     });
                 }
+                EventType::AxisChanged(Axis::LeftStickX, _, _)
+                | EventType::AxisChanged(Axis::RightStickX, _, _) => {
+                    self.latest_gamepad_id = Some(event.id);
+                }
+                EventType::AxisChanged(Axis::LeftStickY, _, _)
+                | EventType::AxisChanged(Axis::RightStickY, _, _) => {
+                    self.latest_gamepad_id = Some(event.id);
+                }
                 EventType::ButtonPressed(button, _) if button != Button::Unknown => {
                     gamepad_update.last_pressed = Some(button);
                     self.latest_gamepad_id = Some(event.id);
                 }
+
                 _ => {}
             }
         }
@@ -367,7 +412,86 @@ impl Session {
             gamepad_update.changed = true;
         }
 
-        gamepad_update
+        self.handle_analog_input(gamepad_update)
+    }
+
+    pub fn handle_analog_input(&mut self, gamepad_update: GamepadUpdate) -> GamepadUpdate {
+        if let Some(gamepad_id) = self.latest_gamepad_id
+            && let Some(gilrs) = &self.gilrs
+        {
+            let gamepad = gilrs.gamepad(gamepad_id);
+            let radius = self.analog_deadzone_radius;
+            let read = |axis| {
+                gamepad
+                    .axis_data(axis)
+                    .map_or(0.0, |axis_data| axis_data.value())
+                    .apply_threshold(radius)
+            };
+
+            self.analog_controls = AnalogSticks {
+                left: AnalogStick {
+                    x: read(Axis::LeftStickX),
+                    y: read(Axis::LeftStickY),
+                },
+                right: AnalogStick {
+                    x: read(Axis::RightStickX),
+                    y: read(Axis::RightStickY),
+                },
+            };
+        }
+
+        let AnalogSticks { left, right } = self.analog_controls;
+        let analog_stick =
+            if left.x * left.x + left.y * left.y >= right.x * right.x + right.y * right.y {
+                left
+            } else {
+                right
+            };
+        let (gamepad_update, analog_on) =
+            self.map_analog_to_dpad(gamepad_update, analog_stick.x, analog_stick.y);
+
+        let input_blocked =
+            self.show_key_bindings || self.show_hotkeys || self.lua_editor.occupied();
+
+        // intentionally allow analog for control binding but not for game input
+        if let Some(emulator) = &self.emulator {
+            self.analog_to_dpad =
+                if analog_on && !input_blocked && self.map_analog_to_dpad.get(emulator.id()) {
+                    gamepad_update.last_pressed
+                } else {
+                    None
+                };
+        }
+
+        return gamepad_update;
+    }
+
+    // https://www.easysmx.com/blogs/easysmx-controllers/controller-deadzone-joystick-test?srsltid=AU7gw4W7mI1o6YdNLAugGdbtot7DrsSEGtEMIbXhTOALUp00GXae7jgJ
+    fn map_analog_to_dpad(
+        &self,
+        mut gamepad_update: GamepadUpdate,
+        analog_x: f32,
+        analog_y: f32,
+    ) -> (GamepadUpdate, bool) {
+        if analog_x * analog_x + analog_y * analog_y
+            < self.analog_deadzone_radius * self.analog_deadzone_radius
+        {
+            return (gamepad_update, false);
+        }
+
+        if analog_x.abs() > analog_y.abs() {
+            if analog_x > 0.0 {
+                gamepad_update.last_pressed = Some(Button::DPadRight);
+            } else {
+                gamepad_update.last_pressed = Some(Button::DPadLeft);
+            }
+        } else if analog_y > 0.0 {
+            gamepad_update.last_pressed = Some(Button::DPadUp);
+        } else {
+            gamepad_update.last_pressed = Some(Button::DPadDown);
+        }
+
+        return (gamepad_update, true);
     }
 
     pub fn toggle_fullscreen(&mut self) {

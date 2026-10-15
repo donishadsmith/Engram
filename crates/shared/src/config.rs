@@ -8,12 +8,34 @@ use std::{
 };
 use toml::{from_str, to_string_pretty};
 
+use crate::EmulatorId;
+
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
 #[serde(default)]
 pub struct Display {
     pub fullscreen: bool,
     pub width: Option<i32>,
     pub height: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(default)]
+pub struct AnalogToDpad {
+    pub gba: bool,
+}
+
+impl AnalogToDpad {
+    pub fn get(self, emulator_id: EmulatorId) -> bool {
+        match emulator_id {
+            EmulatorId::Gb | EmulatorId::Gba => self.gba,
+        }
+    }
+}
+
+impl Default for AnalogToDpad {
+    fn default() -> Self {
+        AnalogToDpad { gba: true }
+    }
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -32,6 +54,8 @@ pub struct Config {
     pub data_dir: Option<String>,
     pub show_notifications: Option<bool>,
     pub destructive_action_popup: Option<bool>,
+    pub analog_deadzone_radius: Option<f32>,
+    pub map_analog_to_dpad: AnalogToDpad,
 }
 
 fn get_config_path() -> PathBuf {

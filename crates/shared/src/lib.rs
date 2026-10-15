@@ -19,7 +19,7 @@ use std::{io::Error, path::PathBuf};
 
 use crate::{
     debug::DebugPage,
-    input::enums::KeyId,
+    input::{AnalogSticks, enums::KeyId},
     render::Frame,
     script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit},
     utils::error_message,
@@ -36,6 +36,12 @@ impl EmulatorId {
         match self {
             EmulatorId::Gb => KeyId::Emulator(self),
             EmulatorId::Gba => KeyId::Emulator(self),
+        }
+    }
+
+    pub fn supports_multidirectional_control(self) -> bool {
+        match self {
+            EmulatorId::Gb | EmulatorId::Gba => false,
         }
     }
 }
@@ -158,6 +164,8 @@ pub trait EmulatorSession {
     fn set_top_height(&mut self, menu_height: f32);
 
     fn update_frame_deadline(&mut self);
+
+    fn set_analog(&mut self, _analog_sticks: AnalogSticks) {}
 }
 
 pub trait ScriptTarget: Emulator {
