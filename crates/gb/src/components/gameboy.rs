@@ -19,7 +19,7 @@ use std::{
     mem::{swap, take},
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB3";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB4";
 pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
