@@ -90,6 +90,7 @@ pub struct Session {
     pub analog_controls: AnalogSticks,
     pub rumble_effect: Option<Effect>,
     pub rumble_effect_on: RumbleEffect,
+    pub rumble_strength: f32,
 }
 
 impl Session {
@@ -165,6 +166,7 @@ impl Session {
             },
             rumble_effect,
             rumble_effect_on: config.rumble_effect_on,
+            rumble_strength: config.rumble_strength.unwrap_or(1.0),
         }
     }
 
@@ -312,6 +314,7 @@ impl Session {
             analog_deadzone_radius: Some(self.analog_deadzone_radius),
             map_analog_to_dpad: self.map_analog_to_dpad,
             rumble_effect_on: self.rumble_effect_on,
+            rumble_strength: Some(self.rumble_strength),
         };
 
         save_config(&config)
@@ -677,7 +680,7 @@ impl Session {
 
         let rumble_strength = emulator.force_feedback_strength();
         if rumble_strength > 0.0 {
-            let _ = rumble_effect.set_gain(rumble_strength);
+            let _ = rumble_effect.set_gain(rumble_strength * self.rumble_strength);
             let _ = rumble_effect.play();
         } else {
             let _ = rumble_effect.stop();

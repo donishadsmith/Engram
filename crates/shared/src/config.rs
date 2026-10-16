@@ -78,6 +78,7 @@ pub struct Config {
     pub analog_deadzone_radius: Option<f32>,
     pub map_analog_to_dpad: AnalogToDpad,
     pub rumble_effect_on: RumbleEffect,
+    pub rumble_strength: Option<f32>,
 }
 
 fn get_config_path() -> PathBuf {

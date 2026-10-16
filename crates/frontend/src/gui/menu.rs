@@ -423,12 +423,25 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
         );
 
         ui.menu_button(
-            format!("{}  Rumble Effect On", icons::VIBRATE),
+            format!("{}  Rumble", icons::VIBRATE),
             |ui| {
-                ui.checkbox(
-                    &mut session.rumble_effect_on.gameboy,
-                    "Game Boy",
+                ui.menu_button(
+                    "Rumble Effect On",
+                    |ui| {
+                        ui.checkbox(
+                            &mut session.rumble_effect_on.gameboy,
+                            "Game Boy",
+                        );
+                    },
                 );
+
+                ui.separator();
+
+                ui.add(
+                    egui::Slider::new(&mut session.rumble_strength, 0.0..=1.0)
+                        .text("Intensity"),
+                ).on_hover_text("Rumble strength multiplier");
+
             },
         );
     });
