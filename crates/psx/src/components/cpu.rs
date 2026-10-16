@@ -25,9 +25,77 @@ use serde::{Deserialize, Serialize};
 use shared::EmulatorState;
 use std::collections::HashMap;
 
+pub trait SignOps {
+    fn sign_extend(self) -> u32;
+}
+
+impl SignOps for u32 {
+    fn sign_extend(self) -> u32 {
+        self as u16 as i16 as i32 as u32
+    }
+}
+
+use shared::traits::BitOps;
+
+#[derive(Clone, Copy)]
+pub struct MipsInstruction(pub u32);
+
+impl MipsInstruction {
+    pub fn primary_opcode(self) -> u32 {
+        self.0.get_bit_range(26..32)
+    }
+
+    pub fn secondary_opcode(self) -> u32 {
+        self.0.get_bit_range(0..6)
+    }
+
+    pub fn is_special(self) -> bool {
+        self.primary_opcode() == 0
+    }
+
+    pub fn rs(self) -> usize {
+        self.0.get_bit_range(21..26) as usize
+    }
+
+    pub fn rt(self) -> usize {
+        self.0.get_bit_range(16..21) as usize
+    }
+
+    pub fn rd(self) -> usize {
+        self.0.get_bit_range(11..16) as usize
+    }
+
+    pub fn immediate_16(self) -> u32 {
+        self.0.get_bit_range(0..16)
+    }
+
+    pub fn offset_16(self) -> u32 {
+        self.immediate_16()
+    }
+
+    pub fn code(self) -> u32 {
+        self.0.get_bit_range(6..26)
+    }
+
+    pub fn cofun(self) -> u32 {
+        self.0.get_bit_range(0..25)
+    }
+
+    pub fn target(self) -> u32 {
+        self.0.get_bit_range(0..26)
+    }
+
+    pub fn base(self) -> u32 {
+        self.rs() as u32
+    }
+
+    pub fn sa(self) -> u32 {
+        self.0.get_bit_range(6..11)
+    }
+}
+
 // mostly will be used for lua scripttarget to map registers properly
 // for ``read_cpu_registers``
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
 pub enum RegisterAlias {
@@ -176,4 +244,55 @@ impl R3000a {
 
         self.breakpoint_queue.insert(address, action).is_none()
     }
+
+    //fn exception(&mut self, code)
+
+    // https://cgi.cse.unsw.edu.au/~cs3231/doc/R3000.pdf
+    //  https://psx-spx.consoledev.net/cpuspecifications/
+    fn add(&mut self, instruction: MipsInstruction) {
+        // Page A-7; if aritmetic overflow occurs, return an exception
+        let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
+            .overflowing_add(self.registers.r[instruction.rt()] as i32);
+        if !overflow {
+            self.registers.r[instruction.rd()] = value as u32;
+        } else {
+            // some exception
+        }
+    }
+
+    fn addi(&mut self, instruction: MipsInstruction) {
+        // Page A-8; overflow exeption occurs
+        let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
+            .overflowing_add(instruction.immediate_16().sign_extend() as i32);
+        if !overflow {
+            self.registers.r[instruction.rt()] = value as u32;
+        } else {
+            // some exception
+        }
+    }
+
+    fn addiu(&mut self, instruction: MipsInstruction) {
+        // Page A-9; no overflow exception
+        self.registers.r[instruction.rt()] = self.registers.r[instruction.rs()]
+            .wrapping_add(instruction.immediate_16().sign_extend())
+    }
+
+    fn addu(&mut self, instruction: MipsInstruction) {
+        // Page A-10; no exception
+        self.registers.r[instruction.rd()] =
+            self.registers.r[instruction.rs()].wrapping_add(self.registers.r[instruction.rt()]);
+    }
+
+    fn and(&mut self, instruction: MipsInstruction) {
+        self.registers.r[instruction.rd()] =
+            self.registers.r[instruction.rs()] & self.registers.r[instruction.rt()];
+    }
+
+    fn andi(&mut self, instruction: MipsInstruction) {
+        // Page A-12; immediate is 0 extended
+        self.registers.r[instruction.rt()] =
+            self.registers.r[instruction.rs()] & instruction.immediate_16();
+    }
 }
+
+pub fn dissasemble() {}
