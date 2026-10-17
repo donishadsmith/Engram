@@ -18,7 +18,7 @@ use crate::{
     session::{InputSource, Session},
     utils::{
         DestructiveAction, UiState, delete_all_slots_with_toast, delete_slots_with_toast,
-        load_slots_with_toast, save_slots_with_toast, slot_label,
+        load_slots_with_toast, save_slots_with_toast, slot_label, update_controller_hotkey_text,
     },
 };
 
@@ -76,6 +76,13 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 if let Some(emulator) = &mut session.emulator {
                     for slot in 1..=SAVE_STATE_SLOTS {
                         let (state_text, exists) = slot_label(emulator, slot, "Shift");
+                        let state_text =
+                            if (1..5).contains(&slot) && session.latest_gamepad_id.is_some() {
+                                update_controller_hotkey_text(state_text, slot, true)
+                            } else {
+                                state_text
+                            };
+
                         if ui
                             .add(
                                 egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend),
@@ -100,6 +107,13 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 if let Some(emulator) = &mut session.emulator {
                     for slot in 1..=SAVE_STATE_SLOTS {
                         let (state_text, exists) = slot_label(emulator, slot, "Ctrl");
+                        let state_text =
+                            if (1..5).contains(&slot) && session.latest_gamepad_id.is_some() {
+                                update_controller_hotkey_text(state_text, slot, false)
+                            } else {
+                                state_text
+                            };
+
                         if ui
                             .add_enabled(
                                 exists,
@@ -210,25 +224,32 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
         .response
         .on_disabled_hover_text("Accessible when ROM is loaded");
 
-        let text = format!(
-            "{}  Screenshot ({})",
-            icons::CAMERA,
-            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
-        );
+        let mut binding_text =
+            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot));
+        if session.latest_gamepad_id.is_some() {
+            binding_text.push_str("/Select+South");
+        }
+
+        let text = format!("{}  Screenshot ({})", icons::CAMERA, binding_text);
         if ui
             .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
             .clicked()
         {
-            screenshot(session.get_image_path());
+            screenshot(session.get_image_path().to_path_buf());
             session.toasts.success("Screenshot saved");
             ui.close_menu();
         }
 
-        let keycode = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
+        let mut binding_text =
+            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
+        if session.latest_gamepad_id.is_some() {
+            binding_text.push_str("/Select+East");
+        }
+
         let text = if session.gif.is_recording() {
-            format!("Stop GIF ({})", keycode)
+            format!("Stop GIF ({})", binding_text)
         } else {
-            format!("Record GIF ({})", keycode)
+            format!("Record GIF ({})", binding_text)
         };
 
         if ui
@@ -292,8 +313,7 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
         }
 
         let hotkey = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen));
-
-        ui.menu_button(format!("{}  Window", icons::FRAME_CORNERS), |ui| {
+        ui.menu_button(format!("{}  Window Size", icons::FRAME_CORNERS), |ui| {
             let fullscreen_text = if session.display.fullscreen {
                 "Close Fullscreen"
             } else {

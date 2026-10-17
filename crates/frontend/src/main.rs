@@ -83,6 +83,8 @@ async fn main() -> Result<(), Error> {
             ui_state.key_rebinding.is_some(),
         );
 
+        detect_hot_keys(&mut session, &mut ui_state);
+
         match session.state {
             EmulatorState::RomSelection => {
                 let Some(rom_path) = file_dialog() else {
@@ -190,7 +192,6 @@ async fn main() -> Result<(), Error> {
             show_controller_bindings(&egui_ctx, &mut session, &mut ui_state);
             show_hotkey_bindings(&egui_ctx, &mut session, &mut ui_state);
             keybinding(&mut session, &mut ui_state, &gamepad_update);
-            detect_hot_keys(&mut session, &mut ui_state);
 
             set_data_directories(&egui_ctx, &mut session, &mut ui_state);
             show_destructive_action_popup(&egui_ctx, &mut session, &mut ui_state);

@@ -18,6 +18,7 @@ use std::{
     fs::{metadata, remove_file},
     io::Error,
     path::PathBuf,
+    time::{Duration, Instant},
 };
 
 // increasing from 5 to 12 because why not
@@ -62,6 +63,12 @@ pub struct UiState {
     pub set_dirs: bool,
     pub start_recording: bool,
     pub debug_toggled: bool,
+    // for controller hotkey
+    pub last_save_state_time: Instant,
+    pub last_load_state_time: Instant,
+    pub last_gif_time: Instant,
+    pub last_screenshot_time: Instant,
+    pub controller_hotkey_delay: Duration,
 }
 
 impl UiState {
@@ -78,6 +85,11 @@ impl UiState {
             set_dirs: false,
             start_recording: false,
             debug_toggled: false,
+            last_save_state_time: Instant::now(),
+            last_load_state_time: Instant::now(),
+            last_gif_time: Instant::now(),
+            last_screenshot_time: Instant::now(),
+            controller_hotkey_delay: Duration::from_millis(500),
         }
     }
 }
@@ -339,4 +351,26 @@ pub fn thin_separator(ui: &mut egui::Ui) {
         rect.center().y,
         egui::Stroke::new(0.5, ui.visuals().weak_text_color()),
     );
+}
+
+pub fn update_controller_hotkey_text(
+    state_text: String,
+    slot: usize,
+    is_save_state: bool,
+) -> String {
+    let arrow = match slot {
+        1 => "DPadUp",
+        2 => "DPadRight",
+        3 => "DPadDown",
+        4 => "DPadLeft",
+        _ => unreachable!(),
+    };
+
+    let trigger = if is_save_state {
+        "LeftTrigger"
+    } else {
+        "RightTrigger"
+    };
+
+    state_text.replace(")", format!("/{trigger}+Start+{arrow})").as_str())
 }

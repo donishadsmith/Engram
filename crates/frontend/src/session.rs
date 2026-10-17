@@ -17,6 +17,7 @@ use shared::{
     script::ScriptRequest,
     utils::GifRecorder,
 };
+
 use std::{
     collections::{HashMap, VecDeque},
     fs::create_dir_all,
@@ -91,6 +92,7 @@ pub struct Session {
     pub rumble_effect: Option<Effect>,
     pub rumble_effect_on: RumbleEffect,
     pub rumble_strength: f32,
+    pub controller_hotkey_fired: bool,
 }
 
 impl Session {
@@ -167,6 +169,7 @@ impl Session {
             rumble_effect,
             rumble_effect_on: config.rumble_effect_on,
             rumble_strength: config.rumble_strength.unwrap_or(1.0),
+            controller_hotkey_fired: false,
         }
     }
 
@@ -239,7 +242,8 @@ impl Session {
         let input_blocked = self.show_key_bindings
             || self.show_hotkeys
             || self.lua_editor.occupied()
-            || clear_inputs;
+            || clear_inputs
+            || self.controller_hotkey_fired;
 
         // shocked that i managed to get gamepad working
         let keymap = if gamepad.is_some() {
@@ -327,9 +331,9 @@ impl Session {
         Ok(())
     }
 
-    pub fn get_image_path(&self) -> PathBuf {
+    pub fn get_image_path(&self) -> &PathBuf {
         let _ = self.create_image_path();
-        self.image_dir.clone()
+        &self.image_dir
     }
 
     pub fn set_paused(&mut self) {
@@ -491,8 +495,10 @@ impl Session {
         let (gamepad_update, analog_on) =
             self.map_analog_to_dpad(gamepad_update, analog_stick.x, analog_stick.y);
 
-        let input_blocked =
-            self.show_key_bindings || self.show_hotkeys || self.lua_editor.occupied();
+        let input_blocked = self.show_key_bindings
+            || self.show_hotkeys
+            || self.lua_editor.occupied()
+            || self.controller_hotkey_fired;
 
         // intentionally allow analog for control binding but not for game input
         if let Some(emulator) = &self.emulator {
