@@ -341,7 +341,7 @@ impl EmulatorSession for GBASession {
         self.gba.cpu.resume_from = Some(self.gba.cpu.next_executing_address());
     }
 
-    fn save_state(&self, slot: usize) -> Result<(), Error> {
+    fn save_state(&mut self, slot: usize) -> Result<(), Error> {
         let state_path = self.state_path(slot)?;
         let tmp_path = state_path.with_extension(format!("ss{slot}.tmp"));
 
@@ -351,7 +351,13 @@ impl EmulatorSession for GBASession {
 
     fn load_state(&mut self, slot: usize) -> Result<(), Error> {
         let bytes = read(self.state_path(slot)?)?;
-        self.gba.load_state(&bytes)
+        let result = self.gba.load_state(&bytes);
+
+        if result.is_ok() {
+            self.screen.update(&mut self.gba.bus.ppu.frontend);
+        }
+
+        result
     }
 
     fn current_save_states(&self) -> Vec<Option<PathBuf>> {

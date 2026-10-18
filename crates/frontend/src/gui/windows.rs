@@ -336,6 +336,7 @@ pub fn show_destructive_action_popup(
     if let Some(action) = ui_state.destructive_action
         && let Some(emulator) = &mut session.emulator
     {
+        let mut add_transient_state = false;
         egui::Window::new(
             egui::RichText::new(format!("{}  Destructive Action", icons::WARNING))
                 .strong()
@@ -384,7 +385,7 @@ pub fn show_destructive_action_popup(
                             delete_all_slots_with_toast(emulator, &mut session.toasts)
                         }
                         DestructiveAction::Reset => {
-                            session.state = EmulatorState::Reset;
+                            add_transient_state = true;
                         }
                     };
 
@@ -398,6 +399,10 @@ pub fn show_destructive_action_popup(
                 }
             });
         });
+
+        if add_transient_state {
+            session.add_transient_state(EmulatorState::Reset);
+        }
     }
 }
 

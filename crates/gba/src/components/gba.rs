@@ -9,7 +9,7 @@ use crate::components::{
 use serde::{Deserialize, Serialize};
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
-    render::to_rbg_single,
+    render::{Frame, to_rbg_single},
     script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
     traits::BitOps,
     utils::error_message,
@@ -19,7 +19,7 @@ use std::{
     mem::{swap, take},
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA2";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA3";
 pub const HBLANK_OFFSET: u64 = 1006;
 pub const CYCLES_PER_SCANLINE: u64 = 1232;
 pub const APU_SEQUENCER: u64 = 32768;
@@ -240,9 +240,6 @@ impl GBA {
         data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
         data.cpu.resume_from = self.cpu.resume_from;
 
-        swap(&mut data.bus.ppu.frame, &mut self.bus.ppu.frame);
-        swap(&mut data.bus.ppu.frontend, &mut self.bus.ppu.frontend);
-
         swap(&mut data.bus.gamepak.rom, &mut self.bus.gamepak.rom);
         swap(
             &mut data.bus.gamepak.sav_path,
@@ -317,6 +314,10 @@ impl Emulator for GBA {
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
         take(&mut self.bus.watchpoint_hits)
+    }
+
+    fn frontend_mut(&mut self) -> &mut Frame {
+        &mut self.bus.ppu.frontend
     }
 }
 

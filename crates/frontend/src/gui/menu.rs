@@ -52,7 +52,7 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             if session.destructive_action_popup {
                 ui_state.destructive_action = Some(DestructiveAction::Reset);
             } else {
-                session.state = EmulatorState::Reset;
+                session.add_transient_state(EmulatorState::Reset);
             }
 
             ui.close_menu();

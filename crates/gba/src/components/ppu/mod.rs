@@ -197,9 +197,7 @@ pub struct Ppu {
     pub color_special_effects: GroupedRegisters<u16>,
     pub mosaic: u16,
     pub vcount: u8,
-    #[serde(skip)]
     pub frontend: Frame, // so many frames
-    #[serde(skip)]
     pub frame: Frame,
     #[serde(skip, default = "debug_frames")]
     pub debug_frontend: [Frame; 4],

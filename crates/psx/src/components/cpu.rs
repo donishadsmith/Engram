@@ -207,8 +207,8 @@ impl Registers {
         self.next_pc = target_address;
     }
 
-    pub fn link(&mut self, destination: usize, current_pc: u32) {
-        self.write_cpu_register(destination, current_pc.wrapping_add(8));
+    pub fn link(&mut self, destination: usize) {
+        self.write_cpu_register(destination, self.next_pc);
     }
 }
 
@@ -292,6 +292,40 @@ impl R3000a {
         // Page A-12; immediate is 0 extended
         self.registers.r[instruction.rt()] =
             self.registers.r[instruction.rs()] & instruction.immediate_16();
+    }
+
+    fn beq(&mut self, instruction: MipsInstruction) {
+        if self.registers.r[instruction.rs()] == self.registers.r[instruction.rt()] {
+            let offset = instruction.offset_16().sign_extend() << 2;
+            self.registers
+                .branch(self.registers.pc.wrapping_add(offset));
+        }
+    }
+
+    fn bgez(&mut self, instruction: MipsInstruction) {
+        if self.registers.r[instruction.rs()].is_clear(31) {
+            let offset = instruction.offset_16().sign_extend() << 2;
+            self.registers
+                .branch(self.registers.pc.wrapping_add(offset));
+        }
+    }
+
+    fn bgezal(&mut self, instruction: MipsInstruction) {
+        self.registers.link(31);
+        if self.registers.r[instruction.rs()].is_clear(31) {
+            let offset = instruction.offset_16().sign_extend() << 2;
+            self.registers
+                .branch(self.registers.pc.wrapping_add(offset));
+        }
+    }
+
+    fn blez(&mut self, instruction: MipsInstruction) {
+        if self.registers.r[instruction.rs()].is_set(31) || self.registers.r[instruction.rs()] == 0
+        {
+            let offset = instruction.offset_16().sign_extend() << 2;
+            self.registers
+                .branch(self.registers.pc.wrapping_add(offset));
+        }
     }
 }
 

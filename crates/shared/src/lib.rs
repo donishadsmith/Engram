@@ -81,10 +81,13 @@ pub trait Emulator {
 
     fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)>;
 
-    fn save_state(&self, state_magic_name: &[u8]) -> Result<Vec<u8>, Error>
+    fn save_state(&mut self, state_magic_name: &[u8]) -> Result<Vec<u8>, Error>
     where
         Self: Serialize + Deserialize<'static>,
     {
+        let frontend = self.frontend_mut();
+        frontend.buffer_changed = true;
+
         let serialized_data = postcard::to_allocvec(self)
             .map_err(|err| error_message(format!("Failed to create save state: {err}")))?;
         let compressed_data = lz4_flex::compress_prepend_size(&serialized_data);
@@ -95,6 +98,8 @@ pub trait Emulator {
 
         Ok(output)
     }
+
+    fn frontend_mut(&mut self) -> &mut Frame;
 }
 
 pub trait DebugInterface {
@@ -153,7 +158,7 @@ pub trait EmulatorSession {
 
     fn load_state(&mut self, slot: usize) -> Result<(), Error>;
 
-    fn save_state(&self, slot: usize) -> Result<(), Error>;
+    fn save_state(&mut self, slot: usize) -> Result<(), Error>;
 
     fn current_save_states(&self) -> Vec<Option<PathBuf>>;
 

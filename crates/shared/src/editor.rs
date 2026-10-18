@@ -1,3 +1,4 @@
+use crate::script::HELP;
 use arboard::Clipboard;
 use chrono::Local;
 use egui::{Context, ScrollArea, Window, text::CursorRange};
@@ -29,6 +30,7 @@ pub struct LuaEditor {
     pub termination_request: bool,
     pending_copy: Option<(String, Instant)>,
     clipboard: Option<Clipboard>,
+    pub help_window: bool,
 }
 
 impl LuaEditor {
@@ -41,6 +43,7 @@ impl LuaEditor {
             termination_request: false,
             pending_copy: None,
             clipboard: Clipboard::new().ok(),
+            help_window: false,
         }
     }
 
@@ -73,10 +76,15 @@ impl LuaEditor {
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(format!("{}  Help", icons::INFO)).clicked() {
-                            self.code = "help()".to_string();
-                            run = true;
+                        if ui.button(format!("{}  Help", icons::INFO)).clicked() && !self.help_window {
+                            self.help_window = true;
                         }
+
+                        egui::Window::new("Help").default_width(500.0).vscroll(false).open(&mut self.help_window).show(ui.ctx(), |ui| {
+                            egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                                    ui.label(HELP);
+                                });
+                            });
 
                         ui.menu_button("Session", |ui| {
                             if ui.button(format!("{}  Clear Console", icons::BROOM)).on_hover_text(

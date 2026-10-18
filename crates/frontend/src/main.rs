@@ -114,8 +114,13 @@ async fn main() -> Result<(), Error> {
                     _ => {}
                 }
 
-                session.take_return_state();
-                session.set_running();
+                if let Some(state) = session.take_return_state()
+                    && state == EmulatorState::Paused
+                {
+                    session.state = state;
+                } else {
+                    session.set_running();
+                }
             }
             EmulatorState::Running => {
                 if session.run(
@@ -140,9 +145,17 @@ async fn main() -> Result<(), Error> {
                 }
             }
             EmulatorState::Reset => {
+                let state = if let Some(state) = session.take_return_state()
+                    && state == EmulatorState::Paused
+                {
+                    state
+                } else {
+                    EmulatorState::Running
+                };
+
                 let _ = session.reset();
-                session.take_return_state();
-                session.state = EmulatorState::Running;
+                session.state = state;
+
                 if !take(&mut session.skip_toast) {
                     session.toasts.success("Emulator reset");
                 }

@@ -1,23 +1,24 @@
 use macroquad::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::mem::swap;
 
 use crate::traits::BitOps;
 
 const RGBA_BYTES_PER_PIXEL: usize = 4;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize, Serialize)]
 pub enum PixelFormat {
     Rgb555,
     Rgb888,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize, Serialize)]
 pub enum ScalingMethod {
     Integer,
     Aspect(u8, u8),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Frame {
     pub pixels: Box<[u32]>,
     pub width: usize,

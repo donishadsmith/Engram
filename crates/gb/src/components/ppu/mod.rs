@@ -156,9 +156,7 @@ pub struct Ppu {
     pub current_mode: PpuMode,
     pub entered_hblank: bool,
     is_cgb: bool,
-    #[serde(skip)]
     pub frame: Frame,
-    #[serde(skip)]
     pub frontend: Frame,
     pub lcd_off_frame: bool,
 }

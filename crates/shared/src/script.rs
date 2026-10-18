@@ -16,18 +16,18 @@ use std::{
 
 // https://github.com/ioncodes/gecko/blob/master/crates/scripting/src/lib.rs
 
-const HELP: &str = r#"
-Memory access through bus:
+pub const HELP: &str = r#"
+Memory Access through Bus:
 read_u8(address)  read_u16(address)  read_u32(address)
 write_u8(address, value)  write_u16(address, value)  write_u32(address, value)
 
-Memory domains:
+Memory Domains:
 memory_domain_names(): table of names
 read_domain(name, offset)
 write_domain(name, offset, value)
 address_to_domain: returns (name, offset)
 
-CPU registers:
+CPU Registers:
 cpu_register_names(): table of names
 read_cpu_register(name)
 write_cpu_register(name, value)
@@ -41,7 +41,7 @@ remove_breakpoint(address)
 clear_all_breakpoints()
 check_breakpoints()
 
-Watchpoints for bus accesses:
+Watchpoints for Bus Accesses:
 set_watchpoint(address, {pause = true, on = "rw", width = "byte", target=None})
   - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
   - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
@@ -53,7 +53,7 @@ remove_watchpoint(address)
 clear_all_watchpoints()
 check_watchpoints()
 
-Emulator controls:
+Emulator Controls:
 pause()  resume()  step_instruction()  step_frame()  reset()  clear_output()
 screenshot()  start_gif()  stop_gif()  save_state(slot)  load_state(slot)
 delete_state(slot)
@@ -432,14 +432,6 @@ impl ScriptEngine {
                 Ok(())
             })?;
             lua.globals().set("print", print)?;
-
-            let help = scope.create_function(|_, (): ()| {
-                for line in HELP.lines() {
-                    output.borrow_mut().push(line.to_string());
-                }
-                Ok(())
-            })?;
-            lua.globals().set("help", help)?;
 
             let read_u8 = scope
                 .create_function(|_, address: u32| Ok(target.borrow_mut().read_u8(address)))?;

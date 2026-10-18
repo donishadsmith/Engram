@@ -10,7 +10,7 @@ use crate::components::{
 use serde::{Deserialize, Serialize};
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
-    render::{PixelFormat, to_rbg_single},
+    render::{Frame, PixelFormat, to_rbg_single},
     script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
     utils::error_message,
 };
@@ -19,7 +19,7 @@ use std::{
     mem::{swap, take},
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB4";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB5";
 pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
@@ -231,13 +231,6 @@ impl GameBoy {
 
         data.apu_sample_period = self.apu_sample_period;
 
-        swap(&mut data.cpu.bus.ppu.frame, &mut self.cpu.bus.ppu.frame);
-        swap(
-            &mut data.cpu.bus.ppu.frontend,
-            &mut self.cpu.bus.ppu.frontend,
-        );
-        data.cpu.bus.ppu.lcd_off_frame = self.cpu.bus.ppu.lcd_off_frame;
-
         data.cpu
             .bus
             .gamepak
@@ -314,6 +307,10 @@ impl Emulator for GameBoy {
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
         take(&mut self.cpu.bus.watchpoint_hits.borrow_mut())
+    }
+
+    fn frontend_mut(&mut self) -> &mut Frame {
+        &mut self.cpu.bus.ppu.frontend
     }
 }
 
