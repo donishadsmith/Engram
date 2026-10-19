@@ -7,17 +7,12 @@ use shared::{
     debug::Trace,
     enums::{FetchSource, Width},
     scheduler::EventScheduler,
-    script::{WatchpointArgs, WatchpointHit},
+    script::{MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange},
     traits::BitOps,
 };
 
 use crate::components::psx::Event;
 // gonna experiment with generic this time - https://github.com/simias/rustation-ng/blob/main/src/psx.rs
-
-pub enum Requester {
-    Cpu,
-    Dma,
-}
 
 pub trait BusAccess: BitOps {
     const ACCESS_WIDTH: Width;
@@ -97,7 +92,7 @@ pub struct Bus {
     #[serde(skip)]
     trace: Option<Trace>,
     #[serde(skip)]
-    pub watchpoint_queue: HashMap<u32, WatchpointArgs>,
+    pub watchpoint_queue: HashMap<WatchpointRange, WatchpointArgs>,
     #[serde(skip)]
     pub watchpoint_hits: Vec<WatchpointHit>,
     #[serde(skip)]
@@ -126,8 +121,8 @@ impl Bus {
         }
     }
 
-    pub fn read<T: BusAccess>(&mut self, address: u32, requester: Requester) -> T {
-        self.determine_cycle_cost(address, T::ACCESS_WIDTH, requester);
+    pub fn read<T: BusAccess>(&mut self, address: u32, accessor: MemoryAccessor) -> T {
+        self.determine_cycle_cost(address, T::ACCESS_WIDTH, accessor);
         unimplemented!()
     }
 
@@ -135,8 +130,8 @@ impl Bus {
         unimplemented!()
     }
 
-    pub fn write<T: BusAccess>(&mut self, address: u32, value: T, requester: Requester) {
-        self.determine_cycle_cost(address, T::ACCESS_WIDTH, requester);
+    pub fn write<T: BusAccess>(&mut self, address: u32, value: T, accessor: MemoryAccessor) {
+        self.determine_cycle_cost(address, T::ACCESS_WIDTH, accessor);
     }
 
     pub fn poke<T: BusAccess>(&mut self, address: u32, value: T) {}
@@ -149,7 +144,7 @@ impl Bus {
 
     pub fn notify_fetch(&mut self, address: u32, fetch_source: FetchSource) {}
 
-    pub fn determine_cycle_cost(&mut self, address: u32, width: Width, requester: Requester) {}
+    pub fn determine_cycle_cost(&mut self, address: u32, width: Width, accessor: MemoryAccessor) {}
 
     pub fn add_cycles(&mut self, cycles: u64) {
         self.scheduler.current += cycles;

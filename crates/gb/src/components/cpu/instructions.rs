@@ -1,7 +1,7 @@
-use shared::traits::BitOps;
+use shared::{script::MemoryAccessor, traits::BitOps};
 
 use crate::components::{
-    bus::{AddressBus, MemoryAccessor},
+    bus::AddressBus,
     cpu::{
         FlagDelta, FlagType, SharpSm83, StatusFlag,
         alu::{ArithmeticOperation, BitwiseOperation, half_carry_add, half_carry_sub},

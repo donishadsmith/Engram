@@ -6,10 +6,10 @@ pub mod registers;
 
 use std::collections::HashMap;
 
-use shared::EmulatorState;
+use shared::{EmulatorState, script::MemoryAccessor};
 
 use crate::components::{
-    bus::{AddressBus, MemoryAccessor},
+    bus::AddressBus,
     cpu::{interrupts::InterruptMode, registers::Registers},
     gamepak::CgbFlag,
     utils::{ByteOps8, MergeByteOps},

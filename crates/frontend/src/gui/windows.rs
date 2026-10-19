@@ -139,12 +139,13 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
             }
 
             if session.lua_editor.take_termination_request() {
-                script_engine.stop_all_processes();
+                script_engine.stop_scripts();
             }
         }
     };
 
     let mut apply_run_updates = false;
+    let mut reset_request = false;
     if let Some(emulator) = &mut session.emulator
         && let Some(script_engine) = emulator.script_engine()
     {
@@ -206,6 +207,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
                     }
                 }
                 ScriptRequest::Reset => {
+                    reset_request = true;
                     session
                         .lua_editor
                         .push_output(vec!["emulator reset".to_string()]);
@@ -269,6 +271,10 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
                     _ => {}
                 }
             }
+        }
+
+        if reset_request && session.state != EmulatorState::Reset {
+            session.add_transient_state(EmulatorState::Reset);
         }
     }
 

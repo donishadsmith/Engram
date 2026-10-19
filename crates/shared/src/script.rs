@@ -7,9 +7,10 @@ use crate::{
 use mlua::{
     Function, HookTriggers, Lua, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     cell::{Cell, RefCell},
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     mem::take,
     time::{Duration, Instant},
 };
@@ -42,23 +43,26 @@ clear_all_breakpoints()
 check_breakpoints()
 
 Watchpoints for Bus Accesses:
-set_watchpoint(address, {pause = true, on = "rw", width = "byte", target=None})
+set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target=None, accessor="all"})
   - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
   - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
     a watchpoint only fires for specified access width
   - target: on writes its the incoming value being written to address and on reads its the current value
     at the address being accessed; watchpoint only fires for specified target
+  - end_address: if included watchpoint becomes an inclusive range (start_address..=end_address) instead of a
+    single address
+  - accessor: "all", "cpu", "dma"; restricts hits based on the hardware accessing memory
 
 remove_watchpoint(address)
 clear_all_watchpoints()
 check_watchpoints()
 
 Emulator Controls:
-pause()  resume()  step_instruction()  step_frame()  reset()  clear_output()
+pause()  resume()  step_instruction()  step_frame()  reset()  clear_console()
 screenshot()  start_gif()  stop_gif()  save_state(slot)  load_state(slot)
 delete_state(slot)
 
-- `slot` is a value from 1 to 5
+- `slot` is a value from 1 to 12
 
 Input:
 available_inputs(): table of input buttons
@@ -67,13 +71,16 @@ set_inputs({a = true, up = true}): buttons held permanantly until released, keyb
 check_inputs(): prints buttons currently held
 
 Misc:
-elapsed_cpu_cycles(): GB/GBC reports t-cycles
+elapsed_cycles(): GB/GBC reports t-cycles
+pause_at_cycle(cycle)
+pause_after_elapsed_cycles(elapsed_cycles)
+stop_scripts(): Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints.
 
 Hooks:
 function on_frame(): runs once per frame
 function on_breakpoint(address): runs when a breakpoint is hit
 function on_watchpoint(hit): runs once per watchpoint hit; hit is a table with
-  address, value, pc, on, access, pause
+  address, value, pc, on, access, pause, requester
 "#;
 
 pub enum DomainError {
@@ -101,6 +108,82 @@ pub enum ScriptRequest {
     DeleteState(usize),
 }
 
+// is it incredibly lazy to create a new enum to compare strings with another nearly duplicate enum with a one variant difference
+// in order to avoid a refactor? yes. but does it work and was it incredibly easy to do? also yes. will i refactor this later? nope
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Accessor {
+    Cpu,
+    Dma,
+    All,
+}
+
+impl Accessor {
+    pub fn to_string(self) -> &'static str {
+        match self {
+            Accessor::Cpu => "cpu",
+            Accessor::Dma => "dma",
+            Accessor::All => "all",
+        }
+    }
+
+    pub fn to_enum(string: String) -> Result<Accessor, mlua::Error> {
+        let lower = string.to_lowercase();
+        let valid = ["all", "cpu", "dma"].join(", ");
+        match lower.as_str() {
+            "cpu" => Ok(Accessor::Cpu),
+            "dma" => Ok(Accessor::Dma),
+            "all" => Ok(Accessor::All),
+            _ => Err(mlua::Error::runtime(format!(
+                "'{string}' is invalid: (valid: {valid})"
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum MemoryAccessor {
+    Cpu,
+    Dma, // for organization but may do something wiht it later
+    Lua,
+}
+
+impl MemoryAccessor {
+    pub fn to_string(self) -> &'static str {
+        match self {
+            MemoryAccessor::Cpu => "cpu",
+            MemoryAccessor::Dma => "dma",
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AddressRange {
+    Single,
+    Range(u32),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WatchpointRange {
+    pub start_address: u32,
+    pub end_address: Option<u32>,
+}
+
+pub fn find_watchpoint(
+    address: u32,
+    watchpoints: &HashMap<WatchpointRange, WatchpointArgs>,
+) -> Option<WatchpointRange> {
+    for range in watchpoints.keys() {
+        let end_address = range.end_address.unwrap_or(range.start_address);
+
+        if address >= range.start_address && address <= end_address {
+            return Some(*range);
+        }
+    }
+
+    None
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WatchpointType {
     Read,
@@ -117,7 +200,7 @@ impl WatchpointType {
             "rw" => Ok(WatchpointType::ReadWrite),
             "change" => Ok(WatchpointType::Change),
             _ => Err(mlua::Error::runtime(format!(
-                "invalid option for `on`: {string}; valid options are 'read', 'write', 'rw', and 'change'."
+                "invalid option for `on`: {string}: valid options are 'read', 'write', 'rw', and 'change'."
             ))),
         }
     }
@@ -139,6 +222,7 @@ pub struct WatchpointArgs {
     pub target: Option<u32>,
     pub width: Width,
     pub last_written: Option<u32>,
+    pub accessor: Accessor,
 }
 
 impl WatchpointArgs {
@@ -181,6 +265,8 @@ pub struct WatchpointHit {
     pub on: WatchpointType,
     pub pc: u32,
     pub fetch_source: Option<FetchSource>,
+    pub cycle: u64,
+    pub accessor: MemoryAccessor,
 }
 
 impl WatchpointHit {
@@ -231,21 +317,39 @@ fn check_address(emulator_id: EmulatorId, address: u32) -> Result<(), mlua::Erro
 fn parse_watchpoint_args(
     emulator_id: EmulatorId,
     address: u32,
-    kwargs: Option<Table>,
-) -> Result<(u32, WatchpointArgs), mlua::Error> {
-    let (pause, on, width, target) = match kwargs {
+    kwargs: &Option<Table>,
+) -> Result<(WatchpointRange, WatchpointArgs), mlua::Error> {
+    let (end_address, pause, on, width, target, accessor) = match kwargs {
         Some(table) => (
+            table.get::<Option<u32>>("end_address")?,
             table.get::<Option<bool>>("pause")?,
             table.get::<Option<String>>("on")?,
             table.get::<Option<String>>("width")?,
             table.get::<Option<u32>>("target")?,
+            table.get::<Option<String>>("accessor")?,
         ),
-        None => (None, None, None, None),
+        None => (None, None, None, None, None, None),
     };
 
     let pause = pause.unwrap_or(true);
     let on = WatchpointType::from_string(on.unwrap_or_else(|| "rw".to_string()))?;
     let width = Width::from_string(width.unwrap_or_else(|| "byte".to_string()))?;
+    let end_address = if let Some(end) = end_address {
+        if end <= address {
+            return Err(mlua::Error::runtime(format!(
+                "`end_address`: {end} cannot be less than or equal to `start_address`: {address}"
+            )));
+        }
+
+        Some(width.align(end))
+    } else {
+        None
+    };
+    let accessor = if let Some(string) = accessor {
+        Accessor::to_enum(string)?
+    } else {
+        Accessor::All
+    };
 
     if emulator_id == EmulatorId::Gb && width != Width::Byte {
         return Err(mlua::Error::runtime(
@@ -259,9 +363,15 @@ fn parse_watchpoint_args(
         target,
         width,
         last_written: None,
+        accessor,
     };
 
-    Ok((width.align(address), watchpoint_args))
+    let watchpoint_range = WatchpointRange {
+        start_address: width.align(address),
+        end_address,
+    };
+
+    Ok((watchpoint_range, watchpoint_args))
 }
 
 fn get_available_inputs(emulator_id: EmulatorId) -> Vec<String> {
@@ -313,8 +423,8 @@ pub struct ScriptEngine {
     running: Option<Thread>,
     requests: Vec<ScriptRequest>,
     step_done: bool,
-    stop_processes: bool,
-    clear_output: bool,
+    stop_scripts: bool,
+    clear_console: bool,
 }
 
 impl ScriptEngine {
@@ -345,8 +455,8 @@ impl ScriptEngine {
             running: None,
             requests: Vec::new(),
             step_done: false,
-            stop_processes: false,
-            clear_output: false,
+            stop_scripts: false,
+            clear_console: false,
         }
     }
 
@@ -370,14 +480,17 @@ impl ScriptEngine {
         self.step_done = true;
     }
 
-    pub fn stop_all_processes(&mut self) {
+    pub fn stop_scripts(&mut self) {
         self.step_completed();
         self.running = None;
-        self.stop_processes = true;
+        self.stop_scripts = true;
     }
 
-    fn kill_processes(&mut self, target: &mut dyn ScriptTarget) {
-        if take(&mut self.stop_processes) {
+    fn stop_all_scripts(&mut self, target: &mut dyn ScriptTarget) {
+        if take(&mut self.stop_scripts) {
+            self.running = None;
+            self.pending.clear();
+            self.step_done = false;
             let _ = self.lua.globals().set("on_frame", Value::Nil);
             let _ = self.lua.globals().set("on_breakpoint", Value::Nil);
             let _ = self.lua.globals().set("on_watchpoint", Value::Nil);
@@ -393,7 +506,7 @@ impl ScriptEngine {
     }
 
     pub fn take_clear_request(&mut self) -> bool {
-        take(&mut self.clear_output)
+        take(&mut self.clear_console)
     }
 
     pub fn execute(
@@ -402,8 +515,6 @@ impl ScriptEngine {
         emulator_id: EmulatorId,
         frame_boundary: bool,
     ) {
-        self.kill_processes(target);
-
         let Self {
             lua,
             pending,
@@ -411,16 +522,24 @@ impl ScriptEngine {
             running,
             requests,
             step_done,
-            stop_processes: _,
-            clear_output,
+            stop_scripts,
+            clear_console,
         } = self;
 
         let target = RefCell::new(target);
         let output = RefCell::new(output);
         let requests = RefCell::new(requests);
-        let clear_output = Cell::from_mut(clear_output);
+        let clear_console = Cell::from_mut(clear_console);
+        let stop_scripts = Cell::from_mut(stop_scripts);
 
         let result = lua.scope(|scope| {
+            let stop_scripts_function = scope.create_function(|_,  (): ()| {
+                stop_scripts.replace(true);
+
+                Ok(())
+            })?;
+            lua.globals().set("stop_scripts", stop_scripts_function)?;
+
             let print = scope.create_function(|_, vals: Variadic<Value>| {
                 let line = vals
                     .iter()
@@ -499,6 +618,30 @@ impl ScriptEngine {
             lua.globals()
                 .set("cpu_register_names", cpu_register_names)?;
 
+            let pause_at_cycle = scope
+                .create_function(|_, cycle: u64| {
+                    target.borrow_mut().set_cycle_pause(cycle);
+
+                    Ok(())
+                })?;
+            lua.globals()
+                .set("pause_at_cycle", pause_at_cycle)?;
+
+            let strings =  target.borrow_mut().cycle_paused_text();
+            for string in strings {
+                output.borrow_mut().push(string);
+            }
+
+            let pause_after_elapsed_cycles = scope
+                .create_function(|_, elapsed_cycles: u64| {
+                    let current_cycle = target.borrow().elapsed_cycles();
+                    target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles + current_cycle);
+
+                    Ok(())
+                })?;
+            lua.globals()
+                .set("pause_after_elapsed_cycles", pause_after_elapsed_cycles)?;
+
             let read_cpu_register = scope.create_function(|_, name: String| {
                 let name = name.to_lowercase();
                 let result = target.borrow().read_cpu_register(name.clone());
@@ -554,9 +697,9 @@ impl ScriptEngine {
                         None => true,
                     };
                     let message = if target.borrow_mut().set_breakpoint(address, pause) {
-                        format!("breakpoint set at {address:08x}")
+                        format!("breakpoint set at {address:08X}")
                     } else {
-                        format!("breakpoint at {address:08x} was updated")
+                        format!("breakpoint at {address:08X} was updated")
                     };
 
                     output.borrow_mut().push(message);
@@ -568,7 +711,7 @@ impl ScriptEngine {
                 target.borrow_mut().remove_breakpoint(address);
                 output
                     .borrow_mut()
-                    .push(format!("breakpoint at {address:08x} removed"));
+                    .push(format!("breakpoint at {address:08X} removed"));
                 Ok(())
             })?;
             lua.globals().set("remove_breakpoint", remove_breakpoint)?;
@@ -594,7 +737,7 @@ impl ScriptEngine {
                         };
 
                         output.borrow_mut().push(format!(
-                            "breakpoint at {:08x}, action on breakpoint: {action}",
+                            "breakpoint at {:08X}, action on breakpoint: {action}",
                             *address
                         ))
                     }
@@ -605,30 +748,38 @@ impl ScriptEngine {
             })?;
             lua.globals().set("check_breakpoints", check_breakpoints)?;
 
-            let elapsed_cpu_cycles = scope.create_function(|_, (): ()| {
-                        Ok(target.borrow().elapsed_cpu_cycles())
+            let elapsed_cycles = scope.create_function(|_, (): ()| {
+                        Ok(target.borrow().elapsed_cycles())
             })?;
-            lua.globals().set("elapsed_cpu_cycles", elapsed_cpu_cycles)?;
+            lua.globals().set("elapsed_cycles", elapsed_cycles)?;
 
-            let clear_output= scope.create_function(|_, (): ()| {
-                clear_output.set(true);
+            let clear_console = scope.create_function(|_, (): ()| {
+                clear_console.set(true);
 
                 output.borrow_mut().clear();
 
                 Ok(())
             })?;
-            lua.globals().set("clear_output", clear_output)?;
+            lua.globals().set("clear_console", clear_console)?;
 
             let set_watchpoint =
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
-
-                    let (address, watchpoint_args) =
-                        parse_watchpoint_args(emulator_id, address, kwargs)?;
-                    let message = if target.borrow_mut().set_watchpoint(address, watchpoint_args) {
-                        format!("watchpoint set at {address:08x}")
+                    let (watchpoint_range, watchpoint_args) =
+                        parse_watchpoint_args(emulator_id, address, &kwargs)?;
+                    let in_hashmap = target.borrow_mut().set_watchpoint(watchpoint_range, watchpoint_args);
+                    let message = if in_hashmap {
+                        if let Some(end_address) = watchpoint_range.end_address {
+                            format!("watchpoint address range {address:08X}..={end_address:08X} was updated")
+                        } else {
+                            format!("watchpoint at {address:08X} was updated")
+                        }
                     } else {
-                        format!("watchpoint at {address:08x} was updated")
+                        if let Some(end_address) = watchpoint_range.end_address {
+                            format!("watchpoint set at address range {address:08X}..={end_address:08X}")
+                        } else {
+                            format!("watchpoint set at address {address:08X}")
+                        }
                     };
 
                     output.borrow_mut().push(message);
@@ -636,11 +787,28 @@ impl ScriptEngine {
                 })?;
             lua.globals().set("set_watchpoint", set_watchpoint)?;
 
-            let remove_watchpoint = scope.create_function(|_, address: u32| {
-                target.borrow_mut().remove_watchpoint(address);
-                output
-                    .borrow_mut()
-                    .push(format!("watchpoint at {address:08x} removed"));
+            let remove_watchpoint = scope.create_function(|_, (address, kwargs):  (u32, Option<Table>)| {
+                let watchpoint_range = WatchpointRange {
+                    start_address: address,
+                    end_address: if let Some(table) = kwargs && let Ok(some_option) = table.get::<Option<u32>>("end_address") && let Some(end_address) = some_option {
+                        Some(end_address)
+                    } else {
+                        None
+                    }
+                };
+
+                target.borrow_mut().remove_watchpoint(watchpoint_range);
+
+                if let Some(end_address) = watchpoint_range.end_address {
+                    output
+                        .borrow_mut()
+                        .push(format!("watchpoint range at {address:08X}..={end_address:08X} removed"));
+                } else {
+                    output
+                        .borrow_mut()
+                        .push(format!("watchpoint at {address:08X} removed"));
+                }
+
                 Ok(())
             })?;
             lua.globals().set("remove_watchpoint", remove_watchpoint)?;
@@ -658,7 +826,13 @@ impl ScriptEngine {
             let check_watchpoints = scope.create_function(|_, (): ()| {
                 let watchpoints = target.borrow_mut().check_watchpoints();
                 if !watchpoints.is_empty() {
-                    for (address, watchpoint_args) in watchpoints.iter() {
+                    for (watchpoint_range, watchpoint_args) in watchpoints.iter() {
+                        let start_address = watchpoint_range.start_address;
+                        let range = if let Some(end_address) = watchpoint_range.end_address {
+                            format!("watchpoint range at {start_address:08X}..={end_address:08X}")
+                        } else {
+                            format!("watchpoint at {start_address:08X}")
+                        };
                         let action = if watchpoint_args.pause {
                             "pause"
                         } else {
@@ -673,8 +847,8 @@ impl ScriptEngine {
                         };
 
                         output.borrow_mut().push(format!(
-                            "watchpoint at {:08x} on {on} for {width} access{}, action on watchpoint: {action}",
-                            *address, target_message
+                            "{range} on {on} for {width} access{}, action on watchpoint: {action}, accessor: {}",
+                            target_message, watchpoint_args.accessor.to_string()
                         ))
                     }
                 } else {
@@ -763,6 +937,10 @@ impl ScriptEngine {
                     Ok((_, _)) => {},
                     Err(err) => output.borrow_mut().push(format!("{err}")),
                 }
+
+                if stop_scripts.get() {
+                    return Ok(());
+                }
             };
 
             if frame_boundary && let Ok(hook) = lua.globals().get::<Function>("on_frame") {
@@ -791,16 +969,16 @@ impl ScriptEngine {
             let hits = target.borrow_mut().take_watchpoint_hits();
             if !hits.is_empty() {
                 let hook = lua.globals().get::<Function>("on_watchpoint").ok();
-
                 for hit in hits {
                     if hook.is_none() {
                         output.borrow_mut().push(format!(
-                            "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}",
+                            "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}, accessor={}",
                             hit.address,
                             hit.on.to_string(),
                             hit.width.to_string(),
                             hit.value,
-                            hit.pc
+                            hit.pc,
+                            hit.accessor.to_string()
                         ));
                     }
 
@@ -815,6 +993,8 @@ impl ScriptEngine {
                     table.set("on", hit.on.to_string())?;
                     table.set("width", hit.width.to_string())?;
                     table.set("pause", hit.pause)?;
+                    table.set("cycle", hit.cycle)?;
+                    table.set("accessor", hit.accessor.to_string())?;
 
                     let domain = target.borrow().address_to_domain(hit.address);
                     if let Some((domain, offset)) = domain {
@@ -844,6 +1024,8 @@ impl ScriptEngine {
                 .borrow_mut()
                 .push(format!("script engine error: {err}"));
         }
+
+        self.stop_all_scripts(target.into_inner());
     }
 }
 

@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::{Frame, to_rbg_single},
-    script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
+    script::{CpuError, DomainError, WatchpointArgs, WatchpointHit, WatchpointRange},
+    structs::ElapsedCycles,
     traits::BitOps,
     utils::error_message,
 };
@@ -45,6 +46,12 @@ pub struct GBA {
     pub apu_sample_period: f64,
     #[serde(skip)]
     apu_sample_remainder: f64,
+    #[serde(skip)]
+    pause_at_cycle: Option<ElapsedCycles>,
+    #[serde(skip)]
+    elapsed_cycles_pause: Option<ElapsedCycles>,
+    #[serde(skip)]
+    cycle_pause: bool,
 }
 
 impl GBA {
@@ -62,6 +69,9 @@ impl GBA {
             keypad: [false; 10],
             apu_sample_period,
             apu_sample_remainder: 0.0,
+            elapsed_cycles_pause: None,
+            pause_at_cycle: None,
+            cycle_pause: false,
         }
     }
 
@@ -260,9 +270,50 @@ impl GBA {
         swap(&mut data.bus.apu.psg_output, &mut self.bus.apu.psg_output);
         data.bus.apu.psg_mixer.changed = true;
 
+        swap(&mut data.cycle_pause, &mut self.cycle_pause);
+        swap(
+            &mut data.elapsed_cycles_pause,
+            &mut self.elapsed_cycles_pause,
+        );
+        swap(&mut data.pause_at_cycle, &mut self.pause_at_cycle);
+
         *self = data;
 
         Ok(())
+    }
+
+    fn pause_at_cycle_reached(&self) -> bool {
+        self.pause_at_cycle
+            .as_ref()
+            .is_some_and(|pause| self.elapsed_cycles() >= pause.target_elapsed_cycles)
+    }
+
+    fn elapsed_cycles_pause_reached(&self) -> bool {
+        self.elapsed_cycles_pause.as_ref().is_some_and(|pause| {
+            self.elapsed_cycles() >= pause.starting_cycle + pause.target_elapsed_cycles
+        })
+    }
+
+    pub fn pause_at_current_cycle(&mut self) -> bool {
+        if self.pause_at_cycle_reached() || self.elapsed_cycles_pause_reached() {
+            self.cycle_pause = true;
+
+            return true;
+        }
+
+        false
+    }
+
+    pub fn take_cycle_pause(&mut self) -> bool {
+        if self.pause_at_cycle_reached() {
+            self.pause_at_cycle = None;
+        }
+
+        if self.elapsed_cycles_pause_reached() {
+            self.elapsed_cycles_pause = None;
+        }
+
+        take(&mut self.cycle_pause)
     }
 }
 
@@ -293,23 +344,27 @@ impl Emulator for GBA {
         self.cpu.breakpoint_queue.clone().into_iter().collect()
     }
 
-    fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)> {
+    fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {
         self.bus.watchpoint_queue.clone().into_iter().collect()
     }
 
-    fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool {
+    fn set_watchpoint(
+        &mut self,
+        watchpoint_range: WatchpointRange,
+        watchpoint_args: WatchpointArgs,
+    ) -> bool {
         self.bus
             .watchpoint_queue
-            .insert(address, watchpoint_args)
-            .is_none()
+            .insert(watchpoint_range, watchpoint_args)
+            .is_some()
     }
 
     fn clear_all_watchpoints(&mut self) {
         self.bus.watchpoint_queue.clear();
     }
 
-    fn remove_watchpoint(&mut self, address: u32) {
-        self.bus.watchpoint_queue.remove(&address);
+    fn remove_watchpoint(&mut self, watchpoint_range: WatchpointRange) {
+        self.bus.watchpoint_queue.remove(&watchpoint_range);
     }
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
@@ -318,6 +373,20 @@ impl Emulator for GBA {
 
     fn frontend_mut(&mut self) -> &mut Frame {
         &mut self.bus.ppu.frontend
+    }
+
+    fn set_cycle_pause(&mut self, cycle: u64) {
+        self.pause_at_cycle = Some(ElapsedCycles {
+            starting_cycle: 0,
+            target_elapsed_cycles: cycle,
+        });
+    }
+
+    fn set_elapsed_cycles_pause(&mut self, elapsed_cycle: u64) {
+        self.elapsed_cycles_pause = Some(ElapsedCycles {
+            starting_cycle: self.elapsed_cycles(),
+            target_elapsed_cycles: elapsed_cycle,
+        });
     }
 }
 
@@ -491,7 +560,35 @@ impl ScriptTarget for GBA {
         }
     }
 
-    fn elapsed_cpu_cycles(&self) -> u64 {
+    fn elapsed_cycles(&self) -> u64 {
         self.bus.scheduler.current
+    }
+
+    fn cycle_paused_text(&mut self) -> Vec<String> {
+        let mut vec = Vec::with_capacity(2);
+
+        if let Some(pause) = self.pause_at_cycle.as_ref()
+            && self.pause_at_cycle_reached()
+        {
+            vec.push(format!(
+                "pause due to specific cycle being reached - Current cycle {}; Target cycle {}",
+                self.elapsed_cycles(),
+                pause.target_elapsed_cycles
+            ));
+        }
+
+        if let Some(pause) = self.elapsed_cycles_pause.as_ref()
+            && self.elapsed_cycles_pause_reached()
+        {
+            vec.push(format!(
+                "pause due to specific elapsed cycles being reached - Starting cycle {}; Current cycle {}; Target cycle {}; Requested elapsed cycles {}",
+                pause.starting_cycle,
+                self.elapsed_cycles(),
+                pause.starting_cycle + pause.target_elapsed_cycles,
+                pause.target_elapsed_cycles
+            ));
+        }
+
+        vec
     }
 }

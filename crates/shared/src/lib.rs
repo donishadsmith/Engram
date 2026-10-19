@@ -21,7 +21,7 @@ use crate::{
     debug::DebugPage,
     input::{AnalogSticks, enums::KeyId},
     render::Frame,
-    script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit},
+    script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit, WatchpointRange},
     utils::error_message,
 };
 
@@ -71,15 +71,19 @@ pub trait Emulator {
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)>;
 
-    fn remove_watchpoint(&mut self, address: u32);
+    fn remove_watchpoint(&mut self, watchpoint_range: WatchpointRange);
 
-    fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool;
+    fn set_watchpoint(
+        &mut self,
+        watchpoint_range: WatchpointRange,
+        watchpoint_args: WatchpointArgs,
+    ) -> bool;
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit>;
 
     fn clear_all_watchpoints(&mut self);
 
-    fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)>;
+    fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)>;
 
     fn save_state(&mut self, state_magic_name: &[u8]) -> Result<Vec<u8>, Error>
     where
@@ -100,6 +104,10 @@ pub trait Emulator {
     }
 
     fn frontend_mut(&mut self) -> &mut Frame;
+
+    fn set_cycle_pause(&mut self, cycle: u64);
+
+    fn set_elapsed_cycles_pause(&mut self, elapsed_cycle: u64);
 }
 
 pub trait DebugInterface {
@@ -213,5 +221,7 @@ pub trait ScriptTarget: Emulator {
 
     fn check_scripted_inputs(&self) -> Option<&[bool]>;
 
-    fn elapsed_cpu_cycles(&self) -> u64;
+    fn elapsed_cycles(&self) -> u64;
+
+    fn cycle_paused_text(&mut self) -> Vec<String>;
 }

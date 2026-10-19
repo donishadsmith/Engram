@@ -120,6 +120,7 @@ impl GameBoySession {
         self.drain_audio(volume);
         self.gameboy.replenish_remaining_cycles();
         self.gameboy.take_watchpoint_pause();
+        self.gameboy.take_cycle_pause();
         self.script_engine.step_completed();
 
         if self.gameboy.cpu.bus.ppu.frame_ready
@@ -180,6 +181,7 @@ impl GameBoySession {
 
             if self.gameboy.cpu.breakpoint_hit.is_some()
                 || self.gameboy.cpu.bus.watchpoint_pause.get()
+                || self.gameboy.pause_at_current_cycle()
             {
                 return false;
             }
@@ -226,7 +228,7 @@ impl EmulatorSession for GameBoySession {
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, false);
 
-        let state = if self.gameboy.take_watchpoint_pause() {
+        let state = if self.gameboy.take_watchpoint_pause() | self.gameboy.take_cycle_pause() {
             EmulatorState::Paused
         } else {
             breakpoint_action.unwrap_or(EmulatorState::Running)

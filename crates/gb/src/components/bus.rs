@@ -16,7 +16,10 @@ MemoryMap
 
 use shared::{
     enums::Width,
-    script::{WatchpointArgs, WatchpointHit, WatchpointType},
+    script::{
+        Accessor, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange, WatchpointType,
+        find_watchpoint,
+    },
     traits::BitOps,
     utils::zero_arr,
 };
@@ -68,13 +71,6 @@ pub trait AddressBus {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum MemoryAccessor {
-    Cpu,
-    Dma, // for organization but may do something wiht it later
-    Lua,
-}
-
 //http://gameboy.mongenel.com/dmg/asmmemmap.html
 #[derive(Deserialize, Serialize)]
 pub struct Bus {
@@ -94,9 +90,10 @@ pub struct Bus {
     pub serial_control: u8,
     pub key_register: u8,
     pub svbk_register: u8,
+    pub t_cycles: u64,
     pub hdma_registers: [u8; 5],
     #[serde(skip)]
-    pub watchpoint_queue: RefCell<HashMap<u32, WatchpointArgs>>,
+    pub watchpoint_queue: RefCell<HashMap<WatchpointRange, WatchpointArgs>>,
     #[serde(skip)]
     pub watchpoint_hits: RefCell<Vec<WatchpointHit>>,
     #[serde(skip)]
@@ -127,6 +124,7 @@ impl Bus {
                 mode: 0,
             },
             gamepak,
+            t_cycles: 0,
             wram: zero_arr::<u8>(wram_size),
             ppu: Ppu::new(cgb_flag == CgbFlag::Cgb),
             apu: Apu::new(sample_rate),
@@ -186,7 +184,7 @@ impl Bus {
     }
 
     fn oam_dma_read(&self, address: u16) -> u8 {
-        match address {
+        let value = match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.read(address),
             0x8000..=0x9FFF => self.ppu.vram.read(address),
             0xC000..=0xFFFF => {
@@ -196,7 +194,11 @@ impl Bus {
                     address
                 })]
             }
-        }
+        };
+
+        self.check_read_watchpoint(address, MemoryAccessor::Dma, value);
+
+        value
     }
 
     // supposed to be 160 m cycles and 160 bytes, its literally a byte per cycle
@@ -211,8 +213,11 @@ impl Bus {
         }
 
         let byte = self.oam_dma_read(self.oam_dma.source_address + self.oam_dma.offset);
+        let destination = 0xFE00 + self.oam_dma.offset;
+        self.check_write_watchpoint(destination, MemoryAccessor::Dma, byte);
         self.ppu.oam[self.oam_dma.offset as usize] = byte;
         self.oam_dma.offset += 1;
+
         if self.oam_dma.offset == 160 {
             self.oam_dma.in_progress = false;
         }
@@ -240,6 +245,7 @@ impl Bus {
             mode,
             blocks_remaining,
         };
+
         if self.vram_dma.mode == 0 {
             self.general_purpose_dma_transfer();
         }
@@ -259,6 +265,7 @@ impl Bus {
                 MemoryAccessor::Dma,
             );
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
+            self.check_write_watchpoint(destination_address, MemoryAccessor::Dma, byte);
             self.ppu.vram.write(destination_address, byte);
         }
 
@@ -283,6 +290,7 @@ impl Bus {
                 MemoryAccessor::Dma,
             );
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
+            self.check_write_watchpoint(destination_address, MemoryAccessor::Dma, byte);
             self.ppu.vram.write(destination_address, byte);
         }
 
@@ -297,6 +305,7 @@ impl Bus {
 }
 
 impl Bus {
+    #[inline]
     fn check_read_watchpoint(&self, address: u16, accessor: MemoryAccessor, value: u8) {
         if accessor == MemoryAccessor::Lua {
             return;
@@ -307,13 +316,24 @@ impl Bus {
             return;
         }
 
-        if let Some(args) = queue.get(&(address as u32))
-            && args.fires_on_read(value as u32)
+        let Some(range) = find_watchpoint(address as u32, &queue) else {
+            return;
+        };
+
+        let args = queue[&range];
+
+        if args.accessor != Accessor::All
+            && args.accessor.to_string().to_lowercase() != accessor.to_string().to_lowercase()
         {
-            self.push_watchpoint_hit(address, value, args.pause, WatchpointType::Read);
+            return;
+        }
+
+        if args.fires_on_read(value as u32) {
+            self.push_watchpoint_hit(address, value, args.pause, WatchpointType::Read, accessor);
         }
     }
 
+    #[inline]
     fn check_write_watchpoint(&self, address: u16, accessor: MemoryAccessor, value: u8) {
         if accessor == MemoryAccessor::Lua {
             return;
@@ -324,9 +344,11 @@ impl Bus {
             return;
         }
 
-        let Some(args) = queue.get_mut(&(address as u32)) else {
+        let Some(range) = find_watchpoint(address as u32, &queue) else {
             return;
         };
+
+        let args = queue.get_mut(&range).unwrap();
 
         let pause = args.pause;
         let on = if args.on == WatchpointType::Change {
@@ -335,12 +357,26 @@ impl Bus {
             WatchpointType::Write
         };
 
+        if args.accessor != Accessor::All
+            && args.accessor.to_string().to_lowercase() != accessor.to_string().to_lowercase()
+        {
+            return;
+        }
+
         if args.should_fire_on_write(value as u32) {
-            self.push_watchpoint_hit(address, value, pause, on);
+            self.push_watchpoint_hit(address, value, pause, on, accessor);
         }
     }
 
-    fn push_watchpoint_hit(&self, address: u16, value: u8, pause: bool, on: WatchpointType) {
+    #[inline]
+    fn push_watchpoint_hit(
+        &self,
+        address: u16,
+        value: u8,
+        pause: bool,
+        on: WatchpointType,
+        accessor: MemoryAccessor,
+    ) {
         if pause {
             self.watchpoint_pause.set(true);
         }
@@ -358,6 +394,8 @@ impl Bus {
             on,
             pc: 0,
             fetch_source: None,
+            cycle: self.t_cycles,
+            accessor: accessor,
         });
     }
 }

@@ -69,3 +69,8 @@ impl GroupedRegisters<u32> {
         self.registers[index]
     }
 }
+
+pub struct ElapsedCycles {
+    pub starting_cycle: u64,
+    pub target_elapsed_cycles: u64,
+}

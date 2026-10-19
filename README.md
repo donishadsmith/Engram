@@ -3,7 +3,7 @@
 [![Run Tests](https://github.com/donishadsmith/Engram/actions/workflows/test.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/test.yml)
 [![Publish](https://github.com/donishadsmith/Engram/actions/workflows/build.yml/badge.svg)](https://github.com/donishadsmith/Engram/actions/workflows/build.yml)
 
-A Game Boy Advance & Game Boy/Game Boy Color emulator.
+A Game Boy Advance & Game Boy/Game Boy Color emulator. Extremely WIP PSX.
 
 <table align="center">
   <tr>
@@ -36,20 +36,33 @@ A Game Boy Advance & Game Boy/Game Boy Color emulator.
   </tr>
 </table>
 
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="assets/audio.png" width="500">
-      <br>Audio Debugger (GBA)
-    </td>
-    <td align="center">
-      <img src="assets/video.png" width="500">
-      <br>Video Debugger (GBA)
-    <td align="center">
-      <img src="assets/lua.png" width="500">
-      <br>Lua Editor (GB/GBA)
-  </tr>
-</table>
+## Features
+**Systems**
+- Game Boy and Game Boy Color: MBC1, MBC2, MBC3 with RTC, MBC5 and HuC1 cartridges
+- Game Boy Advance: SRAM, Flash, EEPROM, RTC, solar sensor and GPIO cartridges
+- PlayStation (early work in progress)
+
+**Frontend**
+- Save states and game saves
+- Rebindable keyboard, hotkey and controller inputs
+- Controller rumble
+- Screenshots and GIF recording
+- Fullscreen, volume, and solar sensor slider for Boktai
+- Settings saved in [`config.toml`](https://github.com/donishadsmith/Engram#settings)
+- Windows, MacOS, Linux
+
+Built with [macroquad](https://github.com/not-fl3/macroquad), [egui](https://github.com/emilk/egui), [cpal](https://github.com/RustAudio/cpal), [blip_buf](https://github.com/mvdnes/blip_buf-rs), [gilrs](https://gitlab.com/gilrs-project/gilrs), and [mlua](https://github.com/mlua-rs/mlua).
+
+**Debuggers** (GBA only for now)
+- Video: backgrounds, sprites, palettes, and register state
+- Audio: per-channel visualization and register state
+
+**Lua scripting** (`F8` or Tools menu)
+- Breakpoints and read/write watchpoints (byte, halfword, word) with callbacks
+- Per-frame callbacks
+- Read and write memory by domain and CPU registers by name
+- Set controller inputs and pause after a number of cycles
+- Built-in editor with console output
 
 ## Usage
 ```bash
@@ -59,10 +72,29 @@ cargo run --release
 ```
 
 ### Linux
-Additional dependencies are required:
+Additional dependencies for audio (cpal), windowing (macroquad) and controllers (gilrs) are required:
+
 ```bash
-sudo apt update
-sudo apt install -y libwayland-dev libasound2-dev libudev-dev pkg-config
+# for macroquad
+# ubuntu system dependencies
+apt install pkg-config libx11-dev libxi-dev libgl1-mesa-dev libasound2-dev
+
+# fedora system dependencies
+dnf install libX11-devel libXi-devel mesa-libGL-devel alsa-lib-devel
+
+# arch linux system dependencies
+pacman -S pkg-config libx11 libxi mesa-libgl alsa-lib
+
+# for gilrs
+# debian
+apt install libudev-dev
+
+# for cpal
+# debian and ubuntu
+apt install libwayland-dev
+
+# fedora
+dnf install alsa-lib-devel
 ```
 
 ### Windows

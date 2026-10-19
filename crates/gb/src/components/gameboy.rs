@@ -1,5 +1,5 @@
 use crate::components::{
-    bus::{AddressBus, Bus, MemoryAccessor},
+    bus::{AddressBus, Bus},
     cpu::{
         SharpSm83,
         registers::{Register8Bits, Register16Bits},
@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::{Frame, PixelFormat, to_rbg_single},
-    script::{CpuError, DomainError, WatchpointArgs, WatchpointHit},
+    script::{
+        CpuError, DomainError, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
+    },
+    structs::ElapsedCycles,
     utils::error_message,
 };
 use std::{
@@ -32,9 +35,14 @@ pub struct GameBoy {
     pub scripted_keypad: Option<[bool; 8]>,
     pub keypad: [bool; 8],
     pub remaining_cycles: u32,
-    t_cycles: u64,
     pub apu_sample_period: f64,
     pub rumble_strength: f32,
+    #[serde(skip)]
+    pause_at_cycle: Option<ElapsedCycles>,
+    #[serde(skip)]
+    elapsed_cycles_pause: Option<ElapsedCycles>,
+    #[serde(skip)]
+    cycle_pause: bool,
 }
 
 impl GameBoy {
@@ -48,9 +56,11 @@ impl GameBoy {
             scripted_keypad: None,
             keypad: [false; 8],
             remaining_cycles: 0,
-            t_cycles: 0,
             apu_sample_period,
             rumble_strength: 0.0,
+            elapsed_cycles_pause: None,
+            pause_at_cycle: None,
+            cycle_pause: false,
         }
     }
 
@@ -64,7 +74,7 @@ impl GameBoy {
         }
 
         let t_cycles = machine_cycles * 4;
-        self.t_cycles += machine_cycles as u64;
+        self.cpu.bus.t_cycles += machine_cycles as u64;
 
         for _ in 0..machine_cycles {
             self.cpu.bus.oam_dma_step();
@@ -119,6 +129,7 @@ impl GameBoy {
                 || self.cpu.bus.watchpoint_pause.get()
                 || self.cpu.bus.ppu.frame_ready
                 || self.cpu.bus.ppu.lcd_off_frame && self.remaining_cycles <= 0
+                || self.pause_at_current_cycle()
             {
                 return;
             }
@@ -248,9 +259,50 @@ impl GameBoy {
         );
         data.cpu.bus.apu.mixer.changed = true;
 
+        swap(&mut data.cycle_pause, &mut self.cycle_pause);
+        swap(
+            &mut data.elapsed_cycles_pause,
+            &mut self.elapsed_cycles_pause,
+        );
+        swap(&mut data.pause_at_cycle, &mut self.pause_at_cycle);
+
         *self = data;
 
         Ok(())
+    }
+
+    fn pause_at_cycle_reached(&self) -> bool {
+        self.pause_at_cycle
+            .as_ref()
+            .is_some_and(|pause| self.elapsed_cycles() >= pause.target_elapsed_cycles)
+    }
+
+    fn elapsed_cycles_pause_reached(&self) -> bool {
+        self.elapsed_cycles_pause.as_ref().is_some_and(|pause| {
+            self.elapsed_cycles() >= pause.starting_cycle + pause.target_elapsed_cycles
+        })
+    }
+
+    pub fn pause_at_current_cycle(&mut self) -> bool {
+        if self.pause_at_cycle_reached() || self.elapsed_cycles_pause_reached() {
+            self.cycle_pause = true;
+
+            return true;
+        }
+
+        false
+    }
+
+    pub fn take_cycle_pause(&mut self) -> bool {
+        if self.pause_at_cycle_reached() {
+            self.pause_at_cycle = None;
+        }
+
+        if self.elapsed_cycles_pause_reached() {
+            self.elapsed_cycles_pause = None;
+        }
+
+        take(&mut self.cycle_pause)
     }
 }
 
@@ -281,28 +333,36 @@ impl Emulator for GameBoy {
         self.cpu.breakpoint_queue.clone().into_iter().collect()
     }
 
-    fn check_watchpoints(&self) -> Vec<(u32, WatchpointArgs)> {
+    fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {
         self.cpu
             .bus
             .watchpoint_queue
             .borrow()
             .iter()
-            .map(|(&address, &args)| (address, args))
+            .map(|(&watchpoint_range, &args)| (watchpoint_range, args))
             .collect()
     }
 
-    fn set_watchpoint(&mut self, address: u32, watchpoint_args: WatchpointArgs) -> bool {
+    fn set_watchpoint(
+        &mut self,
+        watchpoint_range: WatchpointRange,
+        watchpoint_args: WatchpointArgs,
+    ) -> bool {
         let mut queue = self.cpu.bus.watchpoint_queue.borrow_mut();
 
-        queue.insert(address, watchpoint_args).is_none()
+        queue.insert(watchpoint_range, watchpoint_args).is_some()
     }
 
     fn clear_all_watchpoints(&mut self) {
         self.cpu.bus.watchpoint_queue.borrow_mut().clear();
     }
 
-    fn remove_watchpoint(&mut self, address: u32) {
-        self.cpu.bus.watchpoint_queue.borrow_mut().remove(&address);
+    fn remove_watchpoint(&mut self, watchpoint_range: WatchpointRange) {
+        self.cpu
+            .bus
+            .watchpoint_queue
+            .borrow_mut()
+            .remove(&watchpoint_range);
     }
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
@@ -311,6 +371,20 @@ impl Emulator for GameBoy {
 
     fn frontend_mut(&mut self) -> &mut Frame {
         &mut self.cpu.bus.ppu.frontend
+    }
+
+    fn set_cycle_pause(&mut self, cycle: u64) {
+        self.pause_at_cycle = Some(ElapsedCycles {
+            starting_cycle: 0,
+            target_elapsed_cycles: cycle,
+        });
+    }
+
+    fn set_elapsed_cycles_pause(&mut self, elapsed_cycle: u64) {
+        self.elapsed_cycles_pause = Some(ElapsedCycles {
+            starting_cycle: self.elapsed_cycles(),
+            target_elapsed_cycles: elapsed_cycle,
+        });
     }
 }
 
@@ -536,7 +610,35 @@ impl ScriptTarget for GameBoy {
         }
     }
 
-    fn elapsed_cpu_cycles(&self) -> u64 {
-        self.t_cycles
+    fn elapsed_cycles(&self) -> u64 {
+        self.cpu.bus.t_cycles
+    }
+
+    fn cycle_paused_text(&mut self) -> Vec<String> {
+        let mut vec = Vec::with_capacity(2);
+
+        if let Some(pause) = self.pause_at_cycle.as_ref()
+            && self.pause_at_cycle_reached()
+        {
+            vec.push(format!(
+                "pause due to specific t-cycle being reached - Current t-cycle {}; Target t-cycle {}",
+                self.elapsed_cycles(),
+                pause.target_elapsed_cycles
+            ));
+        }
+
+        if let Some(pause) = self.elapsed_cycles_pause.as_ref()
+            && self.elapsed_cycles_pause_reached()
+        {
+            vec.push(format!(
+                "pause due to specific elapsed t-cycles being reached - Starting t-cycle {}; Current t-cycle {}; Target t-cycle {}; Requested elapsed t-cycles {}",
+                pause.starting_cycle,
+                self.elapsed_cycles(),
+                pause.starting_cycle + pause.target_elapsed_cycles,
+                pause.target_elapsed_cycles
+            ));
+        }
+
+        vec
     }
 }

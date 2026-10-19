@@ -4,7 +4,10 @@ use chrono::Local;
 use egui::{Context, ScrollArea, Window, text::CursorRange};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_phosphor::regular as icons;
-use macroquad::input::{KeyCode, is_key_down, is_key_pressed};
+use macroquad::input::{
+    KeyCode::{self, RightShift},
+    is_key_down, is_key_pressed,
+};
 use rfd::FileDialog;
 use std::{
     fs::{read_to_string, rename, write},
@@ -93,19 +96,19 @@ impl LuaEditor {
                                 self.output.clear();
                             }
 
-                            if ui.button(format!("{}  Terminate All Processes", icons::STOP_CIRCLE)).on_hover_text(
-                                "Terminates all hooks and clears all watchpoints and breakpoints"
+                            if ui.button(format!("{}  Stop Scripts", icons::STOP_CIRCLE)).on_hover_text(
+                                "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints"
                             ).clicked() {
                                 self.termination_request = true;
                             }
                         });
 
-                        if ui.button(format!("{}  Run (LeftShift+Enter)", icons::PLAY)).clicked() {
+                        if ui.button(format!("{}  Run (Shift+Enter)", icons::PLAY)).clicked() {
                             run = true;
                         }
 
                         // getting tired of having to click run
-                        if is_key_down(KeyCode::LeftShift) && is_key_pressed(KeyCode::Enter) {
+                    if (is_key_down(KeyCode::LeftShift) | is_key_down(RightShift)) && is_key_pressed(KeyCode::Enter) {
                             run = true
                         }
                     });

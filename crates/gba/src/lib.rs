@@ -124,6 +124,8 @@ impl GBASession {
 
     fn step_end(&mut self) {
         self.gba.take_watchpoint_pause();
+        self.gba.take_cycle_pause();
+
         self.script_engine.step_completed();
 
         if self.gba.bus.ppu.frame_ready {
@@ -188,7 +190,10 @@ impl GBASession {
         loop {
             self.tick(volume);
 
-            if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
+            if self.gba.cpu.breakpoint_hit.is_some()
+                || self.gba.bus.watchpoint_pause
+                || self.gba.pause_at_current_cycle()
+            {
                 return false;
             }
 
@@ -235,7 +240,7 @@ impl EmulatorSession for GBASession {
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, false);
 
-        let state = if self.gba.take_watchpoint_pause() {
+        let state = if self.gba.take_watchpoint_pause() | self.gba.take_cycle_pause() {
             EmulatorState::Paused
         } else {
             breakpoint_action.unwrap_or(EmulatorState::Running)
@@ -329,7 +334,10 @@ impl EmulatorSession for GBASession {
         while !self.gba.bus.ppu.frame_ready {
             self.tick(volume);
 
-            if self.gba.cpu.breakpoint_hit.is_some() || self.gba.bus.watchpoint_pause {
+            if self.gba.cpu.breakpoint_hit.is_some()
+                || self.gba.bus.watchpoint_pause
+                || self.gba.pause_at_current_cycle()
+            {
                 break;
             }
         }

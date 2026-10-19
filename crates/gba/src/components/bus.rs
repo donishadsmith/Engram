@@ -13,8 +13,7 @@
 // https://github.com/michelhe/rustboyadvance-ng/blob/master/arm7tdmi/src/memory.rs
 // Just do an afterboot startup
 
-// https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
-
+// https://problemkaputt.de/gbatek.htm#GBAUnpreduse std::{
 use std::{collections::HashMap, env::var, fmt::Arguments, fs::File, io::BufWriter};
 
 use crate::components::{
@@ -33,7 +32,10 @@ use shared::{
     enums::Width,
     psg::PsgMixerRegister,
     scheduler::EventScheduler,
-    script::{WatchpointArgs, WatchpointHit, WatchpointType},
+    script::{
+        Accessor, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange, WatchpointType,
+        find_watchpoint,
+    },
     traits::BitOps,
     utils::zero_arr,
 };
@@ -138,11 +140,12 @@ pub struct Bus {
     pub interrupt_enable_copy: u16,
     pub interrupt_master_enable_copy: u32,
     #[serde(skip)]
-    pub watchpoint_queue: HashMap<u32, WatchpointArgs>,
+    pub watchpoint_queue: HashMap<WatchpointRange, WatchpointArgs>,
     #[serde(skip)]
     pub watchpoint_hits: Vec<WatchpointHit>,
     #[serde(skip)]
     pub watchpoint_pause: bool,
+    accessor: MemoryAccessor,
 }
 
 impl Bus {
@@ -190,6 +193,7 @@ impl Bus {
             watchpoint_queue: HashMap::new(),
             watchpoint_hits: Vec::new(),
             watchpoint_pause: false,
+            accessor: MemoryAccessor::Cpu,
         }
     }
 
@@ -540,6 +544,7 @@ impl Bus {
         self.cost(address, 32, access_type);
 
         self.check_write_watchpoint(address, access_type, Width::Word, value);
+
         let bytes = value.to_le_bytes();
         if address & !1 == 0x4000300 {
             if address.is_clear(0) {
@@ -938,6 +943,9 @@ impl Bus {
             return;
         }
 
+        let previous_accessor = self.accessor;
+        self.accessor = MemoryAccessor::Dma;
+
         if (0x08..=0x0F).contains(&(self.dma.channels[channel].current_source_address >> 24))
             && (0x08..=0x0F)
                 .contains(&(self.dma.channels[channel].current_destination_address >> 24))
@@ -995,6 +1003,7 @@ impl Bus {
 
         self.dma.channels[channel].reload_destination_address();
         self.dma.channels[channel].transfer_complete(&mut self.interrupt_flag);
+        self.accessor = previous_accessor;
     }
 
     fn eeprom_read_u16(&mut self, access_type: AccessType) -> u16 {
@@ -1082,13 +1091,20 @@ impl Bus {
         }
 
         let address = width.align(address);
-        let Some(args) = self.watchpoint_queue.get(&address) else {
+        let Some(range) = find_watchpoint(address, &self.watchpoint_queue) else {
             return;
         };
 
+        let args = self.watchpoint_queue[&range];
+
+        if args.accessor != Accessor::All
+            && args.accessor.to_string().to_lowercase() != self.accessor.to_string().to_lowercase()
+        {
+            return;
+        }
+
         if args.width == width && args.fires_on_read(value) {
-            let pause = args.pause;
-            self.push_watchpoint_hit(address, value, pause, width, WatchpointType::Read);
+            self.push_watchpoint_hit(address, value, args.pause, width, WatchpointType::Read);
         }
     }
 
@@ -1105,9 +1121,17 @@ impl Bus {
         }
 
         let address = width.align(address);
-        let Some(args) = self.watchpoint_queue.get_mut(&address) else {
+        let Some(range) = find_watchpoint(address, &self.watchpoint_queue) else {
             return;
         };
+
+        let args = self.watchpoint_queue.get_mut(&range).unwrap();
+
+        if args.accessor != Accessor::All
+            && args.accessor.to_string().to_lowercase() != self.accessor.to_string().to_lowercase()
+        {
+            return;
+        }
 
         if args.width != width {
             return;
@@ -1125,6 +1149,7 @@ impl Bus {
         }
     }
 
+    #[inline]
     fn push_watchpoint_hit(
         &mut self,
         address: u32,
@@ -1149,6 +1174,8 @@ impl Bus {
             on,
             pc: 0,
             fetch_source: None,
+            cycle: self.scheduler.current,
+            accessor: self.accessor,
         });
     }
 }
