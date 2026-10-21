@@ -294,39 +294,63 @@ impl R3000a {
             self.registers.r[instruction.rs()] & instruction.immediate_16();
     }
 
-    fn beq(&mut self, instruction: MipsInstruction) {
-        if self.registers.r[instruction.rs()] == self.registers.r[instruction.rt()] {
+    fn branch_if(&mut self, condition: bool, instruction: MipsInstruction) {
+        if condition {
             let offset = instruction.offset_16().sign_extend() << 2;
             self.registers
                 .branch(self.registers.pc.wrapping_add(offset));
         }
     }
 
+    fn beq(&mut self, instruction: MipsInstruction) {
+        self.branch_if(
+            self.registers.r[instruction.rs()] == self.registers.r[instruction.rt()],
+            instruction,
+        );
+    }
+
     fn bgez(&mut self, instruction: MipsInstruction) {
-        if self.registers.r[instruction.rs()].is_clear(31) {
-            let offset = instruction.offset_16().sign_extend() << 2;
-            self.registers
-                .branch(self.registers.pc.wrapping_add(offset));
-        }
+        self.branch_if(self.registers.r[instruction.rs()].is_clear(31), instruction);
     }
 
     fn bgezal(&mut self, instruction: MipsInstruction) {
         self.registers.link(31);
-        if self.registers.r[instruction.rs()].is_clear(31) {
-            let offset = instruction.offset_16().sign_extend() << 2;
-            self.registers
-                .branch(self.registers.pc.wrapping_add(offset));
-        }
+        self.branch_if(self.registers.r[instruction.rs()].is_clear(31), instruction);
     }
 
     fn blez(&mut self, instruction: MipsInstruction) {
-        if self.registers.r[instruction.rs()].is_set(31) || self.registers.r[instruction.rs()] == 0
-        {
-            let offset = instruction.offset_16().sign_extend() << 2;
-            self.registers
-                .branch(self.registers.pc.wrapping_add(offset));
-        }
+        self.branch_if(
+            self.registers.r[instruction.rs()].is_set(31)
+                || self.registers.r[instruction.rs()] == 0,
+            instruction,
+        );
     }
+
+    fn bltz(&mut self, instruction: MipsInstruction) {
+        self.branch_if(self.registers.r[instruction.rs()].is_set(31), instruction);
+    }
+
+    fn bltzal(&mut self, instruction: MipsInstruction) {
+        self.registers.link(31);
+        self.branch_if(self.registers.r[instruction.rs()].is_set(31), instruction);
+    }
+
+    fn bne(&mut self, instruction: MipsInstruction) {
+        self.branch_if(
+            self.registers.r[instruction.rs()] != self.registers.r[instruction.rt()],
+            instruction,
+        );
+    }
+
+    fn breakpoint(&mut self, instruction: MipsInstruction) {}
+
+    fn cfcz(&mut self, instruction: MipsInstruction) {}
+
+    fn copz(&mut self, instruction: MipsInstruction) {}
+
+    fn ctcz(&mut self, instruction: MipsInstruction) {}
+
+    fn div(&mut self, instruction: MipsInstruction) {}
 }
 
 pub fn dissasemble() {}
