@@ -351,6 +351,18 @@ impl R3000a {
     fn ctcz(&mut self, instruction: MipsInstruction) {}
 
     fn div(&mut self, instruction: MipsInstruction) {}
+
+    fn divu(&mut self, instruction: MipsInstruction) {}
+
+    fn jump(&mut self, instruction: MipsInstruction) {
+        self.registers
+            .branch((self.registers.pc & 0xF0000000) | (instruction.target() << 2))
+    }
+
+    fn jal(&mut self, instruction: MipsInstruction) {
+        self.registers.link(31);
+        self.jump(instruction);
+    }
 }
 
 pub fn dissasemble() {}
