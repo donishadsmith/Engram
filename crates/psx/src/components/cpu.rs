@@ -250,48 +250,54 @@ impl R3000a {
     // https://cgi.cse.unsw.edu.au/~cs3231/doc/R3000.pdf
     //  https://psx-spx.consoledev.net/cpuspecifications/
     fn add(&mut self, instruction: MipsInstruction) {
-        // Page A-7; if aritmetic overflow occurs, return an exception
         let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
             .overflowing_add(self.registers.r[instruction.rt()] as i32);
         if !overflow {
-            self.registers.r[instruction.rd()] = value as u32;
+            self.registers
+                .write_cpu_register(instruction.rd(), value as u32);
         } else {
             // some exception
         }
     }
 
     fn addi(&mut self, instruction: MipsInstruction) {
-        // Page A-8; overflow exeption occurs
         let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
             .overflowing_add(instruction.immediate_16().sign_extend() as i32);
         if !overflow {
-            self.registers.r[instruction.rt()] = value as u32;
+            self.registers
+                .write_cpu_register(instruction.rt(), value as u32);
         } else {
             // some exception
         }
     }
 
     fn addiu(&mut self, instruction: MipsInstruction) {
-        // Page A-9; no overflow exception
-        self.registers.r[instruction.rt()] = self.registers.r[instruction.rs()]
-            .wrapping_add(instruction.immediate_16().sign_extend())
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            self.registers.r[instruction.rs()]
+                .wrapping_add(instruction.immediate_16().sign_extend()),
+        );
     }
 
     fn addu(&mut self, instruction: MipsInstruction) {
-        // Page A-10; no exception
-        self.registers.r[instruction.rd()] =
-            self.registers.r[instruction.rs()].wrapping_add(self.registers.r[instruction.rt()]);
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rs()].wrapping_add(self.registers.r[instruction.rt()]),
+        );
     }
 
     fn and(&mut self, instruction: MipsInstruction) {
-        self.registers.r[instruction.rd()] =
-            self.registers.r[instruction.rs()] & self.registers.r[instruction.rt()];
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rs()] & self.registers.r[instruction.rt()],
+        );
     }
 
     fn andi(&mut self, instruction: MipsInstruction) {
-        // Page A-12; immediate is 0 extended
-        self.registers.r[instruction.rt()] =
-            self.registers.r[instruction.rs()] & instruction.immediate_16();
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            self.registers.r[instruction.rs()] & instruction.immediate_16(),
+        );
     }
 
     fn branch_if(&mut self, condition: bool, instruction: MipsInstruction) {
@@ -362,6 +368,72 @@ impl R3000a {
     fn jal(&mut self, instruction: MipsInstruction) {
         self.registers.link(31);
         self.jump(instruction);
+    }
+
+    fn or(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rs()] | self.registers.r[instruction.rt()],
+        );
+    }
+
+    fn ori(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            self.registers.r[instruction.rs()] | instruction.immediate_16(),
+        );
+    }
+
+    fn sllv(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rt()]
+                << self.registers.r[instruction.rs()].get_bit_range(0..5),
+        );
+    }
+
+    fn srl(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rt()] >> instruction.sa(),
+        );
+    }
+
+    fn sra(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            ((self.registers.r[instruction.rt()] as i32) >> instruction.sa()) as u32,
+        );
+    }
+
+    fn srav(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            ((self.registers.r[instruction.rt()] as i32)
+                >> self.registers.r[instruction.rs()].get_bit_range(0..5)) as u32,
+        );
+    }
+
+    fn srlv(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rt()]
+                >> self.registers.r[instruction.rs()].get_bit_range(0..5),
+        );
+    }
+
+    fn xor(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rs()] ^ self.registers.r[instruction.rt()],
+        );
+    }
+
+    fn xori(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            self.registers.r[instruction.rs()] ^ instruction.immediate_16(),
+        );
     }
 }
 
