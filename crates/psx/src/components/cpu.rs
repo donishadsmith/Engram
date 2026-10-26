@@ -392,6 +392,41 @@ impl R3000a {
         );
     }
 
+    fn set_on(&mut self, condition: bool, destination: usize) {
+        self.registers
+            .write_cpu_register(destination, condition as u32)
+    }
+
+    fn slt(&mut self, instruction: MipsInstruction) {
+        self.set_on(
+            (self.registers.r[instruction.rs()] as i32)
+                < (self.registers.r[instruction.rt()] as i32),
+            instruction.rd(),
+        );
+    }
+
+    fn slti(&mut self, instruction: MipsInstruction) {
+        self.set_on(
+            (self.registers.r[instruction.rs()] as i32)
+                < (instruction.immediate_16().sign_extend() as i32),
+            instruction.rt(),
+        );
+    }
+
+    fn sltiu(&mut self, instruction: MipsInstruction) {
+        self.set_on(
+            self.registers.r[instruction.rs()] < instruction.immediate_16().sign_extend(),
+            instruction.rt(),
+        );
+    }
+
+    fn sltu(&mut self, instruction: MipsInstruction) {
+        self.set_on(
+            self.registers.r[instruction.rs()] < self.registers.r[instruction.rt()],
+            instruction.rd(),
+        );
+    }
+
     fn srl(&mut self, instruction: MipsInstruction) {
         self.registers.write_cpu_register(
             instruction.rd(),
