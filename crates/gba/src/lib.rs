@@ -289,13 +289,10 @@ impl EmulatorSession for GBASession {
         self.gba = GBA::boot(gamepak, apu_sample_period);
         self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
         self.frame_ready = false;
-        self.active_debug = None;
         self.script_engine = ScriptEngine::new();
         self.frame_deadline = Instant::now() + self.frame_period;
 
-        self.fps_start = Instant::now();
-        self.fps_frames = 0;
-        self.fps = 0.0;
+        self.reset_fps();
 
         Ok(())
     }
@@ -391,6 +388,10 @@ impl EmulatorSession for GBASession {
     fn update_frame_deadline(&mut self) {
         self.frame_deadline = Instant::now() + self.frame_period
     }
+
+    fn take_debugger_snapshot(&mut self) {
+        self.gba.bus.ppu.debugger_snapshot();
+    }
 }
 
 impl DebugInterface for GBASession {
@@ -410,6 +411,7 @@ impl DebugInterface for GBASession {
         }
 
         self.screen.update(&mut self.gba.bus.ppu.frontend);
+        self.gba.bus.ppu.frontend.buffer_changed = true;
 
         self.active_debug = if self.active_debug == debug_page {
             None

@@ -495,28 +495,20 @@ impl Ppu {
 
             for bg in bg_lines {
                 if !bg.on || mask.is_clear(bg.id) {
-                    if self.debugger_active {
-                        self.debug_frame[bg.id].pixels
-                            [self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
-                    }
+                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
 
                     continue;
                 }
 
                 let Some(index) = bg.palette_indices[pixel] else {
-                    if self.debugger_active {
-                        self.debug_frame[bg.id].pixels
-                            [self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
-                    }
+                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] = 0;
 
                     continue;
                 };
                 let layer_id = LayerId::from_background(bg.id);
 
-                if self.debugger_active {
-                    self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
-                        self.fetch_color(index, layer_id, self.transparant_background);
-                }
+                self.debug_frame[bg.id].pixels[self.vcount as usize * SCREEN_WIDTH + pixel] =
+                    self.fetch_color(index, layer_id, self.transparant_background);
 
                 let candidate = Pixel {
                     id: layer_id,
@@ -1133,13 +1125,7 @@ impl Ppu {
             self.frontend.swap(&mut self.frame);
             self.set_interrupt(DispstatBit::VblankInterrupt, interrupt_flag);
 
-            if self.debugger_active {
-                for index in 0..4 {
-                    self.debug_frontend[index].swap(&mut self.debug_frame[index]);
-                }
-
-                self.update_oam_debug_data();
-            }
+            self.debugger_update();
 
             scanline_event.vblank = true;
         }
@@ -1183,6 +1169,20 @@ impl Ppu {
             }
             _ => unreachable!(),
         }
+    }
+
+    fn debugger_update(&mut self) {
+        if self.debugger_active {
+            self.debugger_snapshot();
+        }
+    }
+
+    pub fn debugger_snapshot(&mut self) {
+        for index in 0..4 {
+            self.debug_frontend[index].swap(&mut self.debug_frame[index]);
+        }
+
+        self.update_oam_debug_data();
     }
 }
 

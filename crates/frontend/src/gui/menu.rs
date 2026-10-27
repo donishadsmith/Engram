@@ -501,6 +501,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             }
         }
 
+        let mut take_snapshot = false;
         if let Some(emulator) = &session.emulator {
             let fps = if session.is_running() {
                 emulator.get_fps()
@@ -541,6 +542,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 session.toggle_emulator_status();
 
                 if session.is_paused() {
+                    take_snapshot = true;
                     session.toasts.warning("Emulator is paused");
                 } else {
                     session.toasts.success("Emulator is running");
@@ -559,6 +561,13 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                         .color(egui::Color32::RED),
                 );
             }
+        }
+
+        if take_snapshot {
+            session
+                .emulator
+                .as_mut()
+                .and_then(|emulator| Some(emulator.take_debugger_snapshot()));
         }
     });
 }

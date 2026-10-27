@@ -23,8 +23,6 @@ pub struct Fifo {
     pub occupancy: VecDeque<u8>,
     #[serde(skip)]
     pub mute: bool,
-    #[serde(skip)]
-    pub debugger_active: bool,
 }
 
 impl Fifo {
@@ -37,7 +35,6 @@ impl Fifo {
             history: history(),
             occupancy: occupancy(),
             mute: false,
-            debugger_active: false,
         }
     }
 
@@ -69,18 +66,16 @@ impl Fifo {
             self.latched = data;
         }
 
-        if self.debugger_active {
-            if self.history.len() == 2048 {
-                self.history.pop_front();
-            }
-
-            if self.occupancy.len() == 2048 {
-                self.occupancy.pop_front();
-            }
-
-            self.history.push_back(self.latched as i8);
-            self.occupancy.push_back(self.queue.len() as u8);
+        if self.history.len() == 2048 {
+            self.history.pop_front();
         }
+
+        if self.occupancy.len() == 2048 {
+            self.occupancy.pop_front();
+        }
+
+        self.history.push_back(self.latched as i8);
+        self.occupancy.push_back(self.queue.len() as u8);
     }
 
     pub fn transfer_request(&self) -> Option<Trigger> {

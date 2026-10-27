@@ -37,8 +37,6 @@ pub struct Apu {
     #[serde(skip)]
     pub psg_mute: [bool; 4],
     #[serde(skip)]
-    pub debugger_active: bool,
-    #[serde(skip)]
     pub psg_scratch: Vec<f32>,
     previous_psg_samples: [u8; 4],
 }
@@ -58,7 +56,6 @@ impl Apu {
             psg_mute: from_fn(|_| false),
             psg_prescaler: 0,
             psg_output: PsgOutput::new(sample_rate),
-            debugger_active: false,
             psg_scratch: Vec::new(),
             previous_psg_samples: [0; 4],
         }
@@ -160,13 +157,11 @@ impl Apu {
 
         let mut psg_samples = self.psg.samples();
         for (index, sample) in psg_samples.iter_mut().enumerate() {
-            if self.debugger_active {
-                if self.psg_history[index].len() == 2048 {
-                    self.psg_history[index].pop_front();
-                }
-
-                self.psg_history[index].push_back(*sample);
+            if self.psg_history[index].len() == 2048 {
+                self.psg_history[index].pop_front();
             }
+
+            self.psg_history[index].push_back(*sample);
         }
 
         let mut fifo_left = 0.0f32;
@@ -198,14 +193,6 @@ impl Apu {
             self.sample_buffer.push(left.clamp(-512.0, 511.0) / 512.0);
             self.sample_buffer.push(right.clamp(-512.0, 511.0) / 512.0);
         }
-    }
-
-    // huge oopsie, i believe not gating this resulted in many vectors growing without bounds
-    // now just make the sample collectors ring buffers - why didnt i do that to begin with
-    pub fn debugger_status(&mut self, on: bool) {
-        self.debugger_active = on;
-        self.fifo_a.debugger_active = on;
-        self.fifo_b.debugger_active = on;
     }
 
     pub fn reset_sound_registers(&mut self) {

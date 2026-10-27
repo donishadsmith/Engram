@@ -273,6 +273,8 @@ impl EmulatorSession for GameBoySession {
         self.script_engine = ScriptEngine::new();
         self.frame_deadline = Instant::now() + self.frame_period;
 
+        self.reset_fps();
+
         Ok(())
     }
 

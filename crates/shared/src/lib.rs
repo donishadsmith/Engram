@@ -183,6 +183,8 @@ pub trait EmulatorSession {
     fn force_feedback_strength(&mut self) -> f32 {
         0.0
     }
+
+    fn take_debugger_snapshot(&mut self) {}
 }
 
 pub trait ScriptTarget: Emulator {

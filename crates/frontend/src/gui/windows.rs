@@ -162,6 +162,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
             match request {
                 ScriptRequest::Pause => {
                     // cant reuse functions for pause and running due to a classic borrow checker no no
+                    emulator.take_debugger_snapshot();
                     session.state = EmulatorState::Paused;
                     session
                         .lua_editor

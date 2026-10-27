@@ -261,8 +261,14 @@ impl GBA {
         swap(&mut data.bus.trace, &mut self.bus.trace);
         data.apu_sample_remainder = self.apu_sample_remainder;
 
+        // unfortunate edge case when the emu is paused and then a state is reloaded,
+        // since debugger backgrounds are filled during hblank, of course debugger backgrounds will remain
+        // black until hblank end when swapped with the frontend version
+        // when not paused :(; revisit this when less tired
         data.bus.ppu.transparant_background = self.bus.ppu.transparant_background;
         data.bus.ppu.transparant_sprite_background = self.bus.ppu.transparant_sprite_background;
+        data.bus.ppu.debugger_active = self.bus.ppu.debugger_active;
+        data.bus.ppu.debugger_snapshot();
 
         data.bus.apu.psg_mute = self.bus.apu.psg_mute;
         data.bus.apu.fifo_a.mute = self.bus.apu.fifo_a.mute;
