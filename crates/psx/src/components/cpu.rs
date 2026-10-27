@@ -141,7 +141,7 @@ pub struct Registers {
     pub r: [u32; 32],
     pub shadow_r: [u32; 32],
     pub pc: u32,
-    next_pc: u32,
+    pub next_pc: u32,
     pub hi: u32,
     pub lo: u32,
 }
@@ -257,6 +257,7 @@ impl R3000a {
                 .write_cpu_register(instruction.rd(), value as u32);
         } else {
             // some exception
+            todo!()
         }
     }
 
@@ -268,6 +269,7 @@ impl R3000a {
                 .write_cpu_register(instruction.rt(), value as u32);
         } else {
             // some exception
+            todo!()
         }
     }
 
@@ -324,6 +326,14 @@ impl R3000a {
         self.branch_if(self.registers.r[instruction.rs()].is_clear(31), instruction);
     }
 
+    fn bgtz(&mut self, instruction: MipsInstruction) {
+        self.branch_if(
+            self.registers.r[instruction.rs()].is_clear(31)
+                && self.registers.r[instruction.rs()] != 0,
+            instruction,
+        );
+    }
+
     fn blez(&mut self, instruction: MipsInstruction) {
         self.branch_if(
             self.registers.r[instruction.rs()].is_set(31)
@@ -348,17 +358,29 @@ impl R3000a {
         );
     }
 
-    fn breakpoint(&mut self, instruction: MipsInstruction) {}
+    fn breakpoint(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
 
-    fn cfcz(&mut self, instruction: MipsInstruction) {}
+    fn cfcz(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
 
-    fn copz(&mut self, instruction: MipsInstruction) {}
+    fn copz(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
 
-    fn ctcz(&mut self, instruction: MipsInstruction) {}
+    fn ctcz(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
 
-    fn div(&mut self, instruction: MipsInstruction) {}
+    fn div(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
 
-    fn divu(&mut self, instruction: MipsInstruction) {}
+    fn divu(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
 
     fn jump(&mut self, instruction: MipsInstruction) {
         self.registers
@@ -368,6 +390,92 @@ impl R3000a {
     fn jal(&mut self, instruction: MipsInstruction) {
         self.registers.link(31);
         self.jump(instruction);
+    }
+
+    fn jalr(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
+
+    fn jr(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
+
+    fn lb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn lbu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn lh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn lhu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn lui(&mut self, instruction: MipsInstruction) {
+        self.registers
+            .write_cpu_register(instruction.rt(), instruction.immediate_16() << 16);
+    }
+
+    fn lw(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn lwcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn lwl(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn lwr(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn mfcz(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
+
+    fn mfhi(&mut self, instruction: MipsInstruction) {
+        self.registers
+            .write_cpu_register(instruction.rd(), self.registers.hi);
+    }
+
+    fn mflo(&mut self, instruction: MipsInstruction) {
+        self.registers
+            .write_cpu_register(instruction.rd(), self.registers.lo);
+    }
+
+    fn mtcz(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
+
+    fn mthi(&mut self, instruction: MipsInstruction) {
+        self.registers.hi = self.registers.r[instruction.rs()]
+    }
+
+    fn mtlo(&mut self, instruction: MipsInstruction) {
+        self.registers.lo = self.registers.r[instruction.rs()]
+    }
+
+    fn mult(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
+
+    fn multu(&mut self, instruction: MipsInstruction) {
+        todo!()
+    }
+
+    fn nor(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            !(self.registers.r[instruction.rs()] | self.registers.r[instruction.rt()]),
+        );
     }
 
     fn or(&mut self, instruction: MipsInstruction) {
@@ -381,6 +489,21 @@ impl R3000a {
         self.registers.write_cpu_register(
             instruction.rt(),
             self.registers.r[instruction.rs()] | instruction.immediate_16(),
+        );
+    }
+
+    fn sb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn sh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn sll(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rt()] << instruction.sa(),
         );
     }
 
@@ -427,13 +550,6 @@ impl R3000a {
         );
     }
 
-    fn srl(&mut self, instruction: MipsInstruction) {
-        self.registers.write_cpu_register(
-            instruction.rd(),
-            self.registers.r[instruction.rt()] >> instruction.sa(),
-        );
-    }
-
     fn sra(&mut self, instruction: MipsInstruction) {
         self.registers.write_cpu_register(
             instruction.rd(),
@@ -449,12 +565,58 @@ impl R3000a {
         );
     }
 
+    fn srl(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rt()] >> instruction.sa(),
+        );
+    }
+
     fn srlv(&mut self, instruction: MipsInstruction) {
         self.registers.write_cpu_register(
             instruction.rd(),
             self.registers.r[instruction.rt()]
                 >> self.registers.r[instruction.rs()].get_bit_range(0..5),
         );
+    }
+
+    fn sub(&mut self, instruction: MipsInstruction) {
+        let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
+            .overflowing_sub(self.registers.r[instruction.rt()] as i32);
+        if !overflow {
+            self.registers
+                .write_cpu_register(instruction.rd(), value as u32);
+        } else {
+            // some exception
+            todo!()
+        }
+    }
+
+    fn subu(&mut self, instruction: MipsInstruction) {
+        self.registers.write_cpu_register(
+            instruction.rd(),
+            self.registers.r[instruction.rs()].wrapping_sub(self.registers.r[instruction.rt()]),
+        );
+    }
+
+    fn sw(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn swcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn swl(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn swr(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        todo!()
+    }
+
+    fn syscall(&mut self, instruction: MipsInstruction) {
+        todo!()
     }
 
     fn xor(&mut self, instruction: MipsInstruction) {
