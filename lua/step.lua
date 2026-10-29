@@ -1,8 +1,9 @@
-pause()
+emulator.pause()
 
 for index = 1, 100 do
-	step_frame()
-	-- step_instruction()
+	emulator.step_frame()
+	-- emulator.step_instruction()
 	if index == 100 then
-		print("final step reached")
+		console.log("final step reached")
+	end
 end

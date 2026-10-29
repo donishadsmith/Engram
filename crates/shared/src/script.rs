@@ -17,70 +17,71 @@ use std::{
 
 // https://github.com/ioncodes/gecko/blob/master/crates/scripting/src/lib.rs
 
-pub const HELP: &str = r#"
-Memory Access through Bus:
-read_u8(address)  read_u16(address)  read_u32(address)
-write_u8(address, value)  write_u16(address, value)  write_u32(address, value)
+pub const API: &str = r#"
+Console:
+print(...)  console.log(...): intentionally redundent, tab-separated print functions
+console.clear()
+
+Memory (bus accesses):
+memory.read_u8(address)  memory.read_u16(address)  memory.read_u32(address)
+memory.write_u8(address, value)  memory.write_u16(address, value)  memory.write_u32(address, value)
 
 Memory Domains:
-memory_domain_names(): table of names
-read_domain(name, offset)
-write_domain(name, offset, value)
-address_to_domain: returns (name, offset)
+memory.domain_names(): table of names
+memory.read_domain(name, offset)
+memory.write_domain(name, offset, value)
+memory.address_to_domain(address): returns (name, offset)
 
 CPU Registers:
-cpu_register_names(): table of names
-read_cpu_register(name)
-write_cpu_register(name, value)
+cpu.register_names(): table of names
+cpu.read_register(name)
+cpu.write_register(name, value)
 
 Colors:
-to_rgb_hex(value)
+color.to_rgb_hex(value)
+
+Controller:
+controller.names(): table of input buttons
+controller.set({a = true, up = true}): buttons held until released, keyboard/gamepad is ignored;
+  controller.set({}), controller.set(nil), or controller.set() to return control to keyboard/gamepad
+controller.check(): prints buttons currently held
+
+Emulator:
+emulator.pause()  emulator.resume()  emulator.step_instruction()  emulator.step_frame()  emulator.reset()
+emulator.screenshot()  emulator.start_gif()  emulator.stop_gif()
+emulator.save_state(slot)  emulator.load_state(slot)  emulator.delete_state(slot)
+  - slot is a value from 1 to 12
+emulator.elapsed_cycles(): GB/GBC reports t-cycles
+emulator.pause_at_cycle(cycle)
+emulator.pause_after_elapsed_cycles(elapsed_cycles)
 
 Breakpoints:
-set_breakpoint(address, {pause = true})
-remove_breakpoint(address)
-clear_all_breakpoints()
-check_breakpoints()
+debug.set_breakpoint(address, {pause = true})
+debug.remove_breakpoint(address)
+debug.clear_all_breakpoints()
+debug.check_breakpoints()
 
-Watchpoints for Bus Accesses:
-set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target=None, accessor="all"})
+Watchpoints (bus accesses):
+debug.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all"})
   - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
   - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
-    a watchpoint only fires for specified access width
-  - target: on writes its the incoming value being written to address and on reads its the current value
-    at the address being accessed; watchpoint only fires for specified target
-  - end_address: if included watchpoint becomes an inclusive range (start_address..=end_address) instead of a
-    single address
-  - accessor: "all", "cpu", "dma"; restricts hits based on the hardware accessing memory
+    a watchpoint only fires for the specified access width
+  - target: on writes it is the incoming value being written; on reads it is the current value
+    at the address being accessed; the watchpoint only fires for the specified target
+  - end_address: if included the watchpoint becomes an inclusive range (start_address..=end_address)
+  - accessor: "all", "cpu", "dma"; restricts hits to the hardware accessing memory
+debug.remove_watchpoint(address, {end_address}): end_address is required to remove a range
+debug.clear_all_watchpoints()
+debug.check_watchpoints()
 
-remove_watchpoint(address)
-clear_all_watchpoints()
-check_watchpoints()
-
-Emulator Controls:
-pause()  resume()  step_instruction()  step_frame()  reset()  clear_console()
-screenshot()  start_gif()  stop_gif()  save_state(slot)  load_state(slot)
-delete_state(slot)
-
-- `slot` is a value from 1 to 12
-
-Input:
-available_inputs(): table of input buttons
-set_inputs({a = true, up = true}): buttons held permanantly until released, keyboard/gamepad is ignored;
-  set_inputs({}), set_inputs(nil), or set_inputs() to return control to keyboard/gamepad
-check_inputs(): prints buttons currently held
-
-Misc:
-elapsed_cycles(): GB/GBC reports t-cycles
-pause_at_cycle(cycle)
-pause_after_elapsed_cycles(elapsed_cycles)
-stop_scripts(): Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints.
+Scripts:
+script.stop(): stops Lua scripts, hooks, and clears all watchpoints and breakpoints
 
 Hooks:
-function on_frame(): runs once per frame
-function on_breakpoint(address): runs when a breakpoint is hit
-function on_watchpoint(hit): runs once per watchpoint hit; hit is a table with
-  address, value, pc, on, access, pause, requester
+function emulator.on_frame(): runs once per frame
+function debug.on_breakpoint(address): runs when a breakpoint is hit
+function debug.on_watchpoint(hit): runs once per watchpoint hit; hit is a table with
+  address, value, pc, on, width, pause, cycle, accessor, domain, offset, pc_offset
 "#;
 
 pub enum DomainError {
@@ -425,22 +426,55 @@ pub struct ScriptEngine {
     step_done: bool,
     stop_scripts: bool,
     clear_console: bool,
+    memory: Table,
+    debug: Table,
+    controller: Table,
+    color: Table,
+    emulator: Table,
+    script: Table,
+    cpu: Table,
+    console: Table,
 }
 
 impl ScriptEngine {
     pub fn new() -> Self {
         //https://docs.rs/mlua/latest/mlua/struct.Thread.html
         let lua = Lua::new();
+
+        let memory = lua.create_table().unwrap();
+        let _ = lua.globals().set("memory", &memory);
+
+        let debug = lua.create_table().unwrap();
+        let _ = lua.globals().set("debug", &debug);
+
+        let controller = lua.create_table().unwrap();
+        let _ = lua.globals().set("controller", &controller);
+
+        let color = lua.create_table().unwrap();
+        let _ = lua.globals().set("color", &color);
+
+        let emulator = lua.create_table().unwrap();
+        let _ = lua.globals().set("emulator", &emulator);
+
+        let script = lua.create_table().unwrap();
+        let _ = lua.globals().set("script", &script);
+
+        let cpu = lua.create_table().unwrap();
+        let _ = lua.globals().set("cpu", &cpu);
+
+        let console = lua.create_table().unwrap();
+        let _ = lua.globals().set("console", &console);
+
         let _ = lua
             .load(
                 r#"
-            function step_instruction()
-                _step_instruction()
+            function emulator.step_instruction()
+                emulator._step_instruction()
                 coroutine.yield()
             end
 
-            function step_frame()
-                _step_frame()
+            function emulator.step_frame()
+                emulator._step_frame()
                 coroutine.yield()
             end
         "#,
@@ -457,6 +491,14 @@ impl ScriptEngine {
             step_done: false,
             stop_scripts: false,
             clear_console: false,
+            memory,
+            debug,
+            controller,
+            color,
+            emulator,
+            script,
+            cpu,
+            console,
         }
     }
 
@@ -491,9 +533,9 @@ impl ScriptEngine {
             self.running = None;
             self.pending.clear();
             self.step_done = false;
-            let _ = self.lua.globals().set("on_frame", Value::Nil);
-            let _ = self.lua.globals().set("on_breakpoint", Value::Nil);
-            let _ = self.lua.globals().set("on_watchpoint", Value::Nil);
+            let _ = self.emulator.set("on_frame", Value::Nil);
+            let _ = self.debug.set("on_breakpoint", Value::Nil);
+            let _ = self.debug.set("on_watchpoint", Value::Nil);
             target.clear_all_breakpoints();
             target.clear_all_watchpoints();
             target.take_breakpoint_hit();
@@ -524,6 +566,14 @@ impl ScriptEngine {
             step_done,
             stop_scripts,
             clear_console,
+            memory,
+            debug,
+            controller,
+            color,
+            emulator,
+            script,
+            cpu,
+            console,
         } = self;
 
         let target = RefCell::new(target);
@@ -533,150 +583,117 @@ impl ScriptEngine {
         let stop_scripts = Cell::from_mut(stop_scripts);
 
         let result = lua.scope(|scope| {
-            let stop_scripts_function = scope.create_function(|_,  (): ()| {
+            script.set("stop", scope.create_function(|_,  (): ()| {
                 stop_scripts.replace(true);
 
                 Ok(())
-            })?;
-            lua.globals().set("stop_scripts", stop_scripts_function)?;
+            })?)?;
 
-            let print = scope.create_function(|_, vals: Variadic<Value>| {
-                let line = vals
+            // always liked the name even though duplicate function
+            let print = scope.create_function(|_, values: Variadic<Value>| {
+                let line = values
                     .iter()
-                    .map(|val| val.to_string())
+                    .map(|value| value.to_string())
                     .collect::<mlua::Result<Vec<String>>>()?
                     .join("\t");
 
                 output.borrow_mut().push(line);
+
                 Ok(())
             })?;
-            lua.globals().set("print", print)?;
+            lua.globals().set("print", &print)?;
+            console.set("log", print)?;
 
-            let read_u8 = scope
-                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u8(address)))?;
-            lua.globals().set("read_u8", read_u8)?;
+            console.set("clear", scope.create_function(|_, (): ()| {
+                clear_console.set(true);
 
-            let read_u16 = scope
-                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u16(address)))?;
-            lua.globals().set("read_u16", read_u16)?;
+                output.borrow_mut().clear();
 
-            let read_u32 = scope
-                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u32(address)))?;
-            lua.globals().set("read_u32", read_u32)?;
+                Ok(())
+            })?)?;
 
-            let write_u8 = scope.create_function(|_, (address, value): (u32, u8)| {
+            memory.set("read_u8", scope
+                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u8(address)))?)?;
+
+            memory.set("read_u16", scope
+                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u16(address)))?)?;
+
+            memory.set("read_u32", scope
+                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u32(address)))?)?;
+
+             memory.set("write_u8", scope.create_function(|_, (address, value): (u32, u8)| {
                 target.borrow_mut().write_u8(address, value);
                 Ok(())
-            })?;
-            lua.globals().set("write_u8", write_u8)?;
+            })?)?;
 
-            let write_u16 = scope.create_function(|_, (address, value): (u32, u16)| {
+            memory.set("write_u16", scope.create_function(|_, (address, value): (u32, u16)| {
                 target.borrow_mut().write_u16(address, value);
                 Ok(())
-            })?;
-            lua.globals().set("write_u16", write_u16)?;
+            })?)?;
 
-            let write_u32 = scope.create_function(|_, (address, value): (u32, u32)| {
+            memory.set("write_u32", scope.create_function(|_, (address, value): (u32, u32)| {
                 target.borrow_mut().write_u32(address, value);
                 Ok(())
-            })?;
-            lua.globals().set("write_u32", write_u32)?;
+            })?)?;
 
-            let memory_domain_names = scope
-                .create_function(|_, (): ()| Ok(target.borrow().memory_domain_names().to_vec()))?;
-            lua.globals()
-                .set("memory_domain_names", memory_domain_names)?;
+            memory.set("domain_names", scope
+                .create_function(|_, (): ()| Ok(target.borrow().memory_domain_names().to_vec()))?)?;
 
-            let read_domain = scope.create_function(|_, (domain, offset): (String, usize)| {
+            memory.set("read_domain", scope.create_function(|_, (domain, offset): (String, usize)| {
                 let result = target.borrow().read_domain(&domain, offset);
                 result.map_err(|err| {
                     domain_error(&domain.to_lowercase(), offset, err, target.borrow().memory_domain_names())
                 })
-            })?;
-            lua.globals().set("read_domain", read_domain)?;
+            })?)?;
 
-            let address_to_domain = scope.create_function(|_, address: u32| {
-                target.borrow().address_to_domain(address).ok_or_else(|| {
-                    mlua::Error::runtime(format!(
-                        "address {address:#010x} not mapped to any memory domain"
-                    ))
-                })
-            })?;
-            lua.globals().set("address_to_domain", address_to_domain)?;
-
-            let write_domain =
+            memory.set("write_domain",
                 scope.create_function(|_, (domain, offset, value): (String, usize, u8)| {
                     let result = target.borrow_mut().write_domain(&domain, offset, value);
                     result.map_err(|err| {
                         domain_error(&domain.to_lowercase(), offset, err, target.borrow().memory_domain_names())
                     })
-                })?;
-            lua.globals().set("write_domain", write_domain)?;
+                })?)?;
 
-            let cpu_register_names = scope
-                .create_function(|_, (): ()| Ok(target.borrow().cpu_register_names().to_vec()))?;
-            lua.globals()
-                .set("cpu_register_names", cpu_register_names)?;
+            memory.set("address_to_domain", scope.create_function(|_, address: u32| {
+                target.borrow().address_to_domain(address).ok_or_else(|| {
+                    mlua::Error::runtime(format!(
+                        "address {address:#010x} not mapped to any memory domain"
+                    ))
+                })
+            })?)?;
 
-            let pause_at_cycle = scope
-                .create_function(|_, cycle: u64| {
-                    target.borrow_mut().set_cycle_pause(cycle);
+            cpu.set("register_names", scope
+                .create_function(|_, (): ()| Ok(target.borrow().cpu_register_names().to_vec()))?)?;
 
-                    Ok(())
-                })?;
-            lua.globals()
-                .set("pause_at_cycle", pause_at_cycle)?;
-
-            let strings =  target.borrow_mut().cycle_paused_text();
-            for string in strings {
-                output.borrow_mut().push(string);
-            }
-
-            let pause_after_elapsed_cycles = scope
-                .create_function(|_, elapsed_cycles: u64| {
-                    let current_cycle = target.borrow().elapsed_cycles();
-                    target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles + current_cycle);
-
-                    Ok(())
-                })?;
-            lua.globals()
-                .set("pause_after_elapsed_cycles", pause_after_elapsed_cycles)?;
-
-            let read_cpu_register = scope.create_function(|_, name: String| {
+            cpu.set("read_register", scope.create_function(|_, name: String| {
                 let name = name.to_lowercase();
                 let result = target.borrow().read_cpu_register(name.clone());
                 result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
-            })?;
-            lua.globals().set("read_cpu_register", read_cpu_register)?;
+            })?)?;
 
-            let write_cpu_register = scope.create_function(|_, (name, value): (String, u32)| {
+            cpu.set("write_register", scope.create_function(|_, (name, value): (String, u32)| {
                 let name = name.to_lowercase();
                 let result = target.borrow_mut().write_cpu_register(name.clone(), value);
                 result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
-            })?;
-            lua.globals()
-                .set("write_cpu_register", write_cpu_register)?;
+            })?)?;
 
-            let to_rgb_hex = scope.create_function(|_, value: u32| {
+            color.set("to_rgb_hex", scope.create_function(|_, value: u32| {
                 let [r, g, b] = target.borrow().to_rgb(value);
                 Ok(format!("#{r:02x}{g:02x}{b:02x}"))
-            })?;
-            lua.globals().set("to_rgb_hex", to_rgb_hex)?;
+            })?)?;
 
-            let available_inputs = scope.create_function(|_,  (): ()| {
+            controller.set("names", scope.create_function(|_,  (): ()| {
                 Ok(get_available_inputs(emulator_id))
-            })?;
-            lua.globals().set("available_inputs", available_inputs)?;
+            })?)?;
 
-            let set_inputs = scope.create_function(|_, kwargs: Option<Table>| {
+            controller.set("set", scope.create_function(|_, kwargs: Option<Table>| {
                 let mask = map_inputs(emulator_id, kwargs);
                 target.borrow_mut().set_scripted_inputs(mask);
 
                 Ok(())
-            })?;
-            lua.globals().set("set_inputs", set_inputs)?;
+            })?)?;
 
-            let check_inputs = scope.create_function(|_,  (): ()| {
+            controller.set("check", scope.create_function(|_,  (): ()| {
                 let message = match target.borrow().check_scripted_inputs() {
                     Some(key_mask) => format!("The following keys are set: {}", bool_to_keys(emulator_id, key_mask).join(", ")),
                     None => "No keys set".to_string()
@@ -685,10 +702,90 @@ impl ScriptEngine {
                 output.borrow_mut().push(message);
 
                 Ok(())
-            })?;
-            lua.globals().set("check_inputs", check_inputs)?;
+            })?)?;
 
-            let set_breakpoint =
+            emulator.set("elapsed_cycles", scope.create_function(|_, (): ()| {
+                        Ok(target.borrow().elapsed_cycles())
+            })?)?;
+
+            let set_emulator_controls =
+                |name: &'static str, request: fn() -> ScriptRequest| {
+                    let requests = &requests;
+                    let function = scope.create_function(move |_, (): ()| {
+                        requests.borrow_mut().push(request());
+                        Ok(())
+                    })?;
+
+                    emulator.set(name, function)
+                };
+
+            set_emulator_controls("pause", || ScriptRequest::Pause)?;
+            set_emulator_controls("resume", || ScriptRequest::Resume)?;
+            set_emulator_controls("_step_instruction", || ScriptRequest::StepInstruction)?;
+            set_emulator_controls("_step_frame", || ScriptRequest::StepFrame)?;
+            set_emulator_controls("reset", || ScriptRequest::Reset)?;
+            set_emulator_controls(
+                "screenshot",
+                || ScriptRequest::Screenshot,
+            )?;
+            set_emulator_controls(
+                "start_gif",
+                || ScriptRequest::StartGif,
+            )?;
+            set_emulator_controls(
+                "stop_gif",
+                || ScriptRequest::StopGif,
+            )?;
+
+            let set_emulator_save_state = |name: &'static str, request: fn(usize) -> ScriptRequest| {
+                let requests = &requests;
+                let output = &output;
+                let function = scope.create_function(move |_, slot: usize| {
+                if  !(1..=SAVE_STATE_SLOTS).contains(&slot) {
+                        output.borrow_mut().push(mlua::Error::runtime(format!("Only save states 1-{SAVE_STATE_SLOTS} can be used")).to_string());
+                    } else {
+                        requests.borrow_mut().push(request(slot));
+                    }
+
+                    Ok(())
+                })?;
+
+                emulator.set(name, function)
+            };
+
+            set_emulator_save_state("save_state", ScriptRequest::SaveState)?;
+            set_emulator_save_state("load_state", ScriptRequest::LoadState)?;
+            set_emulator_save_state("delete_state", ScriptRequest::DeleteState)?;
+
+            emulator.set("pause_at_cycle", scope
+                .create_function(|_, cycle: u64| {
+                    target.borrow_mut().set_cycle_pause(cycle);
+
+                    Ok(())
+                })?)?;
+
+            emulator.set("pause_after_elapsed_cycles",  scope
+                .create_function(|_, elapsed_cycles: u64| {
+                    let current_cycle = target.borrow().elapsed_cycles();
+                    target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles + current_cycle);
+
+                    Ok(())
+                })?)?;
+
+            let strings =  target.borrow_mut().cycle_paused_text();
+            for string in strings {
+                output.borrow_mut().push(string);
+            }
+
+            if frame_boundary && let Ok(hook) = emulator.get::<Function>("on_frame") {
+                time_limit(lua, Duration::from_millis(5));
+                if let Err(err) = hook.call::<()>(()) {
+                    output.borrow_mut().push(format!("{err}"));
+                    let _ = emulator.set("on_frame", Value::Nil);
+                }
+            }
+
+            debug.set("set_breakpoint",
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
 
@@ -704,29 +801,25 @@ impl ScriptEngine {
 
                     output.borrow_mut().push(message);
                     Ok(())
-                })?;
-            lua.globals().set("set_breakpoint", set_breakpoint)?;
+                })?)?;
 
-            let remove_breakpoint = scope.create_function(|_, address: u32| {
+            debug.set("remove_breakpoint", scope.create_function(|_, address: u32| {
                 target.borrow_mut().remove_breakpoint(address);
                 output
                     .borrow_mut()
                     .push(format!("breakpoint at {address:08X} removed"));
                 Ok(())
-            })?;
-            lua.globals().set("remove_breakpoint", remove_breakpoint)?;
+            })?)?;
 
-            let clear_all_breakpoints = scope.create_function(|_, (): ()| {
+            debug.set("clear_all_breakpoints", scope.create_function(|_, (): ()| {
                 target.borrow_mut().clear_all_breakpoints();
                 output
                     .borrow_mut()
                     .push("all breakpoints cleared".to_string());
                 Ok(())
-            })?;
-            lua.globals()
-                .set("clear_all_breakpoints", clear_all_breakpoints)?;
+            })?)?;
 
-            let check_breakpoints = scope.create_function(|_, (): ()| {
+            debug.set("check_breakpoints", scope.create_function(|_, (): ()| {
                 let breakpoints = target.borrow_mut().check_breakpoints();
                 if !breakpoints.is_empty() {
                     for (address, state) in breakpoints.iter() {
@@ -745,24 +838,9 @@ impl ScriptEngine {
                     output.borrow_mut().push("no breakpoints found".to_string())
                 }
                 Ok(())
-            })?;
-            lua.globals().set("check_breakpoints", check_breakpoints)?;
+            })?)?;
 
-            let elapsed_cycles = scope.create_function(|_, (): ()| {
-                        Ok(target.borrow().elapsed_cycles())
-            })?;
-            lua.globals().set("elapsed_cycles", elapsed_cycles)?;
-
-            let clear_console = scope.create_function(|_, (): ()| {
-                clear_console.set(true);
-
-                output.borrow_mut().clear();
-
-                Ok(())
-            })?;
-            lua.globals().set("clear_console", clear_console)?;
-
-            let set_watchpoint =
+            debug.set("set_watchpoint",
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
                     let (watchpoint_range, watchpoint_args) =
@@ -784,10 +862,9 @@ impl ScriptEngine {
 
                     output.borrow_mut().push(message);
                     Ok(())
-                })?;
-            lua.globals().set("set_watchpoint", set_watchpoint)?;
+                })?)?;
 
-            let remove_watchpoint = scope.create_function(|_, (address, kwargs):  (u32, Option<Table>)| {
+            debug.set("remove_watchpoint", scope.create_function(|_, (address, kwargs):  (u32, Option<Table>)| {
                 let watchpoint_range = WatchpointRange {
                     start_address: address,
                     end_address: if let Some(table) = kwargs && let Ok(some_option) = table.get::<Option<u32>>("end_address") && let Some(end_address) = some_option {
@@ -810,20 +887,17 @@ impl ScriptEngine {
                 }
 
                 Ok(())
-            })?;
-            lua.globals().set("remove_watchpoint", remove_watchpoint)?;
+            })?)?;
 
-            let clear_all_watchpoints = scope.create_function(|_, (): ()| {
+            debug.set("clear_all_watchpoints", scope.create_function(|_, (): ()| {
                 target.borrow_mut().clear_all_watchpoints();
                 output
                     .borrow_mut()
                     .push("all watchpoints cleared".to_string());
                 Ok(())
-            })?;
-            lua.globals()
-                .set("clear_all_watchpoints", clear_all_watchpoints)?;
+            })?)?;
 
-            let check_watchpoints = scope.create_function(|_, (): ()| {
+            debug.set("check_watchpoints", scope.create_function(|_, (): ()| {
                 let watchpoints = target.borrow_mut().check_watchpoints();
                 if !watchpoints.is_empty() {
                     for (watchpoint_range, watchpoint_args) in watchpoints.iter() {
@@ -855,109 +929,16 @@ impl ScriptEngine {
                     output.borrow_mut().push("no watchpoints found".to_string())
                 }
                 Ok(())
-            })?;
-            lua.globals().set("check_watchpoints", check_watchpoints)?;
-
-            let control =
-                |name: &'static str, request: fn() -> ScriptRequest| {
-                    let requests = &requests;
-                    let function = scope.create_function(move |_, (): ()| {
-                        requests.borrow_mut().push(request());
-                        Ok(())
-                    })?;
-
-                    lua.globals().set(name, function)
-                };
-
-            control("pause", || ScriptRequest::Pause)?;
-            control("resume", || ScriptRequest::Resume)?;
-            control("_step_instruction", || ScriptRequest::StepInstruction)?;
-            control("_step_frame", || ScriptRequest::StepFrame)?;
-            control("reset", || ScriptRequest::Reset)?;
-            control(
-                "screenshot",
-                || ScriptRequest::Screenshot,
-            )?;
-            control(
-                "start_gif",
-                || ScriptRequest::StartGif,
-            )?;
-            control(
-                "stop_gif",
-                || ScriptRequest::StopGif,
-            )?;
-
-            let state = |name: &'static str, request: fn(usize) -> ScriptRequest| {
-                let requests = &requests;
-                let output = &output;
-                let function = scope.create_function(move |_, slot: usize| {
-                if  !(1..=SAVE_STATE_SLOTS).contains(&slot) {
-                        output.borrow_mut().push(mlua::Error::runtime(format!("Only save states 1-{SAVE_STATE_SLOTS} can be used")).to_string());
-                    } else {
-                        requests.borrow_mut().push(request(slot));
-                    }
-
-                    Ok(())
-                })?;
-                lua.globals().set(name, function)
-            };
-
-            state("save_state", ScriptRequest::SaveState)?;
-            state("load_state", ScriptRequest::LoadState)?;
-            state("delete_state", ScriptRequest::DeleteState)?;
-
-            if *step_done && let Some(thread) = running.take() {
-                *step_done = false;
-                time_limit(lua, Duration::from_millis(100));
-                match thread.resume::<mlua::MultiValue>(()) {
-                    Ok(_) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
-                    Ok(values) if !values.is_empty() => output.borrow_mut().push(
-                        values
-                            .iter()
-                            .map(display_value)
-                            .collect::<Vec<_>>()
-                            .join("\t")),
-                    Ok(_) => {},
-                    Err(err) => output.borrow_mut().push(format!("{err}")),
-                }
-            }
-
-            while running.is_none() && let Some(code) = pending.pop_front() {
-                time_limit(lua, Duration::from_millis(100));
-                let start = lua.load(&code).into_function().and_then(|function| lua.create_thread(function));
-                match start.and_then(|thread| thread.resume::<mlua::MultiValue>(()).map(|value| (thread, value))) {
-                    Ok((thread, _)) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
-                    Ok((_, values)) if !values.is_empty() => output.borrow_mut().push(
-                        values
-                            .iter()
-                            .map(display_value)
-                            .collect::<Vec<_>>()
-                            .join("\t"),
-                    ),
-                    Ok((_, _)) => {},
-                    Err(err) => output.borrow_mut().push(format!("{err}")),
-                }
-
-                if stop_scripts.get() {
-                    return Ok(());
-                }
-            };
-
-            if frame_boundary && let Ok(hook) = lua.globals().get::<Function>("on_frame") {
-                time_limit(lua, Duration::from_millis(5));
-                if let Err(err) = hook.call::<()>(()) {
-                    output.borrow_mut().push(format!("{err}"));
-                    let _ = lua.globals().set("on_frame", Value::Nil);
-                }
-            }
+            })?)?;
 
             // yeah default behavior when no hook is less annoying
             let hit = target.borrow_mut().take_breakpoint_hit();
             if let Some(address) = hit {
-                if let Ok(hook) = lua.globals().get::<Function>("on_breakpoint") {
+                if let Ok(hook) = debug.get::<Function>("on_breakpoint") {
                     time_limit(lua, Duration::from_millis(5));
                     if let Err(err) = hook.call::<()>(address) {
                         output.borrow_mut().push(format!("{err}"));
+                        let _ = debug.set("on_breakpoint", Value::Nil);
                     }
                 } else {
                     output
@@ -968,7 +949,7 @@ impl ScriptEngine {
 
             let hits = target.borrow_mut().take_watchpoint_hits();
             if !hits.is_empty() {
-                let hook = lua.globals().get::<Function>("on_watchpoint").ok();
+                let hook = debug.get::<Function>("on_watchpoint").ok();
                 for hit in hits {
                     if hook.is_none() {
                         output.borrow_mut().push(format!(
@@ -1010,11 +991,48 @@ impl ScriptEngine {
                     time_limit(lua, Duration::from_millis(5));
                     if let Err(err) = hook.call::<()>(table) {
                         output.borrow_mut().push(format!("{err}"));
-                        let _ = lua.globals().set("on_watchpoint", Value::Nil);
+                        let _ = debug.set("on_watchpoint", Value::Nil);
                         break;
                     }
                 }
             }
+
+            if *step_done && let Some(thread) = running.take() {
+                *step_done = false;
+                time_limit(lua, Duration::from_millis(100));
+                match thread.resume::<mlua::MultiValue>(()) {
+                    Ok(_) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
+                    Ok(values) if !values.is_empty() => output.borrow_mut().push(
+                        values
+                            .iter()
+                            .map(display_value)
+                            .collect::<Vec<_>>()
+                            .join("\t")),
+                    Ok(_) => {},
+                    Err(err) => output.borrow_mut().push(format!("{err}")),
+                }
+            }
+
+            while running.is_none() && let Some(code) = pending.pop_front() {
+                time_limit(lua, Duration::from_millis(100));
+                let start = lua.load(&code).into_function().and_then(|function| lua.create_thread(function));
+                match start.and_then(|thread| thread.resume::<mlua::MultiValue>(()).map(|value| (thread, value))) {
+                    Ok((thread, _)) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
+                    Ok((_, values)) if !values.is_empty() => output.borrow_mut().push(
+                        values
+                            .iter()
+                            .map(display_value)
+                            .collect::<Vec<_>>()
+                            .join("\t"),
+                    ),
+                    Ok((_, _)) => {},
+                    Err(err) => output.borrow_mut().push(format!("{err}")),
+                }
+
+                if stop_scripts.get() {
+                    return Ok(());
+                }
+            };
 
             Ok(())
         });

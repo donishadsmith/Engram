@@ -1,9 +1,9 @@
 local step = 0
-function on_frame()
+function emulator.on_frame()
     step = step + 1
     if step % 16 < 8 then
-		set_inputs({ up = true })
+		controller.set({ up = true })
 	else
-		set_inputs({ down = true })
+		controller.set({ down = true })
 	end
 end

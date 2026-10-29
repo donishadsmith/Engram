@@ -9,15 +9,15 @@ local function price_offset(item_id)
 end
 
 local function get_price(item_id)
-	local low_byte = read_domain("rom", price_offset(item_id))
-	local high_byte = read_domain("rom", price_offset(item_id) + 1)
+	local low_byte = memory.read_domain("rom", price_offset(item_id))
+	local high_byte = memory.read_domain("rom", price_offset(item_id) + 1)
 
     return (high_byte << 8) | low_byte
 end
 
 local function set_price(item_id, price)
-    write_domain("rom", price_offset(item_id), price)
-    write_domain("rom", price_offset(item_id) + 1, price >> 8)
+    memory.write_domain("rom", price_offset(item_id), price)
+    memory.write_domain("rom", price_offset(item_id) + 1, price >> 8)
 end
 
 print("Potion Before Cost", get_price(13))

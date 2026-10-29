@@ -1,6 +1,5 @@
-use crate::script::HELP;
+use crate::script::API;
 use arboard::Clipboard;
-use chrono::Local;
 use egui::{Context, ScrollArea, Window, text::CursorRange};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
 use egui_phosphor::regular as icons;
@@ -10,19 +9,43 @@ use macroquad::input::{
 };
 use rfd::FileDialog;
 use std::{
-    fs::{read_to_string, rename, write},
+    fs::{read_to_string, write},
     mem::take,
     path::PathBuf,
     time::{Duration, Instant},
 };
 
 const COPY_DELAY: Duration = Duration::from_millis(200);
+const SHORTCUT: &str = r#"
+Shift+Enter: run the current script
+Ctrl+N: new script
+Ctrl+S: save the current script
+Ctrl+C: copy the selected text
+F8: open or close the Lua editor
+
+Notes:
+    - Cmd button can replace Ctrl
+    - Other shortcuts such as Ctrl+Z, Ctrl+V, Ctrl+A, also usable
+"#;
+#[derive(PartialEq)]
+enum HelpTab {
+    Api,
+    Shortcut,
+}
 
 pub fn super_key_down() -> bool {
     is_key_down(KeyCode::LeftControl)
         || is_key_down(KeyCode::LeftSuper)
         || is_key_down(KeyCode::RightControl)
         || is_key_down(KeyCode::RightSuper)
+}
+
+fn save_shortcut() -> bool {
+    super_key_down() && is_key_pressed(KeyCode::S)
+}
+
+fn new_file_shortcut() -> bool {
+    super_key_down() && is_key_pressed(KeyCode::N)
 }
 
 pub struct LuaEditor {
@@ -34,6 +57,9 @@ pub struct LuaEditor {
     pending_copy: Option<(String, Instant)>,
     clipboard: Option<Clipboard>,
     pub help_window: bool,
+    script_name: String, // very vs coded
+    script_path: Option<PathBuf>,
+    help_tab: HelpTab,
 }
 
 impl LuaEditor {
@@ -47,6 +73,9 @@ impl LuaEditor {
             pending_copy: None,
             clipboard: Clipboard::new().ok(),
             help_window: false,
+            script_name: "Untitled-1.lua".to_string(),
+            script_path: None,
+            help_tab: HelpTab::Api,
         }
     }
 
@@ -60,57 +89,83 @@ impl LuaEditor {
         Window::new("Lua Editor")
             .open(&mut opened)
             .show(egui_ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.menu_button("File", |ui| {
-                        if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() {
-                            if let Some(path) = open_lua_script() {
-                                match read_to_string(&path) {
-                                    Ok(text) => self.code = text,
-                                    Err(e) => {
-                                        self.output.push(format!("Failed to read script: {e}"))
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.menu_button("File", |ui| {
+                            if ui.button(format!("{}  New Script", icons::FILE)).clicked() {
+                                self.new_file();
+                            }
+
+                            if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() {
+                                if let Some(path) = open_lua_script() {
+                                    match read_to_string(&path) {
+                                        Ok(text) => {
+                                            self.code = text;
+                                            self.update_script_path(path);
+                                        },
+                                        Err(e) => {
+                                            self.output.push(format!("Failed to read script: {e}"))
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() {
-                            self.save_lua_script();
-                        }
-                    });
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(format!("{}  Help", icons::INFO)).clicked() && !self.help_window {
-                            self.help_window = true;
-                        }
-
-                        egui::Window::new("Help").default_width(500.0).vscroll(false).open(&mut self.help_window).show(ui.ctx(), |ui| {
-                            egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                                    ui.label(HELP);
-                                });
-                            });
-
-                        ui.menu_button("Session", |ui| {
-                            if ui.button(format!("{}  Clear Console", icons::BROOM)).on_hover_text(
-                                "Clears output in console"
-                            ).clicked() {
-                                self.output.clear();
-                            }
-
-                            if ui.button(format!("{}  Stop Scripts", icons::STOP_CIRCLE)).on_hover_text(
-                                "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints"
-                            ).clicked() {
-                                self.termination_request = true;
+                            if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() {
+                                self.save_lua_script();
                             }
                         });
 
-                        if ui.button(format!("{}  Run (Shift+Enter)", icons::PLAY)).clicked() {
-                            run = true;
-                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button(format!("{}  Help", icons::INFO)).clicked() && !self.help_window {
+                                self.help_window = true;
+                            }
 
-                        // getting tired of having to click run
-                    if (is_key_down(KeyCode::LeftShift) | is_key_down(RightShift)) && is_key_pressed(KeyCode::Enter) {
-                            run = true
-                        }
+                            egui::Window::new("Help").default_width(500.0).vscroll(false).open(&mut self.help_window).show(ui.ctx(), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.selectable_value(&mut self.help_tab, HelpTab::Api, "API");
+                                    ui.selectable_value(&mut self.help_tab, HelpTab::Shortcut, "Shortcuts");
+                                });
+
+                                ui.separator();
+
+                                egui::ScrollArea::vertical().show(ui, |ui| match self.help_tab {
+                                    HelpTab::Api => ui.label(API),
+                                    HelpTab::Shortcut => ui.label(SHORTCUT)
+                                });
+                            });
+
+                            ui.menu_button("Session", |ui| {
+                                if ui.button(format!("{}  Clear Console", icons::BROOM)).on_hover_text(
+                                    "Clears output in console"
+                                ).clicked() {
+                                    self.output.clear();
+                                }
+
+                                if ui.button(format!("{}  Stop Scripts", icons::STOP_CIRCLE)).on_hover_text(
+                                    "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints"
+                                ).clicked() {
+                                    self.termination_request = true;
+                                }
+                            });
+
+                            if ui.button(format!("{}  Run", icons::PLAY)).clicked() {
+                                run = true;
+                            }
+
+                            // getting tired of having to click run
+                        if (is_key_down(KeyCode::LeftShift) | is_key_down(RightShift)) && is_key_pressed(KeyCode::Enter) {
+                                run = true
+                            }
+                        });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.add_sized(
+                            [200.0, ui.available_height()],
+                            egui::Label::new(&self.script_name)
+                                .wrap_mode(egui::TextWrapMode::Truncate)
+                                .selectable(false)
+                        );
                     });
                 });
 
@@ -150,6 +205,18 @@ impl LuaEditor {
                             }
                         },
                     );
+
+                if new_file_shortcut() {
+                    self.new_file();
+                }
+
+                if save_shortcut() {
+                    if let Some(path) = self.script_path.clone() && path.exists() {
+                        self.quick_save(&path);
+                    } else {
+                        self.save_lua_script();
+                    }
+                }
             });
 
         self.opened = opened;
@@ -174,33 +241,54 @@ impl LuaEditor {
         take(&mut self.termination_request)
     }
 
-    fn save_lua_script(&mut self) {
-        let source_path = PathBuf::from(format!(
-            "script_{}.lua",
-            Local::now().format("%Y%m%d_%H%M%S")
-        ));
+    pub fn new_file(&mut self) {
+        self.code.clear();
+        self.script_path = None;
+        self.script_name = "Untitled-1.lua".to_string();
+    }
 
-        match write(&source_path, self.code.clone()) {
-            Ok(_) => {}
+    pub fn quick_save(&mut self, path: &PathBuf) {
+        match write(path, self.code.clone()) {
+            Ok(_) => {
+                self.update_script_path(path.to_path_buf());
+                self.output.push(format!(
+                    "current script saved to: {}",
+                    path.to_str().unwrap()
+                ));
+            }
             Err(e) => {
                 self.output.push(e.to_string());
 
                 return;
             }
         }
+    }
+
+    fn save_lua_script(&mut self) {
+        let source_path = if let Some(script_path) = self.script_path.clone() {
+            script_path
+        } else {
+            PathBuf::from(self.script_name.clone())
+        };
 
         let destination_path = FileDialog::new()
             .set_file_name(source_path.file_name().unwrap().to_string_lossy())
             .save_file();
 
-        if let Some(destination_path) = destination_path {
-            match rename(&source_path, &destination_path) {
-                Ok(_) => self
-                    .output
-                    .push(format!("File saved to: {:?}", &destination_path)),
-                Err(e) => self.output.push(e.to_string()),
-            }
+        match destination_path {
+            Some(path) => self.quick_save(&path),
+            None => {}
         }
+    }
+
+    fn update_script_path(&mut self, path: PathBuf) {
+        if let Some(filename) = path.file_name()
+            && let Some(script_name) = filename.to_owned().into_string().ok()
+        {
+            self.script_name = script_name;
+        }
+
+        self.script_path = Some(path);
     }
 
     // found that only way to get copy to clipboard is work is by delaying setting it to clipboard

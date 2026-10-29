@@ -1,0 +1,6 @@
+debug.set_watchpoint(0x07000000, {end_address=0x070003FF, pause = false, on = "rw", width = "word", accessor = "dma"})
+
+function debug.on_watchpoint(hit)
+    console.log(string.format("%s %s at %08X value=%08X from pc=%08X, accessor=%s",
+        hit.on, hit.width, hit.address, hit.value, hit.pc, hit.accessor))
+end

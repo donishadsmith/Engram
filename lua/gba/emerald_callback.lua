@@ -2,10 +2,10 @@ local functions = {}
 
 function on_pc(address, fn)
 	functions[address] = fn
-	set_breakpoint(address)
+	debug.set_breakpoint(address)
 end
 
-function on_breakpoint(address)
+function debug.on_breakpoint(address)
 	local fn = functions[address]
 	if fn then
 		fn(address)
@@ -13,5 +13,5 @@ function on_breakpoint(address)
 end
 
 on_pc(0x080E518C, function()
-	print("r0", read_cpu_register("r0"))
+	print("r0", cpu.read_register("r0"))
 end)
