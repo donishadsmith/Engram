@@ -1,5 +1,6 @@
 // https://psx-spx.consoledev.net/ps1/system/iomap/
 // https://nsec.sjtu.edu.cn/data/MK.Computer.Organization.and.Design.4th.Edition.Oct.2011.pdf
+
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, env::var, fmt::Arguments, fs::File, io::BufWriter};
 
@@ -12,7 +13,13 @@ use shared::{
 };
 
 use crate::components::psx::Event;
+
 // gonna experiment with generic this time - https://github.com/simias/rustation-ng/blob/main/src/psx.rs
+
+pub enum FetchType {
+    Instruction,
+    Data,
+}
 
 pub trait BusAccess: BitOps {
     const ACCESS_WIDTH: Width;
@@ -148,5 +155,9 @@ impl Bus {
 
     pub fn add_cycles(&mut self, cycles: u64) {
         self.scheduler.current += cycles;
+    }
+
+    pub fn is_valid_address(&mut self, address: u32, fetch_type: bool) -> bool {
+        todo!()
     }
 }

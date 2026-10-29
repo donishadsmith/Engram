@@ -20,10 +20,12 @@ All registers are 32bit wide.
 
 */
 
+pub mod cop0;
+
 use crate::components::bus::Bus;
 use serde::{Deserialize, Serialize};
-use shared::EmulatorState;
-use std::collections::HashMap;
+use shared::{EmulatorState, script::MemoryAccessor, traits::BitOps};
+use std::{collections::HashMap, mem::take};
 
 pub trait SignOps {
     fn sign_extend(self) -> u32;
@@ -34,8 +36,6 @@ impl SignOps for u32 {
         self as u16 as i16 as i32 as u32
     }
 }
-
-use shared::traits::BitOps;
 
 #[derive(Clone, Copy)]
 pub struct MipsInstruction(pub u32);
@@ -85,8 +85,8 @@ impl MipsInstruction {
         self.0.get_bit_range(0..26)
     }
 
-    pub fn base(self) -> u32 {
-        self.rs() as u32
+    pub fn base(self) -> usize {
+        self.rs()
     }
 
     pub fn sa(self) -> u32 {
@@ -144,6 +144,8 @@ pub struct Registers {
     pub next_pc: u32,
     pub hi: u32,
     pub lo: u32,
+    pub pending_branch: bool,
+    pub in_delay_slot: bool,
 }
 
 impl Registers {
@@ -155,6 +157,8 @@ impl Registers {
             next_pc: 0xBFC00004,
             hi: 0,
             lo: 0,
+            pending_branch: false,
+            in_delay_slot: false,
         }
     }
 
@@ -205,6 +209,7 @@ impl Registers {
 
     pub fn branch(&mut self, target_address: u32) {
         self.next_pc = target_address;
+        self.pending_branch = true;
     }
 
     pub fn link(&mut self, destination: usize) {
@@ -233,7 +238,27 @@ impl R3000a {
         }
     }
 
-    pub fn step(&mut self, bus: &mut Bus) {}
+    pub fn step(&mut self, bus: &mut Bus) {
+        let executing_address = self.registers.pc;
+        if self.breakpoint_queue.contains_key(&executing_address)
+            && self.resume_from != Some(executing_address)
+        {
+            self.breakpoint_hit = Some(executing_address);
+
+            return;
+        }
+
+        self.resume_from = None;
+
+        self.registers.in_delay_slot = take(&mut self.registers.pending_branch);
+        self.registers.pc = self.registers.next_pc;
+        self.registers.next_pc = self.registers.next_pc.wrapping_add(4);
+
+        // instruction fetch stuff with ``executing_address``, error stuff, blah blah
+        // need instruction catching stuff, should use peek if in cache to charge scheduler
+        // less, read stuff when cache miss occurs
+        //MipsInstruction(bus.read(executing_address, MemoryAccessor::Cpu));
+    }
 
     pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
         let action = if pause {
@@ -245,7 +270,15 @@ impl R3000a {
         self.breakpoint_queue.insert(address, action).is_none()
     }
 
-    //fn exception(&mut self, code)
+    // 3.3.2 in See mips run (TODO; make sure to cross reference the rustation guide + ppsx-spx):
+    // cop0 appears to have exception restart address register (epc), normally points to the
+    // exception "victim" instruction, but when the instruction exception occurs on is delay slot before branch,
+    // epc points to the branch and cause bit (31) should be set
+    /*fn exception(&mut self, code: ExceptionCode) {
+        let handler_address =aself.cop0.exception(code, self.registers))
+        self.registers.pc = handler_address
+        self.registers.next_pc = self.registers.pc.wrapping_add(4);
+    }*/
 
     // https://cgi.cse.unsw.edu.au/~cs3231/doc/R3000.pdf
     //  https://psx-spx.consoledev.net/cpuspecifications/
@@ -303,6 +336,7 @@ impl R3000a {
     }
 
     fn branch_if(&mut self, condition: bool, instruction: MipsInstruction) {
+        self.registers.pending_branch = true;
         if condition {
             let offset = instruction.offset_16().sign_extend() << 2;
             self.registers
@@ -384,7 +418,7 @@ impl R3000a {
 
     fn jump(&mut self, instruction: MipsInstruction) {
         self.registers
-            .branch((self.registers.pc & 0xF0000000) | (instruction.target() << 2))
+            .branch((self.registers.pc & 0xF0000000) | (instruction.target() << 2));
     }
 
     fn jal(&mut self, instruction: MipsInstruction) {
@@ -400,19 +434,35 @@ impl R3000a {
         todo!()
     }
 
+    fn create_address(&mut self, instruction: MipsInstruction) -> u32 {
+        self.registers.r[instruction.base()].wrapping_add(instruction.offset_16().sign_extend())
+    }
+
     fn lb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
         todo!()
     }
 
     fn lbu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
         todo!()
     }
 
     fn lh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
+        if !address.is_multiple_of(2) {
+            // /self.exception()
+        }
+
         todo!()
     }
 
     fn lhu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
+        if !address.is_multiple_of(2) {
+            // /self.exception()
+        }
+
         todo!()
     }
 
@@ -422,6 +472,11 @@ impl R3000a {
     }
 
     fn lw(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
+        if !address.is_multiple_of(4) {
+            // /self.exception()
+        }
+
         todo!()
     }
 
@@ -497,6 +552,11 @@ impl R3000a {
     }
 
     fn sh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
+        if !address.is_multiple_of(2) {
+            // /self.exception()
+        }
+
         todo!()
     }
 
@@ -600,6 +660,11 @@ impl R3000a {
     }
 
     fn sw(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
+        if !address.is_multiple_of(4) {
+            // /self.exception()
+        }
+
         todo!()
     }
 
