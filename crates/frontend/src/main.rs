@@ -23,7 +23,12 @@ use crate::{
 use egui_macroquad;
 use macroquad::{miniquad::conf::Platform, prelude::*};
 use shared::{EmulatorState, config::load_config};
-use std::{io::Error, mem::take};
+use spin_sleep::sleep_until;
+use std::{
+    io::Error,
+    mem::take,
+    time::{Duration, Instant},
+};
 
 fn conf() -> Conf {
     let display = load_config().display;
@@ -52,6 +57,9 @@ async fn main() -> Result<(), Error> {
     egui_phosphor::add_to_fonts(&mut ui_state.fonts, egui_phosphor::Variant::Regular);
 
     loop {
+        // i swear my pc wasnt overheating this badly even with vsync off, limiting fixes that
+        let fps_limit = Instant::now() + Duration::from_secs_f64(1.0 / 60.0);
+
         session.save()?;
 
         if is_quit_requested() {
@@ -168,6 +176,7 @@ async fn main() -> Result<(), Error> {
             EmulatorState::Launch => {
                 // just so file dialog doesnt occur on launch, since it blocks execution
                 // TODO: figure out what i wanna put here, leave blank, render an image for this state, or something else?
+                // so far open rom was the thing i came up with so far :(
             }
             EmulatorState::Paused => {
                 session.pause();
@@ -202,6 +211,28 @@ async fn main() -> Result<(), Error> {
                 }
             });
 
+            if session.state == EmulatorState::Launch {
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE)
+                    .show(egui_ctx, |ui| {
+                        let response = ui
+                            .allocate_response(ui.available_size(), egui::Sense::click())
+                            .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                        ui.painter().text(
+                            response.rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "Open ROM",
+                            egui::FontId::proportional(28.0),
+                            ui.visuals().text_color(),
+                        );
+
+                        if response.clicked() {
+                            session.add_transient_state(EmulatorState::RomSelection);
+                        }
+                    });
+            }
+
             show_controller_bindings(&egui_ctx, &mut session, &mut ui_state);
             show_hotkey_bindings(&egui_ctx, &mut session, &mut ui_state);
             keybinding(&mut session, &mut ui_state, &gamepad_update);
@@ -221,6 +252,10 @@ async fn main() -> Result<(), Error> {
         });
 
         egui_macroquad::draw();
+
+        if session.emulator.is_none() {
+            sleep_until(fps_limit);
+        }
 
         next_frame().await;
     }

@@ -311,6 +311,7 @@ pub fn show_gif_settings(egui_ctx: &Context, session: &mut Session, ui_state: &m
                             session.emulator.is_some(),
                             egui::Button::new("Start Recording"),
                         )
+                        .on_disabled_hover_text("Accessible when ROM is loaded")
                         .clicked()
                     {
                         ui_state.start_recording = true;

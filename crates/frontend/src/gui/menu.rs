@@ -219,29 +219,31 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                     session.lua_editor.opened = !session.lua_editor.opened;
                     ui.close_menu();
                 }
+
+                let mut binding_text =
+                    keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot));
+
+                if session.latest_gamepad_id.is_some() {
+                    binding_text.push_str("/Select+South");
+                }
+
+                let text = format!("{}  Screenshot ({})", icons::CAMERA, binding_text);
+                if ui
+                    .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
+                    .clicked()
+                {
+                    screenshot(session.get_image_path().to_path_buf());
+                    session.toasts.success("Screenshot saved");
+                    ui.close_menu();
+                }
             },
         )
         .response
         .on_disabled_hover_text("Accessible when ROM is loaded");
 
         let mut binding_text =
-            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot));
-        if session.latest_gamepad_id.is_some() {
-            binding_text.push_str("/Select+South");
-        }
-
-        let text = format!("{}  Screenshot ({})", icons::CAMERA, binding_text);
-        if ui
-            .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
-            .clicked()
-        {
-            screenshot(session.get_image_path().to_path_buf());
-            session.toasts.success("Screenshot saved");
-            ui.close_menu();
-        }
-
-        let mut binding_text =
             keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
+
         if session.latest_gamepad_id.is_some() {
             binding_text.push_str("/Select+East");
         }

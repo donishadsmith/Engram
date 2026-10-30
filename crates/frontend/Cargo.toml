@@ -20,3 +20,4 @@ egui-notify.workspace = true
 mlua.workspace = true
 egui-phosphor.workspace = true
 chrono.workspace = true
+spin_sleep.workspace = true
