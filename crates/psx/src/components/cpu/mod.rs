@@ -22,9 +22,15 @@ All registers are 32bit wide.
 
 pub mod cop0;
 
-use crate::components::bus::Bus;
+use crate::components::{
+    bus::Bus,
+    cpu::cop0::{
+        Cop0, Cop0Registers,
+        ExceptionCode::{self, StoreAddressError},
+    },
+};
 use serde::{Deserialize, Serialize};
-use shared::{EmulatorState, script::MemoryAccessor, traits::BitOps};
+use shared::{EmulatorState, traits::BitOps};
 use std::{collections::HashMap, mem::take};
 
 pub trait SignOps {
@@ -92,6 +98,10 @@ impl MipsInstruction {
     pub fn sa(self) -> u32 {
         self.0.get_bit_range(6..11)
     }
+
+    pub fn coprocessor(self) -> usize {
+        self.0.get_bit_range(26..28) as usize
+    }
 }
 
 // mostly will be used for lua scripttarget to map registers properly
@@ -140,6 +150,7 @@ pub enum RegisterAlias {
 pub struct Registers {
     pub r: [u32; 32],
     pub shadow_r: [u32; 32],
+    pub current_pc: u32,
     pub pc: u32,
     pub next_pc: u32,
     pub hi: u32,
@@ -153,6 +164,7 @@ impl Registers {
         Self {
             r: [0; 32],
             shadow_r: [0; 32],
+            current_pc: 0xBFC00000,
             pc: 0xBFC00000,
             next_pc: 0xBFC00004,
             hi: 0,
@@ -220,6 +232,7 @@ impl Registers {
 #[derive(Serialize, Deserialize)]
 pub struct R3000a {
     pub registers: Registers,
+    pub cop0: Cop0,
     #[serde(skip)]
     pub breakpoint_hit: Option<u32>,
     #[serde(skip)]
@@ -232,6 +245,7 @@ impl R3000a {
     pub fn new() -> Self {
         Self {
             registers: Registers::new(),
+            cop0: Cop0::new(),
             breakpoint_hit: None,
             breakpoint_queue: HashMap::new(),
             resume_from: None,
@@ -251,6 +265,7 @@ impl R3000a {
         self.resume_from = None;
 
         self.registers.in_delay_slot = take(&mut self.registers.pending_branch);
+        self.registers.current_pc = executing_address;
         self.registers.pc = self.registers.next_pc;
         self.registers.next_pc = self.registers.next_pc.wrapping_add(4);
 
@@ -274,11 +289,15 @@ impl R3000a {
     // cop0 appears to have exception restart address register (epc), normally points to the
     // exception "victim" instruction, but when the instruction exception occurs on is delay slot before branch,
     // epc points to the branch and cause bit (31) should be set
-    /*fn exception(&mut self, code: ExceptionCode) {
-        let handler_address =aself.cop0.exception(code, self.registers))
-        self.registers.pc = handler_address
+    fn exception(&mut self, code: ExceptionCode) {
+        let handler_address = self.cop0.process_exception(
+            code,
+            self.registers.current_pc,
+            self.registers.in_delay_slot,
+        );
+        self.registers.pc = handler_address;
         self.registers.next_pc = self.registers.pc.wrapping_add(4);
-    }*/
+    }
 
     // https://cgi.cse.unsw.edu.au/~cs3231/doc/R3000.pdf
     //  https://psx-spx.consoledev.net/cpuspecifications/
@@ -289,8 +308,7 @@ impl R3000a {
             self.registers
                 .write_cpu_register(instruction.rd(), value as u32);
         } else {
-            // some exception
-            todo!()
+            self.exception(ExceptionCode::ArithmeticOverflow);
         }
     }
 
@@ -301,8 +319,7 @@ impl R3000a {
             self.registers
                 .write_cpu_register(instruction.rt(), value as u32);
         } else {
-            // some exception
-            todo!()
+            self.exception(ExceptionCode::ArithmeticOverflow);
         }
     }
 
@@ -393,7 +410,7 @@ impl R3000a {
     }
 
     fn breakpoint(&mut self, instruction: MipsInstruction) {
-        todo!()
+        self.exception(ExceptionCode::Break);
     }
 
     fn cfcz(&mut self, instruction: MipsInstruction) {
@@ -451,7 +468,10 @@ impl R3000a {
     fn lh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
         if !address.is_multiple_of(2) {
-            // /self.exception()
+            self.cop0.set_bad_address(address);
+            self.exception(ExceptionCode::LoadAddressError);
+
+            return;
         }
 
         todo!()
@@ -460,7 +480,10 @@ impl R3000a {
     fn lhu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
         if !address.is_multiple_of(2) {
-            // /self.exception()
+            self.cop0.set_bad_address(address);
+            self.exception(ExceptionCode::LoadAddressError);
+
+            return;
         }
 
         todo!()
@@ -474,7 +497,10 @@ impl R3000a {
     fn lw(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
         if !address.is_multiple_of(4) {
-            // /self.exception()
+            self.cop0.set_bad_address(address);
+            self.exception(ExceptionCode::LoadAddressError);
+
+            return;
         }
 
         todo!()
@@ -493,7 +519,16 @@ impl R3000a {
     }
 
     fn mfcz(&mut self, instruction: MipsInstruction) {
-        todo!()
+        match instruction.coprocessor() {
+            0 => match Cop0Registers::to_register(instruction.rd()) {
+                Ok(usable_register) => self
+                    .registers
+                    .write_cpu_register(instruction.rt(), self.cop0.move_from(usable_register)),
+                Err(reserved) => self.exception(reserved),
+            },
+            2 => todo!(),
+            _ => self.exception(ExceptionCode::CoprocessorUnusable),
+        }
     }
 
     fn mfhi(&mut self, instruction: MipsInstruction) {
@@ -507,7 +542,16 @@ impl R3000a {
     }
 
     fn mtcz(&mut self, instruction: MipsInstruction) {
-        todo!()
+        match instruction.coprocessor() {
+            0 => match Cop0Registers::to_register(instruction.rd()) {
+                Ok(usable_register) => self
+                    .cop0
+                    .move_to(usable_register, self.registers.r[instruction.rt()]),
+                Err(reserved) => self.exception(reserved),
+            },
+            2 => todo!(),
+            _ => self.exception(ExceptionCode::CoprocessorUnusable),
+        }
     }
 
     fn mthi(&mut self, instruction: MipsInstruction) {
@@ -548,13 +592,17 @@ impl R3000a {
     }
 
     fn sb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let address = self.create_address(instruction);
         todo!()
     }
 
     fn sh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
         if !address.is_multiple_of(2) {
-            // /self.exception()
+            self.cop0.set_bad_address(address);
+            self.exception(StoreAddressError);
+
+            return;
         }
 
         todo!()
@@ -647,8 +695,7 @@ impl R3000a {
             self.registers
                 .write_cpu_register(instruction.rd(), value as u32);
         } else {
-            // some exception
-            todo!()
+            self.exception(ExceptionCode::ArithmeticOverflow);
         }
     }
 
@@ -662,7 +709,10 @@ impl R3000a {
     fn sw(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
         if !address.is_multiple_of(4) {
-            // /self.exception()
+            self.cop0.set_bad_address(address);
+            self.exception(ExceptionCode::StoreAddressError);
+
+            return;
         }
 
         todo!()
@@ -681,7 +731,7 @@ impl R3000a {
     }
 
     fn syscall(&mut self, instruction: MipsInstruction) {
-        todo!()
+        self.exception(ExceptionCode::SysCall);
     }
 
     fn xor(&mut self, instruction: MipsInstruction) {
