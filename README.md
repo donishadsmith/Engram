@@ -123,7 +123,7 @@ Screenshots and GIFs are saved inside your platform's pictures directory (via [`
 - MacOS: `$HOME/Pictures` and `$HOME/Movies`
 - Windows: `%UserProfile%\Pictures` and `%UserProfile%\Videos`
 
-Video recording requires [ffmpeg](https://ffmpeg.org/download.html) on your `PATH`.
+Video recording requires [ffmpeg](https://ffmpeg.org/download.html) in your `PATH`.
 
 https://github.com/user-attachments/assets/f0f28677-94f4-428d-a515-91e8717f488d
 
