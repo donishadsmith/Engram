@@ -10,7 +10,10 @@ use shared::{
     traits::BitOps,
     utils::zero_arr,
 };
-use std::{array::from_fn, mem::swap};
+use std::{
+    array::from_fn,
+    mem::{swap, take},
+};
 
 const GRID_COLUMNS: f32 = 16.0;
 const GRID_SPACING: f32 = 2.0;
@@ -269,6 +272,10 @@ impl PpuDebugger {
                     }
                 });
             });
+
+        if take(&mut gba.force_buffer_change) {
+            gba.bus.ppu.frontend.buffer_changed = true;
+        }
 
         create_game_screen(
             &mut self.texture,

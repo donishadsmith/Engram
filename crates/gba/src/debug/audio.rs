@@ -1,3 +1,5 @@
+use std::mem::take;
+
 use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
 use egui_plot::{HLine, Line, Plot};
 
@@ -523,6 +525,10 @@ impl AudioDebugger {
                 register(&mut cols[3], "SOUND4CNT_H:", self.registers.channel4[1]);
             });
         });
+
+        if take(&mut gba.force_buffer_change) {
+            gba.bus.ppu.frontend.buffer_changed = true;
+        }
 
         create_game_screen(
             &mut self.texture,

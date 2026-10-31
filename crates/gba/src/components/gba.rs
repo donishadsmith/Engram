@@ -52,6 +52,8 @@ pub struct GBA {
     elapsed_cycles_pause: Option<ElapsedCycles>,
     #[serde(skip)]
     cycle_pause: bool,
+    #[serde(skip)]
+    pub force_buffer_change: bool,
 }
 
 impl GBA {
@@ -72,6 +74,7 @@ impl GBA {
             elapsed_cycles_pause: None,
             pause_at_cycle: None,
             cycle_pause: false,
+            force_buffer_change: false,
         }
     }
 
@@ -282,6 +285,7 @@ impl GBA {
             &mut self.elapsed_cycles_pause,
         );
         swap(&mut data.pause_at_cycle, &mut self.pause_at_cycle);
+        data.force_buffer_change = true;
 
         *self = data;
 
