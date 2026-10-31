@@ -434,7 +434,7 @@ impl EmulatorSession for GBASession {
     }
 
     fn get_rom_name(&self) -> String {
-        // can never remember how to do this properly
+        // good enough
         self.gba
             .bus
             .gamepak

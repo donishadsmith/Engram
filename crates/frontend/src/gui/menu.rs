@@ -565,6 +565,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         }
 
         let mut take_snapshot = false;
+        let mut stop_all_recordings = false;
         if let Some(emulator) = &session.emulator {
             let fps = if session.is_running() {
                 emulator.get_fps()
@@ -620,16 +621,31 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             }
 
             if recording {
-                ui.label(
-                    egui::RichText::new(format!("{}  RECORDING", icons::RECORD))
-                        .color(egui::Color32::RED),
-                );
+                if ui
+                    .add(egui::Label::new(
+                        egui::RichText::new(format!("{}  RECORDING", icons::RECORD))
+                            .color(egui::Color32::RED),
+                    ))
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .clicked()
+                {
+                    stop_all_recordings = true;
+                }
             }
 
             ui.add_sized(
                 [ui.available_width(), ui.available_height()],
                 egui::Label::new(&rom_name).wrap_mode(egui::TextWrapMode::Truncate),
             );
+        }
+
+        if stop_all_recordings {
+            session.gif.stop();
+            session
+                .emulator
+                .as_mut()
+                .map(|emulator| emulator.stop_video());
+            session.toasts.success("All recordings stopped");
         }
 
         if take_snapshot {
