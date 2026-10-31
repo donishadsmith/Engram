@@ -46,7 +46,7 @@ A Game Boy Advance & Game Boy/Game Boy Color emulator.
 - Save states and game saves
 - Rebindable keyboard, hotkey and controller inputs
 - Controller rumble
-- Screenshots and GIF recording
+- Screenshots and GIF + Video recordings
 - Fullscreen, volume, and solar sensor slider for Boktai
 - Settings saved in [`config.toml`](https://github.com/donishadsmith/Engram#settings)
 - Windows, MacOS, Linux
@@ -108,11 +108,20 @@ Game saves and save states are stored inside your platform's data directory (via
 - Windows: `%AppData%\Engram\`
 
 ## Settings
-Settings are saved to `Engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
+Settings for are saved to `Engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
 
-- Linux: `$XDG_CONFIG_HOME/Engram/` or `$HOME/.config/Engram/`
-- MacOS: `$HOME/Library/Application Support/Engram/`
-- Windows: `%AppData%\Engram\`
+- Linux: `$XDG_CONFIG_HOME/Engram` or `$HOME/.config/Engram`
+- MacOS: `$HOME/Library/Application Support/Engram`
+- Windows: `%AppData%\Engram`
+
+## Recordings
+Screenshots and GIFs are saved inside your platform's pictures directory (via [`dirs::picture_dir`](https://docs.rs/dirs/latest/dirs/fn.picture_dir.html)), and videos to inside your platform's videos directory (via [`dirs::video_dir`](https://docs.rs/dirs/latest/dirs/fn.video_dir.html)).
+
+- Linux: `$XDG_PICTURES_DIR` and `$XDG_VIDEOS_DIR`
+- MacOS: `$HOME/Pictures` and `$HOME/Movies`
+- Windows: `%UserProfile%\Pictures` and `%UserProfile%\Videos`
+
+Video recording requires [ffmpeg](https://ffmpeg.org/download.html) on your `PATH`.
 
 ## References
 I heavily relied on the prior work of the emulation development community while developing my own emulators. In particular, [mGBA](https://github.com/mgba-emu/mgba), [NanoBoyAdvance](https://github.com/nba-emu/NanoBoyAdvance), [rustboyadvance-ng](https://github.com/michelhe/rustboyadvance-ng), [retroboy](https://github.com/smparsons/retroboy), [SameBoy](https://github.com/LIJI32/SameBoy), [Pan Docs](https://gbdev.io/pandocs/), and [GBATEK](https://problemkaputt.de/gbatek.htm) were incredibly helpful. The full list of emulators, documentation, and articles used is in [REFERENCES.md](REFERENCES.md).

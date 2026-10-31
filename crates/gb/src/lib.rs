@@ -20,11 +20,13 @@ use shared::{
     constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL, SAVE_STATE_SLOTS},
     render::{Frame, Screen},
     script::ScriptEngine,
+    video::VideoRecorder,
 };
 use spin_sleep::sleep_until;
 use std::{
     fs::{read, rename, write},
     io::Error,
+    mem::take,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -44,6 +46,8 @@ pub struct GameBoySession {
     fps: f64,
     menu_height: f32,
     state_dir: PathBuf,
+    recorded_audio: Vec<u8>,
+    video_recorder: VideoRecorder,
 }
 
 impl GameBoySession {
@@ -74,6 +78,8 @@ impl GameBoySession {
             fps: 0.0,
             menu_height: 0.0,
             state_dir,
+            recorded_audio: Vec::new(),
+            video_recorder: VideoRecorder::new(),
         })
     }
 
@@ -83,12 +89,16 @@ impl GameBoySession {
                 Some(audio) => audio.play(sample, volume),
                 None => {}
             };
+
+            self.recorded_audio
+                .extend_from_slice(&f32::to_le_bytes(sample));
         }
     }
 
     fn on_frame(&mut self) {
         self.frame_ready = self.gameboy.take_frame();
         self.compute_fps(1u64);
+        self.video_capture();
 
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, true);
@@ -202,12 +212,17 @@ impl GameBoySession {
             self.fps_start = Instant::now();
         }
     }
+
+    fn sample_rate(&self) -> u32 {
+        self.audio.as_ref().map_or(48000, |audio| audio.sample_rate)
+    }
 }
 
 impl EmulatorSession for GameBoySession {
     fn run(&mut self, input: &[bool], volume: u8) -> Result<EmulatorState, Error> {
         self.frame_ready = false;
         self.gameboy.keypad = input.try_into().unwrap_or([false; 8]);
+        self.recorded_audio = Vec::new();
 
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
         self.dynamic_rate_control();
@@ -297,10 +312,12 @@ impl EmulatorSession for GameBoySession {
     fn step_instruction(&mut self, volume: u8) {
         self.gameboy.step();
         self.step_end(volume);
+        self.video_capture();
     }
 
     fn step_frame(&mut self, volume: u8) {
         self.gameboy.take_frame();
+        self.video_capture();
 
         let mut cycles = 0;
         while !self.gameboy.cpu.bus.ppu.frame_ready && cycles < T_CYCLES_PER_FRAME_DOUBLE {
@@ -372,5 +389,31 @@ impl EmulatorSession for GameBoySession {
 
     fn force_feedback_strength(&mut self) -> f32 {
         self.gameboy.rumble_strength
+    }
+
+    fn start_video(&mut self, video_dir: PathBuf) -> Result<(), Error> {
+        self.video_recorder.start(
+            GB_CLOCK_SPEED as f32 / 70224.0,
+            (160, 144),
+            video_dir,
+            self.sample_rate(),
+        )?;
+
+        Ok(())
+    }
+
+    fn is_video_recording(&self) -> bool {
+        self.video_recorder.is_recording()
+    }
+
+    fn video_capture(&mut self) {
+        self.video_recorder.capture(
+            &self.gameboy.cpu.bus.ppu.frontend,
+            take(&mut self.recorded_audio),
+        );
+    }
+
+    fn stop_video(&mut self) -> Result<(), Error> {
+        self.video_recorder.stop()
     }
 }

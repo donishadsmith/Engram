@@ -253,7 +253,7 @@ async fn main() -> Result<(), Error> {
 
         egui_macroquad::draw();
 
-        if session.emulator.is_none() {
+        if !session.is_running() {
             sleep_until(fps_limit);
         }
 

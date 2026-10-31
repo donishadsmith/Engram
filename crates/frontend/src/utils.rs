@@ -61,13 +61,14 @@ pub struct UiState {
     pub fonts: FontDefinitions,
     pub open_gif_settings: bool,
     pub set_dirs: bool,
-    pub start_recording: bool,
+    pub start_gif_recording: bool,
     pub debug_toggled: bool,
     // for controller hotkey
     pub last_save_state_time: Instant,
     pub last_load_state_time: Instant,
     pub last_gif_time: Instant,
     pub last_screenshot_time: Instant,
+    pub last_video_time: Instant,
     pub controller_hotkey_delay: Duration,
 }
 
@@ -83,12 +84,13 @@ impl UiState {
             fonts: FontDefinitions::default(),
             open_gif_settings: false,
             set_dirs: false,
-            start_recording: false,
+            start_gif_recording: false,
             debug_toggled: false,
             last_save_state_time: Instant::now(),
             last_load_state_time: Instant::now(),
             last_gif_time: Instant::now(),
             last_screenshot_time: Instant::now(),
+            last_video_time: Instant::now(),
             controller_hotkey_delay: Duration::from_millis(500),
         }
     }

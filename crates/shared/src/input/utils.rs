@@ -9,7 +9,7 @@ pub fn get_relevant_key_presses(
     keymap: &[Input],
     gamepad: Option<Gamepad<'_>>,
     input_blocked: bool,
-    analog_to_dpad: Option<Button>,
+    analog_to_dpad: Vec<Button>,
 ) -> Vec<bool> {
     if input_blocked {
         return vec![false; keymap.len()];
@@ -19,9 +19,9 @@ pub fn get_relevant_key_presses(
     let mut boolean_vector = Vec::with_capacity(14);
     for input in keymap.iter() {
         boolean_vector.push(match input {
-            Input::Gamepad(button) if analog_to_dpad.is_some() => gamepad
+            Input::Gamepad(button) if !analog_to_dpad.is_empty() => gamepad
                 .as_ref()
-                .is_some_and(|p| p.is_pressed(*button) || analog_to_dpad == Some(*button)),
+                .is_some_and(|p| p.is_pressed(*button) || analog_to_dpad.contains(button)),
             Input::Gamepad(button) => gamepad.as_ref().is_some_and(|p| p.is_pressed(*button)),
             Input::Key(keycode) => get_keys_down().contains(keycode),
         })

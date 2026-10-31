@@ -27,11 +27,13 @@ use shared::{
     debug::DebugPage,
     render::{Frame, Screen},
     script::ScriptEngine,
+    video::VideoRecorder,
 };
 use spin_sleep::sleep_until;
 use std::{
     fs::{read, rename, write},
     io::Error,
+    mem::take,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -54,6 +56,8 @@ pub struct GBASession {
     fps: f64,
     menu_height: f32,
     state_dir: PathBuf,
+    recorded_audio: Vec<u8>,
+    video_recorder: VideoRecorder,
 }
 
 impl GBASession {
@@ -86,12 +90,15 @@ impl GBASession {
             fps: 0.0,
             menu_height: 0.0,
             state_dir,
+            recorded_audio: Vec::new(),
+            video_recorder: VideoRecorder::new(),
         })
     }
 
     fn on_frame(&mut self) {
         self.frame_ready = self.gba.take_frame();
         self.compute_fps(1u64);
+        self.video_capture();
 
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, true);
@@ -144,6 +151,9 @@ impl GBASession {
                 Some(audio) => audio.play(sample, volume),
                 None => {}
             }
+
+            self.recorded_audio
+                .extend_from_slice(&f32::to_le_bytes(sample));
         }
     }
 
@@ -214,6 +224,10 @@ impl GBASession {
             self.fps_frames = 0;
             self.fps_start = Instant::now();
         }
+    }
+
+    fn sample_rate(&self) -> u32 {
+        self.audio.as_ref().map_or(48000, |audio| audio.sample_rate)
     }
 }
 
@@ -291,6 +305,7 @@ impl EmulatorSession for GBASession {
         self.frame_ready = false;
         self.script_engine = ScriptEngine::new();
         self.frame_deadline = Instant::now() + self.frame_period;
+        self.recorded_audio = Vec::new();
 
         self.reset_fps();
 
@@ -328,6 +343,7 @@ impl EmulatorSession for GBASession {
 
     fn step_frame(&mut self, volume: u8) {
         self.gba.take_frame();
+
         while !self.gba.bus.ppu.frame_ready {
             self.tick(volume);
 
@@ -391,6 +407,30 @@ impl EmulatorSession for GBASession {
 
     fn take_debugger_snapshot(&mut self) {
         self.gba.bus.ppu.debugger_snapshot();
+    }
+
+    fn start_video(&mut self, video_dir: PathBuf) -> Result<(), Error> {
+        self.video_recorder.start(
+            GBA_CLOCK_SPEED as f32 / 280896.0,
+            (240, 160),
+            video_dir,
+            self.sample_rate(),
+        )?;
+
+        Ok(())
+    }
+
+    fn is_video_recording(&self) -> bool {
+        self.video_recorder.is_recording()
+    }
+
+    fn video_capture(&mut self) {
+        self.video_recorder
+            .capture(&self.gba.bus.ppu.frontend, take(&mut self.recorded_audio));
+    }
+
+    fn stop_video(&mut self) -> Result<(), Error> {
+        self.video_recorder.stop()
     }
 }
 

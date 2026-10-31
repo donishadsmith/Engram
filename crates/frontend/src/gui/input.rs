@@ -42,13 +42,19 @@ fn get_save_slot(gamepad: Gamepad<'_>, save_state: bool) -> Option<usize> {
     }
 }
 
+enum ShortcutType {
+    Screenshot,
+    Gif,
+    Video,
+}
+
 // have a eeling that im going to hard regret these button combos later but keep for now
 // not all modern controllers have select or triggers, particulary modern replicas of retro controllers
 // could consider mapping to certain keybindings set in menu but maybe not
 fn display_controller_hotkeys(
     gilrs: Option<&Gilrs>,
     latest_gamepad_id: Option<GamepadId>,
-    is_gif: bool,
+    shortcut_type: ShortcutType,
 ) -> bool {
     let mut hotkey_triggered = false;
     if let Some(latest_gamepad_id) = latest_gamepad_id
@@ -56,7 +62,11 @@ fn display_controller_hotkeys(
     {
         let gamepad = gilrs.gamepad(latest_gamepad_id);
 
-        let other_button = if is_gif { Button::East } else { Button::South };
+        let other_button = match shortcut_type {
+            ShortcutType::Gif => Button::East,
+            ShortcutType::Screenshot => Button::South,
+            ShortcutType::Video => Button::West,
+        };
 
         if gamepad.is_pressed(Button::Select) && gamepad.is_pressed(other_button) {
             hotkey_triggered = true;
@@ -80,7 +90,6 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             ui_state.debug_toggled = true;
         }
 
-        let image_path = session.get_image_path().to_path_buf();
         if let Some(emulator) = &mut session.emulator {
             if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
                 && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua))
@@ -91,15 +100,22 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             let hotkey_triggered = display_controller_hotkeys(
                 session.gilrs.as_ref(),
                 session.latest_gamepad_id,
-                false,
+                ShortcutType::Screenshot,
             ) && ui_state.last_screenshot_time.elapsed()
                 >= ui_state.controller_hotkey_delay;
             if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
                 && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                     || hotkey_triggered)
             {
-                session.toasts.success("Screenshot saved");
-                screenshot(image_path.clone());
+                match session.data_dirs.get_image_path() {
+                    Ok(path) => {
+                        screenshot(path);
+                        session.toasts.success("Screenshot saved");
+                    }
+                    Err(err) => {
+                        session.toasts.warning(err);
+                    }
+                }
 
                 if hotkey_triggered {
                     ui_state.last_screenshot_time = Instant::now();
@@ -107,9 +123,12 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                 }
             }
 
-            let hotkey_triggered =
-                display_controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, true)
-                    && ui_state.last_gif_time.elapsed() >= ui_state.controller_hotkey_delay;
+            let hotkey_triggered = display_controller_hotkeys(
+                session.gilrs.as_ref(),
+                session.latest_gamepad_id,
+                ShortcutType::Gif,
+            ) && ui_state.last_gif_time.elapsed()
+                >= ui_state.controller_hotkey_delay;
             if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
                 && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif))
                     || hotkey_triggered)
@@ -120,7 +139,14 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                     session.toasts.success("GIF saved");
                 } else {
                     if hotkey_triggered {
-                        let _ = session.gif.start(emulator.frontend_ref(), image_path);
+                        match session.data_dirs.get_image_path() {
+                            Ok(path) => {
+                                let _ = session.gif.start(emulator.frontend_ref(), path);
+                            }
+                            Err(err) => {
+                                session.toasts.warning(err);
+                            }
+                        };
                     } else {
                         ui_state.open_gif_settings = !ui_state.open_gif_settings;
                     }
@@ -128,6 +154,39 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
 
                 if hotkey_triggered {
                     ui_state.last_gif_time = Instant::now();
+                    session.controller_hotkey_fired = true;
+                }
+            }
+
+            let hotkey_triggered = display_controller_hotkeys(
+                session.gilrs.as_ref(),
+                session.latest_gamepad_id,
+                ShortcutType::Video,
+            ) && ui_state.last_video_time.elapsed()
+                >= ui_state.controller_hotkey_delay;
+            if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
+                && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Video))
+                    || hotkey_triggered)
+            {
+                if emulator.is_video_recording() {
+                    match emulator.stop_video() {
+                        Ok(_) => session.toasts.success("Mp4 saved"),
+                        Err(err) => session.toasts.warning(err.to_string()),
+                    };
+                } else {
+                    match session.data_dirs.get_video_path() {
+                        Ok(path) => {
+                            let _ = emulator.start_video(path);
+                            session.toasts.success("Video started");
+                        }
+                        Err(err) => {
+                            session.toasts.warning(err);
+                        }
+                    }
+                }
+
+                if hotkey_triggered {
+                    ui_state.last_video_time = Instant::now();
                     session.controller_hotkey_fired = true;
                 }
             }

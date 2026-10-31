@@ -27,6 +27,7 @@ pub enum Hotkeys {
     Gif,
     Lua,
     Fullscreen,
+    Video,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

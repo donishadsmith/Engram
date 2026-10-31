@@ -188,3 +188,24 @@ pub fn to_rgb(frame: &Frame) -> Vec<u8> {
 
     rgb
 }
+
+pub fn fit_nearest(
+    src: &[u8],
+    src_width: usize,
+    src_heigth: usize,
+    dst_width: usize,
+    dst_heigth: usize,
+) -> Vec<u8> {
+    let mut dst = vec![0u8; dst_width * dst_heigth * RGBA_BYTES_PER_PIXEL];
+    for dy in 0..dst_heigth {
+        let sy = dy * src_heigth / dst_heigth;
+        for dx in 0..dst_width {
+            let sx = dx * src_width / dst_width;
+            let s = (sy * src_width + sx) * RGBA_BYTES_PER_PIXEL;
+            let d = (dy * dst_width + dx) * RGBA_BYTES_PER_PIXEL;
+            dst[d..d + RGBA_BYTES_PER_PIXEL].copy_from_slice(&src[s..s + RGBA_BYTES_PER_PIXEL]);
+        }
+    }
+
+    dst
+}

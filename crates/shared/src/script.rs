@@ -48,7 +48,7 @@ controller.check(): prints buttons currently held
 
 Emulator:
 emulator.pause()  emulator.resume()  emulator.step_instruction()  emulator.step_frame()  emulator.reset()
-emulator.screenshot()  emulator.start_gif()  emulator.stop_gif()
+emulator.screenshot()  emulator.start_gif()  emulator.stop_gif()  emulator.start_video()  emulator.stop_video()
 emulator.save_state(slot)  emulator.load_state(slot)  emulator.delete_state(slot)
   - slot is a value from 1 to 12
 emulator.elapsed_cycles(): GB/GBC reports t-cycles
@@ -107,6 +107,8 @@ pub enum ScriptRequest {
     SaveState(usize),
     LoadState(usize),
     DeleteState(usize),
+    StartVideo,
+    StopVideo,
 }
 
 // is it incredibly lazy to create a new enum to compare strings with another nearly duplicate enum with a one variant difference
@@ -735,6 +737,14 @@ impl ScriptEngine {
             set_emulator_controls(
                 "stop_gif",
                 || ScriptRequest::StopGif,
+            )?;
+            set_emulator_controls(
+                "start_video",
+                || ScriptRequest::StartVideo,
+            )?;
+            set_emulator_controls(
+                "stop_video",
+                || ScriptRequest::StopVideo,
             )?;
 
             let set_emulator_save_state = |name: &'static str, request: fn(usize) -> ScriptRequest| {

@@ -92,14 +92,17 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
                 ui.horizontal(|ui| {
                     if ui.button("Set Location").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .set_directory(&session.data_dir)
+                            .set_directory(&session.data_dirs.data_dir)
                             .pick_folder()
                         {
-                            session.data_dir = path;
+                            session.data_dirs.data_dir = path;
                             flush_configs = true;
                         }
                     }
-                    ui.add(egui::Label::new(session.data_dir.display().to_string()).truncate());
+                    ui.add(
+                        egui::Label::new(session.data_dirs.data_dir.display().to_string())
+                            .truncate(),
+                    );
                 });
 
                 ui.add_space(8.0);
@@ -111,14 +114,39 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
                 ui.horizontal(|ui| {
                     if ui.button("Set Location").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .set_directory(&session.image_dir)
+                            .set_directory(&session.data_dirs.image_dir)
                             .pick_folder()
                         {
-                            session.image_dir = path;
+                            session.data_dirs.image_dir = path;
                             flush_configs = true;
                         }
                     }
-                    ui.add(egui::Label::new(session.image_dir.display().to_string()).truncate());
+                    ui.add(
+                        egui::Label::new(session.data_dirs.image_dir.display().to_string())
+                            .truncate(),
+                    );
+                });
+
+                ui.add_space(8.0);
+
+                ui.label(egui::RichText::new("Videos").size(16.0).strong());
+
+                thin_separator(ui);
+
+                ui.horizontal(|ui| {
+                    if ui.button("Set Location").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .set_directory(&session.data_dirs.video_dir)
+                            .pick_folder()
+                        {
+                            session.data_dirs.video_dir = path;
+                            flush_configs = true;
+                        }
+                    }
+                    ui.add(
+                        egui::Label::new(session.data_dirs.video_dir.display().to_string())
+                            .truncate(),
+                    );
                 });
             });
     }
@@ -168,27 +196,38 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
                         .lua_editor
                         .push_output(vec!["emulator is paused".to_string()]);
                 }
-                ScriptRequest::Screenshot => {
-                    screenshot(session.image_dir.clone());
-                    session
+                ScriptRequest::Screenshot => match session.data_dirs.get_image_path() {
+                    Ok(path) => {
+                        screenshot(path);
+                        session
+                            .lua_editor
+                            .push_output(vec!["screenshot saved".to_string()]);
+                    }
+                    Err(err) => session
                         .lua_editor
-                        .push_output(vec!["screenshot saved".to_string()]);
-                }
+                        .push_output(vec![mlua::Error::RuntimeError(err).to_string()]),
+                },
                 ScriptRequest::StartGif => {
                     if !session.gif.is_recording() {
                         if emulator.frame_ready() {
-                            match session
-                                .gif
-                                .start(emulator.frontend_ref(), session.image_dir.clone())
-                            {
-                                Ok(_) => session
-                                    .lua_editor
-                                    .push_output(vec!["GIF recording started".to_string()]),
-                                Err(_) => session.lua_editor.push_output(vec![
-                                    mlua::Error::RuntimeError("GIF failed to start".to_string())
-                                        .to_string(),
+                            match session.data_dirs.get_image_path() {
+                                Ok(path) => {
+                                    match session.gif.start(emulator.frontend_ref(), path) {
+                                        Ok(_) => session
+                                            .lua_editor
+                                            .push_output(vec!["gif recording started".to_string()]),
+                                        Err(_) => session.lua_editor.push_output(vec![
+                                            mlua::Error::RuntimeError(
+                                                "gif failed to start".to_string(),
+                                            )
+                                            .to_string(),
+                                        ]),
+                                    };
+                                }
+                                Err(err) => session.lua_editor.push_output(vec![
+                                    mlua::Error::RuntimeError(err.to_string()).to_string(),
                                 ]),
-                            };
+                            }
                         } else {
                             session.lua_editor.push_output(vec![
                                 mlua::Error::RuntimeError(
@@ -204,7 +243,50 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
                         session.gif.stop();
                         session
                             .lua_editor
-                            .push_output(vec!["GIF saved".to_string()]);
+                            .push_output(vec!["gif saved".to_string()]);
+                    }
+                }
+                // not gonna lie, right now frontend logic for video is literally copied from the gif logic
+                // probably need to refine and consolidate logic later
+                ScriptRequest::StartVideo => {
+                    if !emulator.is_video_recording() {
+                        if emulator.frame_ready() {
+                            match session.data_dirs.get_video_path() {
+                                Ok(path) => {
+                                    match emulator.start_video(path) {
+                                        Ok(_) => session.lua_editor.push_output(vec![
+                                            "video recording started".to_string(),
+                                        ]),
+                                        Err(_) => session.lua_editor.push_output(vec![
+                                            mlua::Error::RuntimeError(
+                                                "video failed to start".to_string(),
+                                            )
+                                            .to_string(),
+                                        ]),
+                                    };
+                                }
+                                Err(err) => session.lua_editor.push_output(vec![
+                                    mlua::Error::RuntimeError(err.to_string()).to_string(),
+                                ]),
+                            }
+                        } else {
+                            session.lua_editor.push_output(vec![
+                                mlua::Error::RuntimeError(
+                                    "frame not ready; video recording could not start".to_string(),
+                                )
+                                .to_string(),
+                            ]);
+                        }
+                    }
+                }
+                ScriptRequest::StopVideo => {
+                    if emulator.is_video_recording() {
+                        match emulator.stop_video() {
+                            Ok(_) => session
+                                .lua_editor
+                                .push_output(vec!["mp4 saved".to_string()]),
+                            Err(err) => session.lua_editor.push_output(vec![err.to_string()]),
+                        };
                     }
                 }
                 ScriptRequest::Reset => {
@@ -314,23 +396,27 @@ pub fn show_gif_settings(egui_ctx: &Context, session: &mut Session, ui_state: &m
                         .on_disabled_hover_text("Accessible when ROM is loaded")
                         .clicked()
                     {
-                        ui_state.start_recording = true;
+                        ui_state.start_gif_recording = true;
                     }
                 });
         });
 
-    if ui_state.start_recording {
+    if ui_state.start_gif_recording {
         if let Some(emulator) = &session.emulator {
-            match session
-                .gif
-                .start(emulator.frontend_ref(), session.image_dir.clone())
-            {
-                Ok(_) => session.toasts.success("GIF recording started"),
-                Err(_) => session.toasts.error("GIF failed to start"),
-            };
+            match session.data_dirs.get_image_path() {
+                Ok(path) => {
+                    match session.gif.start(emulator.frontend_ref(), path) {
+                        Ok(_) => session.toasts.success("GIF recording started"),
+                        Err(_) => session.toasts.error("GIF failed to start"),
+                    };
+                }
+                Err(err) => {
+                    session.toasts.warning(err);
+                }
+            }
         }
 
-        ui_state.start_recording = false;
+        ui_state.start_gif_recording = false;
         ui_state.open_gif_settings = false;
     }
 }

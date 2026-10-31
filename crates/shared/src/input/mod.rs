@@ -202,6 +202,7 @@ impl KeyBindings {
             Hotkeys::Gif => "Gif",
             Hotkeys::Lua => "Lua",
             Hotkeys::Fullscreen => "Fullscreen",
+            Hotkeys::Video => "Video",
         };
 
         self.hotkeys

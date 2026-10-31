@@ -145,7 +145,7 @@ pub const BINDABLE_BUTTONS: [Button; 18] = [
     Button::Z,
 ];
 
-pub const DEFAULT_HOT_KEYS: [Bindings; 5] = [
+pub const DEFAULT_HOT_KEYS: [Bindings; 6] = [
     Bindings {
         label: "Lua",
         key: KeyCode::F8,
@@ -164,6 +164,11 @@ pub const DEFAULT_HOT_KEYS: [Bindings; 5] = [
     Bindings {
         label: "Gif",
         key: KeyCode::F12,
+        button: None,
+    },
+    Bindings {
+        label: "Video",
+        key: KeyCode::F5,
         button: None,
     },
     Bindings {

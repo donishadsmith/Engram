@@ -1,4 +1,4 @@
-use dirs::{config_dir, data_dir, picture_dir};
+use dirs::{config_dir, data_dir, picture_dir, video_dir};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -59,6 +59,13 @@ impl Default for RumbleEffect {
     }
 }
 
+#[derive(Serialize, Deserialize, Default)]
+pub struct DataDirs {
+    pub image_dir: Option<String>,
+    pub video_dir: Option<String>,
+    pub data_dir: Option<String>,
+}
+
 #[derive(Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -66,13 +73,12 @@ pub struct Config {
     pub gba_keyboard: BTreeMap<String, String>,
     pub gba_gamepad: BTreeMap<String, String>,
     pub hotkeys: BTreeMap<String, String>,
-    pub image_dir: Option<String>,
+    pub data_dirs: DataDirs,
     pub master_volume: Option<u8>,
     pub solar_level: u8,
     pub gif_settings: BTreeMap<String, u8>,
     pub display: Display,
     pub show_fps: bool,
-    pub data_dir: Option<String>,
     pub show_notifications: Option<bool>,
     pub destructive_action_popup: Option<bool>,
     pub analog_deadzone_radius: Option<f32>,
@@ -98,8 +104,12 @@ fn get_data_path() -> PathBuf {
         .join("Engram")
 }
 
+fn get_video_path() -> PathBuf {
+    video_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
 pub fn system_dir(system: &str, kind: &str) -> Result<PathBuf, Error> {
-    let dir = PathBuf::from(load_config().data_dir.unwrap())
+    let dir = PathBuf::from(load_config().data_dirs.data_dir.unwrap())
         .join(system)
         .join(kind);
 
@@ -115,12 +125,17 @@ pub fn load_config() -> Config {
         .and_then(|text| from_str(&text).ok())
         .unwrap_or_default();
 
-    if config.image_dir.is_none() {
-        config.image_dir = Some(get_picture_path().into_os_string().into_string().unwrap())
+    if config.data_dirs.image_dir.is_none() {
+        config.data_dirs.image_dir =
+            Some(get_picture_path().into_os_string().into_string().unwrap())
     }
 
-    if config.data_dir.is_none() {
-        config.data_dir = Some(get_data_path().into_os_string().into_string().unwrap())
+    if config.data_dirs.data_dir.is_none() {
+        config.data_dirs.data_dir = Some(get_data_path().into_os_string().into_string().unwrap())
+    }
+
+    if config.data_dirs.video_dir.is_none() {
+        config.data_dirs.video_dir = Some(get_video_path().into_os_string().into_string().unwrap())
     }
 
     config

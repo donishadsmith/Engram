@@ -4,6 +4,7 @@ pub mod constants;
 pub mod debug;
 pub mod editor;
 pub mod enums;
+pub mod gif;
 pub mod input;
 pub mod psg;
 pub mod render;
@@ -12,6 +13,7 @@ pub mod script;
 pub mod structs;
 pub mod traits;
 pub mod utils;
+pub mod video;
 
 use egui::Context;
 use serde::{Deserialize, Serialize};
@@ -185,6 +187,14 @@ pub trait EmulatorSession {
     }
 
     fn take_debugger_snapshot(&mut self) {}
+
+    fn start_video(&mut self, video_dir: PathBuf) -> Result<(), Error>;
+
+    fn is_video_recording(&self) -> bool;
+
+    fn video_capture(&mut self) {}
+
+    fn stop_video(&mut self) -> Result<(), Error>;
 }
 
 pub trait ScriptTarget: Emulator {

@@ -232,9 +232,15 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                     .add(egui::Button::new(text).wrap_mode(egui::TextWrapMode::Extend))
                     .clicked()
                 {
-                    screenshot(session.get_image_path().to_path_buf());
-                    session.toasts.success("Screenshot saved");
-                    ui.close_menu();
+                    match session.data_dirs.get_image_path() {
+                        Ok(path) => {
+                            screenshot(path);
+                            session.toasts.success("Screenshot saved");
+                        }
+                        Err(err) => {
+                            session.toasts.warning(err);
+                        }
+                    }
                 }
             },
         )
@@ -269,6 +275,57 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                 }
             } else {
                 ui_state.open_gif_settings = true;
+            }
+
+            ui.close_menu();
+        }
+
+        let mut binding_text =
+            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Video));
+
+        if session.latest_gamepad_id.is_some() {
+            binding_text.push_str("/Select+West");
+        }
+
+        let is_video_recording = session
+            .emulator
+            .as_mut()
+            .is_some_and(|emulator| emulator.is_video_recording());
+        let text = if is_video_recording {
+            format!("Stop Video ({})", binding_text)
+        } else {
+            format!("Start Video ({})", binding_text)
+        };
+
+        if ui
+            .add_enabled(
+                session.emulator.is_some(),
+                egui::Button::new(format!("{}  {text}", icons::VIDEO_CAMERA))
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            )
+            .on_disabled_hover_text("Accessible when ROM is loaded")
+            .clicked()
+        {
+            if is_video_recording {
+                if let Some(emulator) = session.emulator.as_mut() {
+                    match emulator.stop_video() {
+                        Ok(_) => session.toasts.success("Mp4 saved"),
+                        Err(err) => session.toasts.warning(err.to_string()),
+                    };
+                }
+            } else {
+                match session.data_dirs.get_video_path() {
+                    Ok(path) => {
+                        session
+                            .emulator
+                            .as_mut()
+                            .map(|emulator| emulator.start_video(path));
+                        session.toasts.success("Video started");
+                    }
+                    Err(err) => {
+                        session.toasts.warning(err);
+                    }
+                }
             }
 
             ui.close_menu();
@@ -470,7 +527,11 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
 }
 
 pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut UiState) {
-    let recording = session.gif.is_recording();
+    let recording = session.gif.is_recording()
+        || session
+            .emulator
+            .as_ref()
+            .is_some_and(|emulator| emulator.is_video_recording());
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         if let Some(emulator) = &mut session.emulator
             && let Some(debugger) = emulator.debugger_ref()

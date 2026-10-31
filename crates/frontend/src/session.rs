@@ -6,18 +6,21 @@ use macroquad::{
     miniquad::window::set_fullscreen,
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
+use shared::config::DataDirs;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     config::{AnalogToDpad, Config, Display, RumbleEffect, load_config, save_config},
     debug::DebugPage,
     editor::LuaEditor,
+    gif::GifRecorder,
     input::{
         AnalogStick, AnalogSticks, KeyBindings, enums::Input, utils::get_relevant_key_presses,
     },
     script::ScriptRequest,
-    utils::GifRecorder,
 };
 
+use std::io::ErrorKind;
+use std::mem::take;
 use std::{
     collections::{HashMap, VecDeque},
     fs::create_dir_all,
@@ -57,13 +60,74 @@ pub enum InputSource {
     Gamepad,
 }
 
+pub struct DataPaths {
+    pub image_dir: PathBuf,
+    pub data_dir: PathBuf,
+    pub video_dir: PathBuf,
+}
+
+impl DataPaths {
+    pub fn to_config(&self) -> DataDirs {
+        DataDirs {
+            image_dir: Some(
+                self.image_dir
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
+            ),
+            video_dir: Some(
+                self.video_dir
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
+            ),
+            data_dir: Some(
+                self.data_dir
+                    .clone()
+                    .into_os_string()
+                    .into_string()
+                    .unwrap(),
+            ),
+        }
+    }
+
+    pub fn create_path(&self, path: &PathBuf) -> Result<(), Error> {
+        create_dir_all(path.parent().unwrap())?;
+
+        Ok(())
+    }
+
+    pub fn get_path(&self, path: &PathBuf, which: &'static str) -> Result<PathBuf, String> {
+        match self.create_path(&path) {
+            Ok(_) => Ok(path.clone()),
+            Err(os) => match os.kind() {
+                ErrorKind::AlreadyExists => Ok(path.clone()),
+                _ => Err(format!("{} directory could not be accessed", which)),
+            },
+        }
+    }
+
+    pub fn get_image_path(&self) -> Result<PathBuf, String> {
+        self.get_path(&self.image_dir, "image")
+    }
+
+    pub fn get_video_path(&self) -> Result<PathBuf, String> {
+        self.get_path(&self.video_dir, "video")
+    }
+
+    pub fn get_data_path(&self) -> Result<PathBuf, String> {
+        self.get_path(&self.data_dir, "data")
+    }
+}
+
 pub struct Session {
     pub state: EmulatorState,
     pub emulator: Option<Box<dyn EmulatorSession>>,
     pub rom_path: Option<PathBuf>,
     pub gif: GifRecorder,
-    pub image_dir: PathBuf,
-    pub data_dir: PathBuf,
+    pub data_dirs: DataPaths,
     pub show_key_bindings: bool,
     pub show_hotkeys: bool,
     pub key_bindings: KeyBindings,
@@ -85,7 +149,7 @@ pub struct Session {
     pub show_notifications: bool,
     pub destructive_action_popup: bool,
     pub skip_toast: bool,
-    pub analog_to_dpad: Option<Button>,
+    pub analog_to_dpad: Vec<Button>,
     pub map_analog_to_dpad: AnalogToDpad,
     pub analog_deadzone_radius: f32,
     pub analog_controls: AnalogSticks,
@@ -130,14 +194,19 @@ impl Session {
             None
         };
 
+        let data_dirs = DataPaths {
+            image_dir: PathBuf::from(config.data_dirs.image_dir.as_ref().unwrap()),
+            video_dir: PathBuf::from(config.data_dirs.video_dir.as_ref().unwrap()),
+            data_dir: PathBuf::from(&config.data_dirs.data_dir.as_ref().unwrap()),
+        };
+
         Self {
             state: EmulatorState::Launch,
             emulator: None,
             rom_path: None,
             gif: GifRecorder::new(gif_settings),
             key_bindings: KeyBindings::new().load_keys(&config),
-            image_dir: PathBuf::from(config.image_dir.unwrap()),
-            data_dir: PathBuf::from(config.data_dir.unwrap()),
+            data_dirs,
             show_key_bindings: false,
             show_hotkeys: false,
             master_volume,
@@ -159,7 +228,7 @@ impl Session {
             // realizing that my poor and impulsive cotrol over a mouse requires this
             destructive_action_popup: config.destructive_action_popup.unwrap_or(false),
             skip_toast: false,
-            analog_to_dpad: None,
+            analog_to_dpad: Vec::with_capacity(2),
             map_analog_to_dpad: config.map_analog_to_dpad,
             analog_deadzone_radius: config.analog_deadzone_radius.unwrap_or(0.25), // some controllers are awful and require higher thresholds
             analog_controls: AnalogSticks {
@@ -257,7 +326,7 @@ impl Session {
                 &keymap[..index],
                 gamepad,
                 input_blocked,
-                self.analog_to_dpad,
+                take(&mut self.analog_to_dpad),
             )
             .into_boxed_slice(),
             self.master_volume,
@@ -294,20 +363,7 @@ impl Session {
             gba_keyboard: save_keys.gba_keyboard,
             gba_gamepad: save_keys.gba_gamepad,
             hotkeys: save_keys.hotkeys,
-            image_dir: Some(
-                self.image_dir
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap(),
-            ),
-            data_dir: Some(
-                self.data_dir
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap(),
-            ),
+            data_dirs: self.data_dirs.to_config(),
             solar_level: self.solar_level,
             master_volume: Some(self.master_volume),
             gif_settings: self.gif.settings(),
@@ -325,17 +381,6 @@ impl Session {
     }
 
     // TODO: do better, probably should refactor
-    pub fn create_image_path(&self) -> Result<(), Error> {
-        create_dir_all(self.image_dir.parent().unwrap())?;
-
-        Ok(())
-    }
-
-    pub fn get_image_path(&self) -> &PathBuf {
-        let _ = self.create_image_path();
-        &self.image_dir
-    }
-
     pub fn set_paused(&mut self) {
         self.state = EmulatorState::Paused;
     }
@@ -492,41 +537,29 @@ impl Session {
             } else {
                 right
             };
-        let (gamepad_update, analog_on) =
+
+        let gamepad_update =
             self.map_analog_to_dpad(gamepad_update, analog_stick.x, analog_stick.y);
-
-        let input_blocked = self.show_key_bindings
-            || self.show_hotkeys
-            || self.lua_editor.occupied()
-            || self.controller_hotkey_fired;
-
-        // intentionally allow analog for control binding but not for game input
-        if let Some(emulator) = &self.emulator {
-            self.analog_to_dpad =
-                if analog_on && !input_blocked && self.map_analog_to_dpad.get(emulator.id()) {
-                    gamepad_update.last_pressed
-                } else {
-                    None
-                };
-        }
 
         return gamepad_update;
     }
 
     // https://www.easysmx.com/blogs/easysmx-controllers/controller-deadzone-joystick-test?srsltid=AU7gw4W7mI1o6YdNLAugGdbtot7DrsSEGtEMIbXhTOALUp00GXae7jgJ
+    // jank code
     fn map_analog_to_dpad(
-        &self,
+        &mut self,
         mut gamepad_update: GamepadUpdate,
         analog_x: f32,
         analog_y: f32,
-    ) -> (GamepadUpdate, bool) {
+    ) -> GamepadUpdate {
         if analog_x * analog_x + analog_y * analog_y
             < self.analog_deadzone_radius * self.analog_deadzone_radius
         {
-            return (gamepad_update, false);
+            return gamepad_update;
         }
 
-        if analog_x.abs() > analog_y.abs() {
+        let is_x_dominant = analog_x.abs() > analog_y.abs();
+        if is_x_dominant {
             if analog_x > 0.0 {
                 gamepad_update.last_pressed = Some(Button::DPadRight);
             } else {
@@ -536,9 +569,43 @@ impl Session {
             gamepad_update.last_pressed = Some(Button::DPadUp);
         } else {
             gamepad_update.last_pressed = Some(Button::DPadDown);
+        };
+
+        let input_blocked = self.show_key_bindings
+            || self.show_hotkeys
+            || self.lua_editor.occupied()
+            || self.controller_hotkey_fired;
+
+        let use_analog =
+            if let Some(emulator_id) = self.emulator.as_ref().map(|emulator| emulator.id()) {
+                self.map_analog_to_dpad.get(emulator_id)
+            } else {
+                false
+            };
+
+        // tan(22.5) = 0.414; tan = x / y; determine if non dominant exceeds threshold
+        if !input_blocked && use_analog {
+            self.analog_to_dpad
+                .push(gamepad_update.last_pressed.unwrap());
+
+            if is_x_dominant {
+                if analog_y.abs() > analog_x.abs() * 0.414 {
+                    self.analog_to_dpad.push(if analog_y > 0.0 {
+                        Button::DPadUp
+                    } else {
+                        Button::DPadDown
+                    });
+                }
+            } else if analog_x.abs() > analog_y.abs() * 0.414 {
+                self.analog_to_dpad.push(if analog_x > 0.0 {
+                    Button::DPadRight
+                } else {
+                    Button::DPadLeft
+                });
+            }
         }
 
-        return (gamepad_update, true);
+        return gamepad_update;
     }
 
     pub fn toggle_fullscreen(&mut self) {
