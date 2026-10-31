@@ -138,17 +138,13 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
 
                     session.toasts.success("GIF saved");
                 } else {
-                    if hotkey_triggered {
-                        match session.data_dirs.get_image_path() {
-                            Ok(path) => {
-                                let _ = session.gif.start(emulator.frontend_ref(), path);
-                            }
-                            Err(err) => {
-                                session.toasts.warning(err);
-                            }
-                        };
-                    } else {
-                        ui_state.open_gif_settings = !ui_state.open_gif_settings;
+                    match session.data_dirs.get_image_path() {
+                        Ok(path) => {
+                            let _ = session.gif.start(emulator.frontend_ref(), path);
+                        }
+                        Err(err) => {
+                            session.toasts.warning(err);
+                        }
                     }
                 }
 

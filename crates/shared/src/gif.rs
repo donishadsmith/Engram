@@ -78,3 +78,9 @@ impl GifRecorder {
         map
     }
 }
+
+impl Drop for GifRecorder {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}

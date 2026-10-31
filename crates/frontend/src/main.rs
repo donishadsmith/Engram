@@ -103,6 +103,8 @@ async fn main() -> Result<(), Error> {
                     continue;
                 };
 
+                session.gif.stop();
+
                 session.rom_path = Some(rom_path.clone());
 
                 let ext = rom_path
@@ -195,6 +197,7 @@ async fn main() -> Result<(), Error> {
             egui_ctx.set_pixels_per_point(screen_dpi_scale());
             let menu = egui::TopBottomPanel::top("Menu Bar").show(egui_ctx, |ui| {
                 egui_ctx.set_fonts(ui_state.fonts.clone());
+
                 egui::menu::bar(ui, |ui| {
                     show_file_menu(ui, &mut session);
                     show_emulation_menu(ui, &mut session, &mut ui_state);

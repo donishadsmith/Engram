@@ -596,6 +596,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 .sense(egui::Sense::click()),
             );
 
+            let rom_name = emulator.get_rom_name();
             if title
                 .union(state)
                 .on_hover_text(hover)
@@ -624,6 +625,11 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                         .color(egui::Color32::RED),
                 );
             }
+
+            ui.add_sized(
+                [ui.available_width(), ui.available_height()],
+                egui::Label::new(&rom_name).wrap_mode(egui::TextWrapMode::Truncate),
+            );
         }
 
         if take_snapshot {

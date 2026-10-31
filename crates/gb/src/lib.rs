@@ -416,4 +416,18 @@ impl EmulatorSession for GameBoySession {
     fn stop_video(&mut self) -> Result<(), Error> {
         self.video_recorder.stop()
     }
+
+    fn get_rom_name(&self) -> String {
+        // good enough
+        self.gameboy
+            .cpu
+            .bus
+            .gamepak
+            .sav_path
+            .file_stem()
+            .unwrap()
+            .to_owned()
+            .into_string()
+            .unwrap()
+    }
 }

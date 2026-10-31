@@ -195,6 +195,8 @@ pub trait EmulatorSession {
     fn video_capture(&mut self) {}
 
     fn stop_video(&mut self) -> Result<(), Error>;
+
+    fn get_rom_name(&self) -> String;
 }
 
 pub trait ScriptTarget: Emulator {

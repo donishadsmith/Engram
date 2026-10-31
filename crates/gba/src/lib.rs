@@ -432,6 +432,19 @@ impl EmulatorSession for GBASession {
     fn stop_video(&mut self) -> Result<(), Error> {
         self.video_recorder.stop()
     }
+
+    fn get_rom_name(&self) -> String {
+        // can never remember how to do this properly
+        self.gba
+            .bus
+            .gamepak
+            .sav_path
+            .file_stem()
+            .unwrap()
+            .to_owned()
+            .into_string()
+            .unwrap()
+    }
 }
 
 impl DebugInterface for GBASession {

@@ -181,6 +181,14 @@ impl VideoRecorder {
     }
 }
 
+impl Drop for VideoRecorder {
+    fn drop(&mut self) {
+        if let Some(active) = self.active.take() {
+            let _ = active.complete();
+        }
+    }
+}
+
 pub fn ffmpeg_is_available() -> bool {
     Command::new("ffmpeg")
         .arg("-version")
