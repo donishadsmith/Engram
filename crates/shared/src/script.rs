@@ -218,22 +218,19 @@ impl WatchpointType {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct WatchpointArgs {
     pub pause: bool,
     pub on: WatchpointType,
     pub target: Option<u32>,
     pub width: Width,
-    pub last_written: Option<u32>,
+    pub last_written: HashMap<u32, u32>,
     pub accessor: Accessor,
 }
 
 impl WatchpointArgs {
-    pub fn write_changed(&mut self, new_value: u32) -> bool {
-        let changed = self.last_written != Some(new_value);
-        self.last_written = Some(new_value);
-
-        changed
+    pub fn write_changed(&mut self, address: u32, new_value: u32) -> bool {
+        self.last_written.insert(address, new_value) != Some(new_value)
     }
 
     pub fn fires_on_read(&self, value: u32) -> bool {
@@ -243,11 +240,9 @@ impl WatchpointArgs {
                 .map_or(true, |target_value| target_value == value)
     }
 
-    pub fn should_fire_on_write(&mut self, value: u32) -> bool {
-        let changed = self.write_changed(value);
-
+    pub fn should_fire_on_write(&mut self, address: u32, value: u32) -> bool {
         let kind_hit = match self.on {
-            WatchpointType::Change => changed,
+            WatchpointType::Change => self.write_changed(address, value),
             WatchpointType::Write | WatchpointType::ReadWrite => true,
             WatchpointType::Read => false,
         };
@@ -365,7 +360,7 @@ fn parse_watchpoint_args(
         on,
         target,
         width,
-        last_written: None,
+        last_written: HashMap::new(),
         accessor,
     };
 

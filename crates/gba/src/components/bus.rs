@@ -1095,7 +1095,7 @@ impl Bus {
             return;
         };
 
-        let args = self.watchpoint_queue[&range];
+        let args = &self.watchpoint_queue[&range];
 
         if args.accessor != Accessor::All
             && args.accessor.to_string().to_lowercase() != self.accessor.to_string().to_lowercase()
@@ -1144,7 +1144,7 @@ impl Bus {
             WatchpointType::Write
         };
 
-        if args.should_fire_on_write(value) {
+        if args.should_fire_on_write(address, value) {
             self.push_watchpoint_hit(address, value, pause, width, on);
         }
     }

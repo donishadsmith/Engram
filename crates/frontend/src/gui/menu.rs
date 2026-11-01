@@ -372,7 +372,7 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
         }
 
         let hotkey = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen));
-        ui.menu_button(format!("{}  Window Size", icons::FRAME_CORNERS), |ui| {
+        ui.menu_button(format!("{}  Resize Window", icons::FRAME_CORNERS), |ui| {
             let fullscreen_text = if session.display.fullscreen {
                 "Close Fullscreen"
             } else {

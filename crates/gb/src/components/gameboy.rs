@@ -339,7 +339,7 @@ impl Emulator for GameBoy {
             .watchpoint_queue
             .borrow()
             .iter()
-            .map(|(&watchpoint_range, &args)| (watchpoint_range, args))
+            .map(|(&watchpoint_range, args)| (watchpoint_range, args.clone()))
             .collect()
     }
 

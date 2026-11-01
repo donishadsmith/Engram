@@ -320,7 +320,7 @@ impl Bus {
             return;
         };
 
-        let args = queue[&range];
+        let args = &queue[&range];
 
         if args.accessor != Accessor::All
             && args.accessor.to_string().to_lowercase() != accessor.to_string().to_lowercase()
@@ -363,7 +363,7 @@ impl Bus {
             return;
         }
 
-        if args.should_fire_on_write(value as u32) {
+        if args.should_fire_on_write(address as u32, value as u32) {
             self.push_watchpoint_hit(address, value, pause, on, accessor);
         }
     }
