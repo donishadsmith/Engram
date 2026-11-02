@@ -36,7 +36,7 @@ A Game Boy Advance & Game Boy/Game Boy Color emulator.
   </tr>
 </table>
 
-<p align="center"><sub>All screenshots, GIFs, and video in this README were captured with Engram's built-in recording.</sub></p>
+<p align="center"><sub>All screenshots, GIFs, and video in this README were captured with Engram's built-in capture tools.</sub></p>
 
 ## Features
 **Systems**
