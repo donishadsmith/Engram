@@ -30,7 +30,7 @@ use crate::components::{
     },
 };
 use serde::{Deserialize, Serialize};
-use shared::{EmulatorState, traits::BitOps};
+use shared::{EmulatorState, script::MemoryAccessor, traits::BitOps};
 use std::{collections::HashMap, mem::take};
 
 pub trait SignOps {
@@ -271,8 +271,12 @@ impl R3000a {
 
         // instruction fetch stuff with ``executing_address``, error stuff, blah blah
         // need instruction catching stuff, should use peek if in cache to charge scheduler
-        // less, read stuff when cache miss occurs
-        //MipsInstruction(bus.read(executing_address, MemoryAccessor::Cpu));
+        // less, read stuff when cache miss occurs, can do cache stuff later for accuracy
+        // cache probably should be [CacheLine; 256]
+
+        self.execute_instruction(MipsInstruction(
+            bus.read::<u32>(executing_address, MemoryAccessor::Cpu),
+        ));
     }
 
     pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
@@ -298,6 +302,8 @@ impl R3000a {
         self.registers.pc = handler_address;
         self.registers.next_pc = self.registers.pc.wrapping_add(4);
     }
+
+    pub fn execute_instruction(&mut self, instruction: MipsInstruction) {}
 
     // https://cgi.cse.unsw.edu.au/~cs3231/doc/R3000.pdf
     //  https://psx-spx.consoledev.net/cpuspecifications/
@@ -457,12 +463,18 @@ impl R3000a {
 
     fn lb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
-        todo!()
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            bus.read::<u8>(address, MemoryAccessor::Cpu) as i8 as i32 as u32,
+        );
     }
 
     fn lbu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
-        todo!()
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            bus.read::<u8>(address, MemoryAccessor::Cpu) as u32,
+        );
     }
 
     fn lh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -474,7 +486,10 @@ impl R3000a {
             return;
         }
 
-        todo!()
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            bus.read::<u16>(address, MemoryAccessor::Cpu) as i16 as i32 as u32,
+        );
     }
 
     fn lhu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -486,7 +501,10 @@ impl R3000a {
             return;
         }
 
-        todo!()
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            bus.read::<u16>(address, MemoryAccessor::Cpu) as u32,
+        );
     }
 
     fn lui(&mut self, instruction: MipsInstruction) {
@@ -503,7 +521,10 @@ impl R3000a {
             return;
         }
 
-        todo!()
+        self.registers.write_cpu_register(
+            instruction.rt(),
+            bus.read::<u32>(address, MemoryAccessor::Cpu),
+        );
     }
 
     fn lwcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -593,7 +614,11 @@ impl R3000a {
 
     fn sb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
-        todo!()
+        bus.write::<u8>(
+            address,
+            self.registers.r[instruction.rt()] as u8,
+            MemoryAccessor::Cpu,
+        );
     }
 
     fn sh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -605,7 +630,11 @@ impl R3000a {
             return;
         }
 
-        todo!()
+        bus.write::<u16>(
+            address,
+            self.registers.r[instruction.rt()] as u16,
+            MemoryAccessor::Cpu,
+        );
     }
 
     fn sll(&mut self, instruction: MipsInstruction) {
@@ -715,7 +744,11 @@ impl R3000a {
             return;
         }
 
-        todo!()
+        bus.write::<u32>(
+            address,
+            self.registers.r[instruction.rt()],
+            MemoryAccessor::Cpu,
+        );
     }
 
     fn swcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {

@@ -43,3 +43,7 @@ pub fn get_halfword_shift(address: u32) -> u8 {
 pub fn get_word_mask(address: u32) -> u32 {
     !(0xFFFF << get_halfword_shift(address))
 }
+
+pub fn kilobytes(value: usize) -> usize {
+    value * 1024
+}

@@ -19,7 +19,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use shared::{config::system_dir, traits::BitOps};
+use shared::{config::system_dir, traits::BitOps, utils::kilobytes};
 
 // https://github.com/visualboyadvance-m/visualboyadvance-m/issues/1187; magic string = SIIRTC_V001; confirmed in rom dump of emerical and megaman 4.5;
 const SEIKO_RTC: &'static [u8; 11] = b"SIIRTC_V001";
@@ -84,10 +84,6 @@ pub enum BackupChip {
     Eeprom(Eeprom),
     Sram(Sram),
     Flash(Flash),
-}
-
-fn kilobytes(value: usize) -> usize {
-    value * 1024
 }
 
 // Shamelessly use mgba's override idea for boktai for the solar
