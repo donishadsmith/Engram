@@ -450,11 +450,29 @@ impl R3000a {
     }
 
     fn jalr(&mut self, instruction: MipsInstruction) {
-        todo!()
+        let address = self.registers.r[instruction.rs()];
+
+        if !address.is_multiple_of(4) {
+            self.cop0.set_bad_address(address);
+            self.exception(ExceptionCode::LoadAddressError);
+
+            return;
+        };
+
+        self.registers.link(instruction.rd());
+        self.registers.branch(address);
     }
 
     fn jr(&mut self, instruction: MipsInstruction) {
-        todo!()
+        let address = self.registers.r[instruction.rs()];
+        if !address.is_multiple_of(4) {
+            self.cop0.set_bad_address(address);
+            self.exception(ExceptionCode::LoadAddressError);
+
+            return;
+        };
+
+        self.registers.branch(address);
     }
 
     fn create_address(&mut self, instruction: MipsInstruction) -> u32 {
