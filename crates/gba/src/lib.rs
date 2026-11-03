@@ -122,13 +122,6 @@ impl GBASession {
             .join(format!("{}.ss{slot}", rom_stem.to_string_lossy())))
     }
 
-    fn draw(&mut self) {
-        if self.active_debug.is_none() {
-            self.screen
-                .draw(&self.gba.bus.ppu.frontend, self.menu_height);
-        }
-    }
-
     fn step_end(&mut self) {
         self.gba.take_watchpoint_pause();
         self.gba.take_cycle_pause();
@@ -444,6 +437,13 @@ impl EmulatorSession for GBASession {
             .to_owned()
             .into_string()
             .unwrap()
+    }
+
+    fn draw(&mut self) {
+        if self.active_debug.is_none() {
+            self.screen
+                .draw(&self.gba.bus.ppu.frontend, self.menu_height);
+        }
     }
 }
 

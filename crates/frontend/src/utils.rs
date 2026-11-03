@@ -2,7 +2,6 @@ use chrono::{DateTime, Local};
 use egui::FontDefinitions;
 use egui_notify::Toasts;
 use macroquad::input::{KeyCode, get_keys_pressed, is_key_down};
-use rfd::FileDialog;
 use shared::{
     EmulatorId, EmulatorSession,
     constants::SAVE_STATE_SLOTS,
@@ -12,6 +11,7 @@ use shared::{
         enums::{Input, InputType, KeyId},
         utils::{button_to_string, keycode_to_string},
     },
+    structs::PendingDialog,
 };
 use std::{
     collections::HashMap,
@@ -51,6 +51,13 @@ pub enum KeybindingTab {
     Gamepad,
 }
 
+#[derive(Clone, Copy)]
+pub enum DataLocation {
+    Data,
+    Image,
+    Video,
+}
+
 pub struct UiState {
     pub key_rebinding: Option<usize>,
     pub target_key_id: Option<KeyId>,
@@ -70,6 +77,7 @@ pub struct UiState {
     pub last_screenshot_time: Instant,
     pub last_video_time: Instant,
     pub controller_hotkey_delay: Duration,
+    pub dir_dialog: Option<(DataLocation, PendingDialog)>,
 }
 
 impl UiState {
@@ -92,6 +100,7 @@ impl UiState {
             last_screenshot_time: Instant::now(),
             last_video_time: Instant::now(),
             controller_hotkey_delay: Duration::from_millis(500),
+            dir_dialog: None,
         }
     }
 }
@@ -102,13 +111,6 @@ pub fn initialize_debug_hashmap() -> HashMap<EmulatorId, DebugPage> {
     map.insert(EmulatorId::Gba, DebugPage::Video);
 
     map
-}
-
-pub fn file_dialog() -> Option<PathBuf> {
-    FileDialog::new()
-        .set_title("Select a ROM")
-        .add_filter("Compatible ROMs", &["gb", "gbc", "gba"])
-        .pick_file()
 }
 
 pub fn bindings_grid(

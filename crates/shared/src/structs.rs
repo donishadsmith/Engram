@@ -1,7 +1,14 @@
+use std::{
+    path::PathBuf,
+    sync::mpsc::{self, Receiver, TryRecvError},
+    thread::spawn,
+};
+
 use crate::{
     traits::UnsignedInt,
     utils::{get_halfword_shift, get_word_mask, zero_arr},
 };
+use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -73,4 +80,50 @@ impl GroupedRegisters<u32> {
 pub struct ElapsedCycles {
     pub starting_cycle: u64,
     pub target_elapsed_cycles: u64,
+}
+
+pub struct PendingDialog {
+    pub receiver: Receiver<Option<PathBuf>>,
+}
+
+impl PendingDialog {
+    pub fn new(dialog: impl FnOnce() -> Option<PathBuf> + Send + 'static) -> Self {
+        let (sender, receiver) = mpsc::channel();
+
+        spawn(move || {
+            let _ = sender.send(dialog());
+        });
+
+        Self { receiver }
+    }
+
+    pub fn open_rom() -> Self {
+        Self::new(|| {
+            FileDialog::new()
+                .set_title("Select a ROM")
+                .add_filter("Compatible ROMs", &["gb", "gbc", "gba"])
+                .pick_file()
+        })
+    }
+
+    pub fn open_lua_script() -> Self {
+        Self::new(|| {
+            FileDialog::new()
+                .set_title("Select Lua Script")
+                .add_filter("Lua", &["lua", ".txt"])
+                .pick_file()
+        })
+    }
+
+    pub fn select_folder(start_dir: PathBuf) -> Self {
+        Self::new(move || FileDialog::new().set_directory(start_dir).pick_folder())
+    }
+
+    pub fn poll(&self) -> Option<Option<PathBuf>> {
+        match self.receiver.try_recv() {
+            Err(TryRecvError::Empty) => None,
+            Ok(path) => Some(path),
+            Err(TryRecvError::Disconnected) => Some(None),
+        }
+    }
 }

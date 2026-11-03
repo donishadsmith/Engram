@@ -121,11 +121,6 @@ impl GameBoySession {
             .join(format!("{}.ss{slot}", rom_stem.to_string_lossy())))
     }
 
-    fn draw(&mut self) {
-        self.screen
-            .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
-    }
-
     fn step_end(&mut self, volume: u8) {
         self.drain_audio(volume);
         self.gameboy.replenish_remaining_cycles();
@@ -429,5 +424,10 @@ impl EmulatorSession for GameBoySession {
             .to_owned()
             .into_string()
             .unwrap()
+    }
+
+    fn draw(&mut self) {
+        self.screen
+            .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
     }
 }

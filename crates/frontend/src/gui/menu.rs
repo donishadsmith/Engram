@@ -25,7 +25,10 @@ use crate::{
 pub fn show_file_menu(ui: &mut Ui, session: &mut Session) {
     ui.menu_button("File", |ui| {
         if ui
-            .button(format!("{} Load ROM", icons::FOLDER_OPEN))
+            .add_enabled(
+                session.rom_dialog.is_none(),
+                egui::Button::new(format!("{} Load ROM", icons::FOLDER_OPEN)),
+            )
             .clicked()
         {
             session.add_transient_state(EmulatorState::RomSelection);
@@ -41,10 +44,11 @@ pub fn show_file_menu(ui: &mut Ui, session: &mut Session) {
 
 pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiState) {
     let has_emulator = session.emulator.is_some();
+
     ui.menu_button("Emulation", |ui| {
         if ui
             .add_enabled(
-                has_emulator,
+                has_emulator && !session.rom_dialog.is_some(),
                 egui::Button::new(format!("{}  Hard Reset", icons::ARROWS_COUNTER_CLOCKWISE)),
             )
             .clicked()
@@ -187,12 +191,12 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 }
             })
             .response
-            .on_disabled_hover_text("Available for ROMs with solar sensing (e.g., Boktai)");
         });
     });
 }
 
 pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiState) {
+    let dialog_open = session.rom_dialog.is_some();
     ui.menu_button("Tools", |ui| {
         ui.add_enabled_ui(
             session
@@ -243,9 +247,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                     }
                 }
             },
-        )
-        .response
-        .on_disabled_hover_text("Accessible when ROM is loaded");
+        );
 
         let mut binding_text =
             keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
@@ -299,11 +301,10 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
 
         if ui
             .add_enabled(
-                session.emulator.is_some(),
+                session.emulator.is_some() && !(dialog_open && !is_video_recording),
                 egui::Button::new(format!("{}  {text}", icons::VIDEO_CAMERA))
                     .wrap_mode(egui::TextWrapMode::Extend),
             )
-            .on_disabled_hover_text("Accessible when ROM is loaded")
             .clicked()
         {
             if is_video_recording {
@@ -313,7 +314,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                         Err(err) => session.toasts.warning(err.to_string()),
                     };
                 }
-            } else {
+            } else if session.rom_dialog.is_none() {
                 match session.data_dirs.get_video_path() {
                     Ok(path) => {
                         session
@@ -603,6 +604,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 .on_hover_text(hover)
                 .on_hover_cursor(egui::CursorIcon::PointingHand)
                 .clicked()
+                && session.rom_dialog.is_none()
             {
                 session.toggle_emulator_status();
 

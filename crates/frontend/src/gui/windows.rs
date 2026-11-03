@@ -1,12 +1,15 @@
 use egui::Context;
-use shared::{EmulatorState, input::enums::InputType, script::ScriptRequest, utils::screenshot};
+use shared::{
+    EmulatorState, input::enums::InputType, script::ScriptRequest, structs::PendingDialog,
+    utils::screenshot,
+};
 
 use crate::{
     session::Session,
     utils::{
-        DestructiveAction, KeybindingTab, UiState, bindings_grid, delete_all_slots_with_toast,
-        delete_slots_lua, delete_slots_with_toast, load_slots_lua, save_slots_lua,
-        save_slots_with_toast, thin_separator,
+        DataLocation, DestructiveAction, KeybindingTab, UiState, bindings_grid,
+        delete_all_slots_with_toast, delete_slots_lua, delete_slots_with_toast, load_slots_lua,
+        save_slots_lua, save_slots_with_toast, thin_separator,
     },
 };
 use egui_phosphor::regular as icons;
@@ -90,15 +93,19 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
                 thin_separator(ui);
 
                 ui.horizontal(|ui| {
-                    if ui.button("Set Location").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .set_directory(&session.data_dirs.data_dir)
-                            .pick_folder()
-                        {
-                            session.data_dirs.data_dir = path;
-                            flush_configs = true;
-                        }
+                    if ui
+                        .add_enabled(
+                            ui_state.dir_dialog.is_none(),
+                            egui::Button::new("Set Location"),
+                        )
+                        .clicked()
+                    {
+                        ui_state.dir_dialog = Some((
+                            DataLocation::Data,
+                            PendingDialog::select_folder(session.data_dirs.data_dir.clone()),
+                        ));
                     }
+
                     ui.add(
                         egui::Label::new(session.data_dirs.data_dir.display().to_string())
                             .truncate(),
@@ -112,15 +119,19 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
                 thin_separator(ui);
 
                 ui.horizontal(|ui| {
-                    if ui.button("Set Location").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .set_directory(&session.data_dirs.image_dir)
-                            .pick_folder()
-                        {
-                            session.data_dirs.image_dir = path;
-                            flush_configs = true;
-                        }
+                    if ui
+                        .add_enabled(
+                            ui_state.dir_dialog.is_none(),
+                            egui::Button::new("Set Location"),
+                        )
+                        .clicked()
+                    {
+                        ui_state.dir_dialog = Some((
+                            DataLocation::Image,
+                            PendingDialog::select_folder(session.data_dirs.image_dir.clone()),
+                        ));
                     }
+
                     ui.add(
                         egui::Label::new(session.data_dirs.image_dir.display().to_string())
                             .truncate(),
@@ -134,21 +145,43 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
                 thin_separator(ui);
 
                 ui.horizontal(|ui| {
-                    if ui.button("Set Location").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .set_directory(&session.data_dirs.video_dir)
-                            .pick_folder()
-                        {
-                            session.data_dirs.video_dir = path;
-                            flush_configs = true;
-                        }
+                    if ui
+                        .add_enabled(
+                            ui_state.dir_dialog.is_none(),
+                            egui::Button::new("Set Location"),
+                        )
+                        .clicked()
+                    {
+                        ui_state.dir_dialog = Some((
+                            DataLocation::Video,
+                            PendingDialog::select_folder(session.data_dirs.video_dir.clone()),
+                        ));
                     }
+
                     ui.add(
                         egui::Label::new(session.data_dirs.video_dir.display().to_string())
                             .truncate(),
                     );
                 });
             });
+    }
+
+    if let Some((dir_location, dialog)) = &ui_state.dir_dialog {
+        let dir_location = *dir_location;
+
+        if let Some(result) = dialog.poll() {
+            ui_state.dir_dialog.take();
+
+            if let Some(path) = result {
+                match dir_location {
+                    DataLocation::Data => session.data_dirs.data_dir = path,
+                    DataLocation::Image => session.data_dirs.image_dir = path,
+                    DataLocation::Video => session.data_dirs.video_dir = path,
+                }
+
+                flush_configs = true;
+            }
+        }
     }
 
     // will flush other things too but good enough than the directories
@@ -390,7 +423,7 @@ pub fn show_gif_settings(egui_ctx: &Context, session: &mut Session, ui_state: &m
 
                     if ui
                         .add_enabled(
-                            session.emulator.is_some(),
+                            session.emulator.is_some() && session.rom_dialog.is_none(),
                             egui::Button::new("Start Recording"),
                         )
                         .on_disabled_hover_text("Accessible when ROM is loaded")

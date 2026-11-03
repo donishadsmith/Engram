@@ -7,6 +7,7 @@ use macroquad::{
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
 use shared::config::DataDirs;
+use shared::structs::PendingDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     config::{AnalogToDpad, Config, Display, RumbleEffect, load_config, save_config},
@@ -157,6 +158,7 @@ pub struct Session {
     pub rumble_effect_on: RumbleEffect,
     pub rumble_strength: f32,
     pub controller_hotkey_fired: bool,
+    pub rom_dialog: Option<PendingDialog>,
 }
 
 impl Session {
@@ -239,6 +241,7 @@ impl Session {
             rumble_effect_on: config.rumble_effect_on,
             rumble_strength: config.rumble_strength.unwrap_or(1.0),
             controller_hotkey_fired: false,
+            rom_dialog: None,
         }
     }
 

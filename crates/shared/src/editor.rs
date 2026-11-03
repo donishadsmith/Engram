@@ -1,4 +1,4 @@
-use crate::script::API;
+use crate::{script::API, structs::PendingDialog};
 use arboard::Clipboard;
 use egui::{Context, ScrollArea, Window, text::CursorRange};
 use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
@@ -33,6 +33,12 @@ enum HelpTab {
     Shortcut,
 }
 
+#[derive(Clone, Copy)]
+enum EditorDialog {
+    Open,
+    Save,
+}
+
 pub fn super_key_down() -> bool {
     is_key_down(KeyCode::LeftControl)
         || is_key_down(KeyCode::LeftSuper)
@@ -60,6 +66,7 @@ pub struct LuaEditor {
     script_name: String, // very vs coded
     script_path: Option<PathBuf>,
     help_tab: HelpTab,
+    file_dialog: Option<(EditorDialog, PendingDialog)>,
 }
 
 impl LuaEditor {
@@ -76,10 +83,12 @@ impl LuaEditor {
             script_name: "Untitled-1.lua".to_string(),
             script_path: None,
             help_tab: HelpTab::Api,
+            file_dialog: None,
         }
     }
 
     pub fn show_ui(&mut self, egui_ctx: &Context) -> Option<String> {
+        self.poll_file_dialog();
         self.flush_pending_copy();
 
         let mut opened = self.opened;
@@ -92,25 +101,15 @@ impl LuaEditor {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.menu_button("File", |ui| {
-                            if ui.button(format!("{}  New Script", icons::FILE)).clicked() {
+                            if ui.button(format!("{}  New Script", icons::FILE)).clicked() && self.file_dialog.is_none() {
                                 self.new_file();
                             }
 
-                            if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() {
-                                if let Some(path) = open_lua_script() {
-                                    match read_to_string(&path) {
-                                        Ok(text) => {
-                                            self.code = text;
-                                            self.update_script_path(path);
-                                        },
-                                        Err(e) => {
-                                            self.output.push(format!("Failed to read script: {e}"))
-                                        }
-                                    }
-                                }
+                            if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() && self.file_dialog.is_none() {
+                                self.load_lua_script();
                             }
 
-                            if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() {
+                            if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() && self.file_dialog.is_none() {
                                 self.save_lua_script();
                             }
                         });
@@ -206,12 +205,12 @@ impl LuaEditor {
                         },
                     );
 
-                if new_file_shortcut() {
+                if new_file_shortcut() && self.file_dialog.is_none() {
                     self.new_file();
                 }
 
                 if save_shortcut() {
-                    if let Some(path) = self.script_path.clone() && path.exists() {
+                    if let Some(path) = self.script_path.clone() && path.exists() && self.file_dialog.is_none() {
                         self.quick_save(&path);
                     } else {
                         self.save_lua_script();
@@ -223,6 +222,26 @@ impl LuaEditor {
         self.focused = focused;
 
         run.then(|| self.code.clone())
+    }
+
+    pub fn poll_file_dialog(&mut self) {
+        let Some((kind, dialog)) = &self.file_dialog else {
+            return;
+        };
+        let kind = *kind;
+
+        let Some(result) = dialog.poll() else {
+            return;
+        };
+
+        self.file_dialog = None;
+
+        if let Some(path) = result {
+            match kind {
+                EditorDialog::Open => self.load_script(path),
+                EditorDialog::Save => self.quick_save(&path),
+            }
+        }
     }
 
     pub fn push_output(&mut self, lines: Vec<String>) {
@@ -264,21 +283,43 @@ impl LuaEditor {
         }
     }
 
+    fn load_script(&mut self, path: PathBuf) {
+        match read_to_string(&path) {
+            Ok(text) => {
+                self.code = text;
+                self.update_script_path(path);
+            }
+            Err(e) => self.output.push(format!("Failed to read script: {e}")),
+        }
+    }
+
+    fn load_lua_script(&mut self) {
+        if self.file_dialog.is_some() {
+            return;
+        }
+
+        self.file_dialog = Some((EditorDialog::Open, PendingDialog::open_lua_script()));
+    }
+
     fn save_lua_script(&mut self) {
+        if self.file_dialog.is_some() {
+            return;
+        }
+
         let source_path = if let Some(script_path) = self.script_path.clone() {
             script_path
         } else {
             PathBuf::from(self.script_name.clone())
         };
 
-        let destination_path = FileDialog::new()
-            .set_file_name(source_path.file_name().unwrap().to_string_lossy())
-            .save_file();
-
-        match destination_path {
-            Some(path) => self.quick_save(&path),
-            None => {}
-        }
+        self.file_dialog = Some((
+            EditorDialog::Save,
+            PendingDialog::new(move || {
+                FileDialog::new()
+                    .set_file_name(source_path.file_name().unwrap().to_string_lossy())
+                    .save_file()
+            }),
+        ));
     }
 
     fn update_script_path(&mut self, path: PathBuf) {
@@ -339,11 +380,4 @@ impl LuaEditor {
             None => self.output.push("Clipboard unavailable".to_string()),
         }
     }
-}
-
-fn open_lua_script() -> Option<PathBuf> {
-    FileDialog::new()
-        .set_title("Select Lua Script")
-        .add_filter("Lua", &["lua"])
-        .pick_file()
 }

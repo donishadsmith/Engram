@@ -18,11 +18,11 @@ use crate::{
         },
     },
     session::Session,
-    utils::{UiState, file_dialog},
+    utils::UiState,
 };
 use egui_macroquad;
 use macroquad::{miniquad::conf::Platform, prelude::*};
-use shared::{EmulatorState, config::load_config};
+use shared::{EmulatorState, config::load_config, structs::PendingDialog};
 use spin_sleep::sleep_until;
 use std::{
     io::Error,
@@ -95,41 +95,51 @@ async fn main() -> Result<(), Error> {
 
         match session.state {
             EmulatorState::RomSelection => {
-                let Some(rom_path) = file_dialog() else {
-                    session.state = session.take_return_state().unwrap();
-
-                    session.reset_fps();
-
-                    continue;
-                };
-
-                session.gif.stop();
-
-                session.rom_path = Some(rom_path.clone());
-
-                let ext = rom_path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.to_ascii_lowercase())
-                    .unwrap_or_default();
-
-                match ext.as_str() {
-                    "gb" | "gbc" => {
-                        session.set_emulator(gb::GameBoySession::new_session(rom_path)?)
-                    }
-                    "gba" => {
-                        session.set_emulator(gba::GBASession::new_session(rom_path)?);
-                        session.set_solar_sensor();
-                    }
-                    _ => {}
+                if session.rom_dialog.is_none() {
+                    session.rom_dialog = Some(PendingDialog::open_rom());
                 }
 
-                if let Some(state) = session.take_return_state()
-                    && state == EmulatorState::Paused
+                if let Some(dialog) = session.rom_dialog.as_ref().map(|dialog| dialog.poll())
+                    && let Some(result) = dialog
                 {
-                    session.state = state;
-                } else {
-                    session.set_running();
+                    session.rom_dialog.take();
+                    match result {
+                        Some(rom_path) => {
+                            session.gif.stop();
+
+                            let ext = rom_path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .map(|e| e.to_ascii_lowercase())
+                                .unwrap_or_default();
+
+                            match ext.as_str() {
+                                "gb" | "gbc" => {
+                                    session.set_emulator(gb::GameBoySession::new_session(
+                                        rom_path.clone(),
+                                    )?);
+                                }
+                                "gba" => {
+                                    session.set_emulator(gba::GBASession::new_session(
+                                        rom_path.clone(),
+                                    )?);
+                                    session.set_solar_sensor();
+                                }
+                                _ => {}
+                            }
+
+                            session.rom_path = Some(rom_path);
+
+                            if let Some(state) = session.take_return_state()
+                                && state == EmulatorState::Paused
+                            {
+                                session.state = state;
+                            } else {
+                                session.set_running();
+                            }
+                        }
+                        _ => session.state = session.take_return_state().unwrap(),
+                    }
                 }
             }
             EmulatorState::Running => {
@@ -250,6 +260,10 @@ async fn main() -> Result<(), Error> {
                 emulator.set_top_height(menu.response.rect.height());
                 if let Some(debugger) = emulator.debugger_mut() {
                     debugger.show_ui(egui_ctx);
+                }
+
+                if session.state == EmulatorState::RomSelection {
+                    emulator.draw();
                 }
             }
         });

@@ -77,6 +77,8 @@ fn display_controller_hotkeys(
 }
 
 pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
+    let dialog_open = session.rom_dialog.is_some();
+
     if !session.show_hotkeys {
         if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
             && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen))
@@ -103,7 +105,10 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                 ShortcutType::Screenshot,
             ) && ui_state.last_screenshot_time.elapsed()
                 >= ui_state.controller_hotkey_delay;
-            if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
+            if !(dialog_open
+                || shift_key_down()
+                || super_key_down()
+                || is_key_down(KeyCode::Delete))
                 && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
                     || hotkey_triggered)
             {
@@ -137,10 +142,11 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                     session.gif.stop();
 
                     session.toasts.success("GIF saved");
-                } else {
+                } else if !dialog_open {
                     match session.data_dirs.get_image_path() {
                         Ok(path) => {
                             let _ = session.gif.start(emulator.frontend_ref(), path);
+                            session.toasts.success("GIF recording started");
                         }
                         Err(err) => {
                             session.toasts.warning(err);
@@ -169,7 +175,7 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                         Ok(_) => session.toasts.success("Mp4 saved"),
                         Err(err) => session.toasts.warning(err.to_string()),
                     };
-                } else {
+                } else if !dialog_open {
                     match session.data_dirs.get_video_path() {
                         Ok(path) => {
                             let _ = emulator.start_video(path);
