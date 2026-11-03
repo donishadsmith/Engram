@@ -602,11 +602,17 @@ impl R3000a {
     }
 
     fn mult(&mut self, instruction: MipsInstruction) {
-        todo!()
+        let result = (self.registers.r[instruction.rs()] as i32 as i64)
+            .wrapping_mul(self.registers.r[instruction.rt()] as i32 as i64);
+        self.registers.hi = (result as u64).get_bit_range(32..64) as u32;
+        self.registers.lo = (result as u64).get_bit_range(0..32) as u32;
     }
 
     fn multu(&mut self, instruction: MipsInstruction) {
-        todo!()
+        let result = (self.registers.r[instruction.rs()] as u64)
+            .wrapping_mul(self.registers.r[instruction.rt()] as u64);
+        self.registers.hi = result.get_bit_range(32..64) as u32;
+        self.registers.lo = result.get_bit_range(0..32) as u32;
     }
 
     fn nor(&mut self, instruction: MipsInstruction) {
