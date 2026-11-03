@@ -110,7 +110,7 @@ impl PendingDialog {
         Self::new(|| {
             FileDialog::new()
                 .set_title("Select Lua Script")
-                .add_filter("Lua", &["lua", ".txt"])
+                .add_filter("Lua", &["lua", "txt"])
                 .pick_file()
         })
     }
