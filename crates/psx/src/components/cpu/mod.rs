@@ -436,7 +436,17 @@ impl R3000a {
     }
 
     fn divu(&mut self, instruction: MipsInstruction) {
-        todo!()
+        // manual says undefined here, rustation and psx-spx use these undefined values
+        // https://psx-spx.consoledev.net/cpuspecifications/#cpu-alu-opcodes
+        let divisor = self.registers.r[instruction.rt()];
+        if divisor == 0 {
+            self.registers.hi = self.registers.r[instruction.rs()];
+            self.registers.lo = 0xFFFFFFFF;
+        } else {
+            // now div and mod based on manual
+            self.registers.lo = self.registers.r[instruction.rs()] / divisor;
+            self.registers.hi = self.registers.r[instruction.rs()] % divisor
+        }
     }
 
     fn jump(&mut self, instruction: MipsInstruction) {
@@ -603,14 +613,16 @@ impl R3000a {
 
     fn mult(&mut self, instruction: MipsInstruction) {
         let result = (self.registers.r[instruction.rs()] as i32 as i64)
-            .wrapping_mul(self.registers.r[instruction.rt()] as i32 as i64);
+            * (self.registers.r[instruction.rt()] as i32 as i64);
         self.registers.hi = (result as u64).get_bit_range(32..64) as u32;
         self.registers.lo = (result as u64).get_bit_range(0..32) as u32;
+
+        // TODO: timing based on leading zeroes, check later
     }
 
     fn multu(&mut self, instruction: MipsInstruction) {
         let result = (self.registers.r[instruction.rs()] as u64)
-            .wrapping_mul(self.registers.r[instruction.rt()] as u64);
+            * (self.registers.r[instruction.rt()] as u64);
         self.registers.hi = result.get_bit_range(32..64) as u32;
         self.registers.lo = result.get_bit_range(0..32) as u32;
     }
