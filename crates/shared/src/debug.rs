@@ -46,6 +46,21 @@ impl DebugPage {
             DebugPage::Video => format!("{}  Video", egui_phosphor::regular::VIDEO),
         }
     }
+
+    pub fn to_debug_page(page: String) -> Option<DebugPage> {
+        match page.to_lowercase().as_str() {
+            "audio" => Some(DebugPage::Audio),
+            "video" => Some(DebugPage::Video),
+            _ => None,
+        }
+    }
+
+    pub fn to_simple_str(self) -> &'static str {
+        match self {
+            DebugPage::Audio => "audio",
+            DebugPage::Video => "video",
+        }
+    }
 }
 
 pub fn get_texture_id(

@@ -1,7 +1,7 @@
-use egui::Ui;
+use egui::{Color32, Ui};
 use egui_phosphor::regular as icons;
 use macroquad::{
-    miniquad::window::set_fullscreen,
+    miniquad::window::{request_quit, set_fullscreen},
     window::{request_new_screen_size, screen_dpi_scale},
 };
 use shared::{
@@ -534,6 +534,27 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             .as_ref()
             .is_some_and(|emulator| emulator.is_video_recording());
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // kinda emulating the exit look that a lot of modern apps follow
+        if session.display.fullscreen {
+            if ui
+                .scope(|ui| {
+                    let widget = &mut ui.visuals_mut().widgets;
+                    widget.hovered.weak_bg_fill = Color32::RED;
+                    widget.active.weak_bg_fill = Color32::RED;
+                    ui.add(egui::Button::new(egui::RichText::new(icons::X).strong()))
+                })
+                .inner
+                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                .clicked()
+            {
+                request_quit();
+            };
+
+            if session.emulator.is_some() {
+                ui.label(egui::RichText::new("| ").strong());
+            }
+        }
+
         if let Some(emulator) = &mut session.emulator
             && let Some(debugger) = emulator.debugger_ref()
         {

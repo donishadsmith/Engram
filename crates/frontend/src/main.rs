@@ -1,5 +1,7 @@
 // TODO: I think I can just flash firmware on the pico, wire then map buttons to the gpio pins, then connect via usb
 // https://gp2040-ce.info/web-configurator/menu-pages/gpio-pin-mapping
+#![windows_subsystem = "windows"]
+
 pub mod gui;
 pub mod session;
 pub mod utils;
@@ -253,7 +255,7 @@ async fn main() -> Result<(), Error> {
             set_data_directories(&egui_ctx, &mut session, &mut ui_state);
             show_destructive_action_popup(&egui_ctx, &mut session, &mut ui_state);
             show_gif_settings(&egui_ctx, &mut session, &mut ui_state);
-            show_lua_editor(&egui_ctx, &mut session);
+            show_lua_editor(&egui_ctx, &mut session, &mut ui_state);
             show_debugger_pages(&egui_ctx, &mut session, &mut ui_state);
 
             if let Some(emulator) = session.emulator.as_mut() {

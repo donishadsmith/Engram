@@ -190,7 +190,7 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
     }
 }
 
-pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
+pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
     if session.lua_editor.opened {
         if let Some(emulator) = &mut session.emulator
             && let Some(script_engine) = emulator.script_engine()
@@ -364,6 +364,44 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session) {
                     }
 
                     session.lua_editor.push_output(vec![message]);
+                }
+                ScriptRequest::CloseDebugger => {
+                    let emulator_id = emulator.id();
+                    if let Some(debugger) = emulator.debugger_mut()
+                        && debugger.active()
+                    {
+                        debugger.toggle(session.last_debug_page.get(&emulator_id).copied());
+                    }
+                }
+                // adding debug controls just because i can and for no other practical reason
+                ScriptRequest::OpenDebugger(debug_page) => {
+                    if let Some(debugger) = emulator.debugger_mut() {
+                        if let Some(debug_page) = debug_page
+                            && debugger.available_pages().contains(&debug_page)
+                        {
+                            if !debugger.active() {
+                                ui_state.debug_toggled = true;
+                                session.last_debug_page.insert(emulator.id(), debug_page);
+                            } else if debugger.active() && !debugger.visible(debug_page) {
+                                debugger.toggle(Some(debug_page));
+                                session.last_debug_page.insert(emulator.id(), debug_page);
+                            }
+                        } else {
+                            let available_pages: Vec<String> = debugger
+                                .available_pages()
+                                .iter()
+                                .map(|page| format!("'{}'", page.to_simple_str()))
+                                .collect();
+                            session.lua_editor.push_output(vec![format!(
+                                "only the following pages are available: {}",
+                                available_pages.join(", ")
+                            )])
+                        }
+                    } else {
+                        session
+                            .lua_editor
+                            .push_output(vec!["no debuggers available".to_string()]);
+                    }
                 }
             }
         }

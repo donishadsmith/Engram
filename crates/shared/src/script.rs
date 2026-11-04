@@ -1,6 +1,7 @@
 use crate::{
     EmulatorId, EmulatorState, ScriptTarget,
     constants::SAVE_STATE_SLOTS,
+    debug::DebugPage,
     enums::{FetchSource, Width},
     input::constants::DEFAULT_GBA_KEYS,
 };
@@ -54,6 +55,9 @@ emulator.save_state(slot)  emulator.load_state(slot)  emulator.delete_state(slot
 emulator.elapsed_cycles(): GB/GBC reports t-cycles
 emulator.pause_at_cycle(cycle)
 emulator.pause_after_elapsed_cycles(elapsed_cycles)
+emulator.open_debugger(debug_page)
+    - "video", "audio"
+emulator.close_debugger()
 
 Breakpoints:
 debug.set_breakpoint(address, {pause = true})
@@ -109,6 +113,8 @@ pub enum ScriptRequest {
     DeleteState(usize),
     StartVideo,
     StopVideo,
+    OpenDebugger(Option<DebugPage>),
+    CloseDebugger,
 }
 
 // is it incredibly lazy to create a new enum to compare strings with another nearly duplicate enum with a one variant difference
@@ -741,6 +747,16 @@ impl ScriptEngine {
                 "stop_video",
                 || ScriptRequest::StopVideo,
             )?;
+            set_emulator_controls(
+                "close_debugger",
+                || ScriptRequest::CloseDebugger,
+            )?;
+
+            emulator.set("open_debugger", scope.create_function(|_, page: String| {
+                requests.borrow_mut().push(ScriptRequest::OpenDebugger(DebugPage::to_debug_page(page)));
+
+                Ok(())
+            })?)?;
 
             let set_emulator_save_state = |name: &'static str, request: fn(usize) -> ScriptRequest| {
                 let requests = &requests;
