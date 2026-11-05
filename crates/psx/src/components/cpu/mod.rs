@@ -20,6 +20,20 @@ All registers are 32bit wide.
 
 */
 
+/*
+https://psx-spx.consoledev.net/cpuspecifications/#cpu-alu-opcodes
+ __multu_execution_time_____________________________________________________
+  Fast  (6 cycles)   rs = 00000000h..000007FFh
+  Med   (9 cycles)   rs = 00000800h..000FFFFFh
+  Slow  (13 cycles)  rs = 00100000h..FFFFFFFFh
+  __mult_execution_time_____________________________________________________
+  Fast  (6 cycles)   rs = 00000000h..000007FFh, or rs = FFFFF800h..FFFFFFFFh
+  Med   (9 cycles)   rs = 00000800h..000FFFFFh, or rs = FFF00000h..FFFFF801h
+  Slow  (13 cycles)  rs = 00100000h..7FFFFFFFh, or rs = 80000000h..FFF00001h
+  __divu/div_execution_time________________________________________________
+  Fixed (36 cycles)  no matter of rs and rt values
+*/
+
 pub mod cop0;
 
 use crate::components::{
@@ -431,11 +445,24 @@ impl R3000a {
         todo!()
     }
 
-    fn div(&mut self, instruction: MipsInstruction) {
-        todo!()
+    fn div(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let rs = self.registers.r[instruction.rs()] as i32;
+        let divisor = self.registers.r[instruction.rt()] as i32;
+        if divisor == 0 {
+            self.registers.lo = if rs >= 0 { 0xFFFFFFFF } else { 1 };
+            self.registers.hi = rs as u32;
+        } else if rs == i32::MIN && divisor == -1 {
+            self.registers.lo = 0x80000000;
+            self.registers.hi = 0;
+        } else {
+            self.registers.lo = (rs / divisor) as u32;
+            self.registers.hi = (rs % divisor) as u32;
+        }
+
+        bus.add_cycles(36);
     }
 
-    fn divu(&mut self, instruction: MipsInstruction) {
+    fn divu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         // manual says undefined here, rustation and psx-spx use these undefined values
         // https://psx-spx.consoledev.net/cpuspecifications/#cpu-alu-opcodes
         let divisor = self.registers.r[instruction.rt()];
@@ -447,6 +474,8 @@ impl R3000a {
             self.registers.lo = self.registers.r[instruction.rs()] / divisor;
             self.registers.hi = self.registers.r[instruction.rs()] % divisor
         }
+
+        bus.add_cycles(36);
     }
 
     fn jump(&mut self, instruction: MipsInstruction) {
@@ -611,20 +640,30 @@ impl R3000a {
         self.registers.lo = self.registers.r[instruction.rs()]
     }
 
-    fn mult(&mut self, instruction: MipsInstruction) {
-        let result = (self.registers.r[instruction.rs()] as i32 as i64)
-            * (self.registers.r[instruction.rt()] as i32 as i64);
+    fn mult(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let rs = self.registers.r[instruction.rs()];
+        let result = (rs as i32 as i64) * (self.registers.r[instruction.rt()] as i32 as i64);
         self.registers.hi = (result as u64).get_bit_range(32..64) as u32;
         self.registers.lo = (result as u64).get_bit_range(0..32) as u32;
 
-        // TODO: timing based on leading zeroes, check later
+        bus.add_cycles(match rs {
+            0..=0x000007FF | 0xFFFFF800..=0xFFFFFFFF => 6,
+            0x00000800..=0x000FFFFF | 0xFFF00000..=0xFFFFF801 => 9,
+            0x00100000..=0x7FFFFFFF | 0x80000000..=0xFFF00001 => 13,
+        });
     }
 
-    fn multu(&mut self, instruction: MipsInstruction) {
-        let result = (self.registers.r[instruction.rs()] as u64)
-            * (self.registers.r[instruction.rt()] as u64);
+    fn multu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        let rs = self.registers.r[instruction.rs()];
+        let result = (rs as u64) * (self.registers.r[instruction.rt()] as u64);
         self.registers.hi = result.get_bit_range(32..64) as u32;
         self.registers.lo = result.get_bit_range(0..32) as u32;
+
+        bus.add_cycles(match rs {
+            0..=0x000007FF => 6,
+            0x00000800..=0x000FFFFF => 9,
+            _ => 13,
+        });
     }
 
     fn nor(&mut self, instruction: MipsInstruction) {
