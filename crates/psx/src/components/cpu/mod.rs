@@ -351,6 +351,8 @@ impl R3000a {
         ));
     }
 
+    // TODO: alot of the same breakpoint logic copy and pasted for all emus since it works
+    // consolidate later when less tired
     pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
         let action = if pause {
             EmulatorState::Paused
