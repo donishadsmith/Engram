@@ -51,13 +51,17 @@ Emulator:
 emulator.pause()  emulator.resume()  emulator.step_instruction()  emulator.step_frame()  emulator.reset()
 emulator.screenshot()  emulator.start_gif()  emulator.stop_gif()  emulator.start_video()  emulator.stop_video()
 emulator.save_state(slot)  emulator.load_state(slot)  emulator.delete_state(slot)
-  - slot is a value from 1 to 12
+  - slot is an integer value from 1 to 12
 emulator.elapsed_cycles(): GB/GBC reports t-cycles
 emulator.pause_at_cycle(cycle)
 emulator.pause_after_elapsed_cycles(elapsed_cycles)
 emulator.open_debugger(debug_page)
     - "video", "audio"
 emulator.close_debugger()
+emulator.fast_forward(speed)
+    - speed is an integer value from 1 to 5
+emulator.volume(volume)
+    - volume is an integer value from 0 to 100
 
 Breakpoints:
 debug.set_breakpoint(address, {pause = true})
@@ -108,13 +112,15 @@ pub enum ScriptRequest {
     StepInstruction,
     StepFrame,
     Resume,
-    SaveState(usize),
-    LoadState(usize),
-    DeleteState(usize),
+    SaveState(i64),
+    LoadState(i64),
+    DeleteState(i64),
     StartVideo,
     StopVideo,
     OpenDebugger(Option<DebugPage>),
     CloseDebugger,
+    FastForward(u8),
+    Volume(u8),
 }
 
 // is it incredibly lazy to create a new enum to compare strings with another nearly duplicate enum with a one variant difference
@@ -758,11 +764,31 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            let set_emulator_save_state = |name: &'static str, request: fn(usize) -> ScriptRequest| {
+            emulator.set("fast_forward", scope.create_function(|_, speed: i64| {
+                if (1..=5).contains(&speed) {
+                    requests.borrow_mut().push(ScriptRequest::FastForward(speed as u8));
+                } else {
+                    output.borrow_mut().push("speed must be an integer value from 1 to 5".to_string());
+                }
+
+                Ok(())
+            })?)?;
+
+            emulator.set("volume", scope.create_function(|_, volume: i64| {
+                if (0..=100).contains(&volume) {
+                    requests.borrow_mut().push(ScriptRequest::Volume(volume as u8));
+                } else {
+                    output.borrow_mut().push("volume must be an integer from 0 to 100".to_string());
+                }
+
+                Ok(())
+            })?)?;
+
+            let set_emulator_save_state = |name: &'static str, request: fn(i64) -> ScriptRequest| {
                 let requests = &requests;
                 let output = &output;
-                let function = scope.create_function(move |_, slot: usize| {
-                if  !(1..=SAVE_STATE_SLOTS).contains(&slot) {
+                let function = scope.create_function(move |_, slot: i64| {
+                if  !(1i64..=(SAVE_STATE_SLOTS as i64)).contains(&slot) {
                         output.borrow_mut().push(mlua::Error::runtime(format!("Only save states 1-{SAVE_STATE_SLOTS} can be used")).to_string());
                     } else {
                         requests.borrow_mut().push(request(slot));

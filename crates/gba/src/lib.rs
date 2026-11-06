@@ -58,6 +58,7 @@ pub struct GBASession {
     state_dir: PathBuf,
     recorded_audio: Vec<u8>,
     video_recorder: VideoRecorder,
+    speed: u8,
 }
 
 impl GBASession {
@@ -92,6 +93,7 @@ impl GBASession {
             state_dir,
             recorded_audio: Vec::new(),
             video_recorder: VideoRecorder::new(),
+            speed: 1,
         })
     }
 
@@ -158,7 +160,8 @@ impl GBASession {
         let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
             / (AUDIO_TARGET_OCCUPANCY as f64))
             .clamp(-1.0, 1.0);
-        let ideal_sample_period = GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64;
+        let ideal_sample_period =
+            GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64 * self.speed as f64;
         self.gba.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
         self.gba
@@ -232,10 +235,18 @@ impl EmulatorSession for GBASession {
         self.dynamic_rate_control();
 
         let mut frames = 1;
-        if self.run_frame(volume) {
-            while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
-                self.frame_deadline += self.frame_period;
-                frames += 1;
+        if self.speed == 1 {
+            if self.run_frame(volume) {
+                while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
+                    self.frame_deadline += self.frame_period;
+                    frames += 1;
+                }
+            }
+        } else {
+            for _ in 0..self.speed {
+                if !self.run_frame(volume) {
+                    break;
+                }
             }
         }
 
@@ -444,6 +455,13 @@ impl EmulatorSession for GBASession {
             self.screen
                 .draw(&self.gba.bus.ppu.frontend, self.menu_height);
         }
+    }
+
+    // of course emerald maxes at 220 :/, hamtaro maxes at 340 ish so speed limit will be
+    // set to 5 even though gb technically can go faser, breakpoint just docks 20 fps due to
+    // the hashmap key check (before adding range check), refine later since it works now with very minimal changes anyway
+    fn set_speed(&mut self, speed: u8) {
+        self.speed = speed;
     }
 }
 

@@ -49,6 +49,7 @@ A Game Boy Advance & Game Boy/Game Boy Color emulator.
 - Rebindable keyboard, hotkey and controller inputs
 - Controller rumble
 - Screenshots and GIF + Video recordings
+- Fast forward
 - Fullscreen, volume, and solar sensor slider for Boktai
 - Settings saved in [`config.toml`](https://github.com/donishadsmith/Engram#settings)
 - Windows, MacOS, Linux

@@ -48,6 +48,7 @@ pub struct GameBoySession {
     state_dir: PathBuf,
     recorded_audio: Vec<u8>,
     video_recorder: VideoRecorder,
+    speed: u8,
 }
 
 impl GameBoySession {
@@ -80,6 +81,7 @@ impl GameBoySession {
             state_dir,
             recorded_audio: Vec::new(),
             video_recorder: VideoRecorder::new(),
+            speed: 1,
         })
     }
 
@@ -88,7 +90,7 @@ impl GameBoySession {
             match &mut self.audio {
                 Some(audio) => audio.play(sample, volume),
                 None => {}
-            };
+            }
 
             self.recorded_audio
                 .extend_from_slice(&f32::to_le_bytes(sample));
@@ -151,7 +153,8 @@ impl GameBoySession {
         let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
             / (AUDIO_TARGET_OCCUPANCY as f64))
             .clamp(-1.0, 1.0);
-        let ideal_sample_period = GB_CLOCK_SPEED as f64 / audio.sample_rate as f64;
+        let ideal_sample_period =
+            GB_CLOCK_SPEED as f64 / audio.sample_rate as f64 * self.speed as f64;
         self.gameboy.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
         self.gameboy
@@ -223,10 +226,18 @@ impl EmulatorSession for GameBoySession {
         self.dynamic_rate_control();
 
         let mut frames = 1;
-        if self.run_frame(volume) {
-            while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
-                self.frame_deadline += self.frame_period;
-                frames += 1;
+        if self.speed == 1 {
+            if self.run_frame(volume) {
+                while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
+                    self.frame_deadline += self.frame_period;
+                    frames += 1;
+                }
+            }
+        } else {
+            for _ in 0..self.speed {
+                if !self.run_frame(volume) {
+                    break;
+                }
             }
         }
 
@@ -429,5 +440,9 @@ impl EmulatorSession for GameBoySession {
     fn draw(&mut self) {
         self.screen
             .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
+    }
+
+    fn set_speed(&mut self, speed: u8) {
+        self.speed = speed
     }
 }

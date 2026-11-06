@@ -175,6 +175,8 @@ where
     pub halted: bool,
     pub interrupt: Interrupt,
     #[serde(skip)]
+    pub breakpoint_range: Option<(u32, u32)>,
+    #[serde(skip)]
     pub breakpoint_hit: Option<u32>,
     #[serde(skip)]
     pub breakpoint_queue: HashMap<u32, EmulatorState>,
@@ -193,6 +195,7 @@ where
             halt_bug: false,
             halted: false,
             interrupt: Interrupt::new(),
+            breakpoint_range: None,
             breakpoint_hit: None,
             breakpoint_queue: HashMap::new(),
             resume_from: None,
@@ -210,6 +213,7 @@ where
             halt_bug: false,
             halted: false,
             interrupt: Interrupt::new(),
+            breakpoint_range: None,
             breakpoint_hit: None,
             breakpoint_queue: HashMap::new(),
             resume_from: None,
@@ -223,15 +227,35 @@ where
     }
 
     pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
+        let address = address as u16 as u32;
         let action = if pause {
             EmulatorState::Paused
         } else {
             EmulatorState::Running
         };
 
-        self.breakpoint_queue
-            .insert(address as u16 as u32, action)
-            .is_none()
+        if self.breakpoint_range.is_none() {
+            self.breakpoint_range = Some((address, address));
+        } else {
+            let (min, max) = self.breakpoint_range.unwrap();
+            self.breakpoint_range = Some((min.min(address), max.max(address)));
+        }
+
+        self.breakpoint_queue.insert(address, action).is_none()
+    }
+
+    pub fn breakpoint_in_range(&self, address: u32) -> bool {
+        if let Some((min, max)) = self.breakpoint_range {
+            return address >= min && address <= max;
+        }
+
+        false
+    }
+
+    pub fn remove_breakpoint(&mut self, address: u32) {
+        self.breakpoint_queue.remove(&(address as u16 as u32));
+        let keys = self.breakpoint_queue.keys().copied();
+        self.breakpoint_range = keys.clone().min().zip(keys.max());
     }
 
     pub fn push(&mut self, address: u16) {
@@ -285,7 +309,8 @@ where
         */
         if !self.halted {
             let executing_address = self.registers.program_counter.address.wrapping_sub(1) as u32;
-            if self.breakpoint_queue.contains_key(&executing_address)
+            if self.breakpoint_in_range(executing_address)
+                && self.breakpoint_queue.contains_key(&executing_address)
                 && self.resume_from != Some(executing_address)
             {
                 self.breakpoint_hit = Some(executing_address);

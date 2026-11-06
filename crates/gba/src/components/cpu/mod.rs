@@ -506,6 +506,8 @@ pub struct Arm7tdmi {
     pub intr_wait_resume: bool,
     pub entered_idle_loop: bool,
     #[serde(skip)]
+    pub breakpoint_range: Option<(u32, u32)>,
+    #[serde(skip)]
     pub breakpoint_hit: Option<u32>,
     #[serde(skip)]
     pub breakpoint_queue: HashMap<u32, EmulatorState>,
@@ -524,6 +526,7 @@ impl Arm7tdmi {
             intr_wait_resume: false,
             entered_idle_loop: false,
             breakpoint_hit: None,
+            breakpoint_range: None,
             breakpoint_queue: HashMap::new(),
             resume_from: None,
         }
@@ -541,17 +544,37 @@ impl Arm7tdmi {
             EmulatorState::Running
         };
 
+        if self.breakpoint_range.is_none() {
+            self.breakpoint_range = Some((address, address));
+        } else {
+            let (min, max) = self.breakpoint_range.unwrap();
+            self.breakpoint_range = Some((min.min(address), max.max(address)));
+        }
+
         self.breakpoint_queue.insert(address, action).is_none()
+    }
+
+    pub fn breakpoint_in_range(&self, address: u32) -> bool {
+        if let Some((min, max)) = self.breakpoint_range {
+            return address >= min && address <= max;
+        }
+
+        false
     }
 
     pub fn remove_breakpoint(&mut self, address: u32) {
         self.breakpoint_queue.remove(&address);
+        let keys = self.breakpoint_queue.keys().copied();
+        self.breakpoint_range = keys.clone().min().zip(keys.max());
     }
 
     pub fn step(&mut self, bus: &mut Bus) {
         if self.pipeline.full() {
             let address = self.next_executing_address();
-            if self.breakpoint_queue.contains_key(&address) && self.resume_from != Some(address) {
+            if self.breakpoint_in_range(address)
+                && self.breakpoint_queue.contains_key(&address)
+                && self.resume_from != Some(address)
+            {
                 self.breakpoint_hit = Some(address);
 
                 return;

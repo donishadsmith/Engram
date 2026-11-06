@@ -342,7 +342,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                     session.skip_toast = true;
                 }
                 ScriptRequest::SaveState(slot) => {
-                    let (mut message, success) = save_slots_lua(emulator, slot, true);
+                    let (mut message, success) = save_slots_lua(emulator, slot as usize, true);
                     if !success {
                         message = mlua::Error::RuntimeError(message).to_string();
                     }
@@ -350,7 +350,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                     session.lua_editor.push_output(vec![message]);
                 }
                 ScriptRequest::LoadState(slot) => {
-                    let (mut message, success) = load_slots_lua(emulator, slot, true);
+                    let (mut message, success) = load_slots_lua(emulator, slot as usize, true);
                     if !success {
                         message = mlua::Error::RuntimeError(message).to_string();
                     }
@@ -358,7 +358,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                     session.lua_editor.push_output(vec![message]);
                 }
                 ScriptRequest::DeleteState(slot) => {
-                    let (mut message, success) = delete_slots_lua(emulator, slot, true);
+                    let (mut message, success) = delete_slots_lua(emulator, slot as usize, true);
                     if !success {
                         message = mlua::Error::RuntimeError(message).to_string();
                     }
@@ -402,6 +402,20 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                             .lua_editor
                             .push_output(vec!["no debuggers available".to_string()]);
                     }
+                }
+                ScriptRequest::FastForward(speed) => {
+                    let old_speed = session.speed;
+                    session.speed = speed;
+
+                    if old_speed != session.speed {
+                        session
+                            .lua_editor
+                            .push_output(vec![format!("emulator set to {speed} speed")]);
+                    }
+                }
+                // literally added due to headache inducing fast forward music
+                ScriptRequest::Volume(volume) => {
+                    session.master_volume = volume;
                 }
             }
         }

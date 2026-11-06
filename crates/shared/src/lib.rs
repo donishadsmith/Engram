@@ -199,6 +199,8 @@ pub trait EmulatorSession {
     fn get_rom_name(&self) -> String;
 
     fn draw(&mut self) {}
+
+    fn set_speed(&mut self, _speed: u8) {}
 }
 
 pub trait ScriptTarget: Emulator {

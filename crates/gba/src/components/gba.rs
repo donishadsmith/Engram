@@ -252,6 +252,7 @@ impl GBA {
         );
         data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
         data.cpu.resume_from = self.cpu.resume_from;
+        data.cpu.breakpoint_range = self.cpu.breakpoint_range;
 
         swap(&mut data.bus.gamepak.rom, &mut self.bus.gamepak.rom);
         swap(
@@ -348,6 +349,7 @@ impl Emulator for GBA {
 
     fn clear_all_breakpoints(&mut self) {
         self.cpu.breakpoint_queue.clear();
+        self.cpu.breakpoint_range = None;
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {

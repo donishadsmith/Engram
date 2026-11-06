@@ -239,6 +239,7 @@ impl GameBoy {
         );
         data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
         data.cpu.resume_from = self.cpu.resume_from;
+        data.cpu.breakpoint_range = self.cpu.breakpoint_range;
 
         data.apu_sample_period = self.apu_sample_period;
 
@@ -314,7 +315,7 @@ impl Emulator for GameBoy {
     }
 
     fn remove_breakpoint(&mut self, address: u32) {
-        self.cpu.breakpoint_queue.remove(&address);
+        self.cpu.remove_breakpoint(address);
     }
 
     fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
@@ -327,6 +328,7 @@ impl Emulator for GameBoy {
 
     fn clear_all_breakpoints(&mut self) {
         self.cpu.breakpoint_queue.clear();
+        self.cpu.breakpoint_range = None;
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {

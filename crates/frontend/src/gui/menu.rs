@@ -336,13 +336,6 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
 
 pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiState) {
     ui.menu_button("Settings", |ui| {
-        ui.menu_button(format!("{}  Volume", icons::SPEAKER_HIGH), |ui| {
-            ui.add(
-                egui::Slider::new(&mut session.master_volume, 0..=100)
-                    .text("Adjust volume for the emulator."),
-            );
-        });
-
         ui.menu_button(
             format!("{}  Key/Controller Bindings", icons::KEYBOARD),
             |ui| {
@@ -588,13 +581,22 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
 
         let mut take_snapshot = false;
         let mut stop_all_recordings = false;
-        if let Some(emulator) = &session.emulator {
-            let fps = if session.is_running() {
-                emulator.get_fps()
-            } else {
-                0.0
-            };
+        let rom_name = session
+            .emulator
+            .as_ref()
+            .map(|emulator| emulator.get_rom_name())
+            .unwrap_or("".to_string());
+        let fps = if session.is_running() {
+            session
+                .emulator
+                .as_ref()
+                .map(|emulator| emulator.get_fps())
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
 
+        if session.emulator.is_some() {
             let (text, hover) = if session.is_paused()
                 || session
                     .return_state
@@ -619,7 +621,6 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 .sense(egui::Sense::click()),
             );
 
-            let rom_name = emulator.get_rom_name();
             if title
                 .union(state)
                 .on_hover_text(hover)
@@ -636,7 +637,50 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                     session.toasts.success("Emulator is running");
                 }
             }
+        }
 
+        let volume_icon = match session.master_volume {
+            0 => icons::SPEAKER_X,
+            1..=50 => icons::SPEAKER_LOW,
+            _ => icons::SPEAKER_HIGH,
+        };
+
+        ui.menu_button(
+            egui::RichText::new(format!("|   {volume_icon}")).strong(),
+            |ui| {
+                ui.add(egui::Slider::new(&mut session.master_volume, 0..=100).text("Volume"));
+            },
+        );
+
+        let mut layout_job = egui::text::LayoutJob::default();
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        layout_job.append(
+            &format!("| {}  Speed: ", icons::FAST_FORWARD),
+            0.0,
+            egui::TextFormat::simple(font.clone(), ui.visuals().strong_text_color()),
+        );
+
+        layout_job.append(
+            &format!("{}x", session.speed),
+            0.0,
+            egui::TextFormat::simple(font, ui.visuals().text_color()),
+        );
+
+        let old_speed = session.speed;
+        egui::ComboBox::from_id_salt("Speed")
+            .selected_text(layout_job)
+            .show_ui(ui, |ui| {
+                for speed in 1..=5 {
+                    ui.selectable_value(&mut session.speed, speed, format!("{speed}x"));
+                }
+            });
+
+        if old_speed != session.speed {
+            let message = format!("Emulator set to {}x speed", session.speed);
+            session.toasts.warning(message);
+        }
+
+        if session.emulator.is_some() {
             if session.show_fps {
                 ui.label(
                     egui::RichText::new(format!("| {}  FPS: {:.1}", icons::GAUGE, fps)).strong(),

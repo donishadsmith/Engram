@@ -300,6 +300,8 @@ pub struct R3000a {
     pub registers: Registers,
     pub cop0: Cop0,
     #[serde(skip)]
+    pub breakpoint_range: Option<(u32, u32)>,
+    #[serde(skip)]
     pub breakpoint_hit: Option<u32>,
     #[serde(skip)]
     pub breakpoint_queue: HashMap<u32, EmulatorState>,
@@ -312,6 +314,7 @@ impl R3000a {
         Self {
             registers: Registers::new(),
             cop0: Cop0::new(),
+            breakpoint_range: None,
             breakpoint_hit: None,
             breakpoint_queue: HashMap::new(),
             resume_from: None,
@@ -320,7 +323,8 @@ impl R3000a {
 
     pub fn step(&mut self, bus: &mut Bus) {
         let executing_address = self.registers.pc;
-        if self.breakpoint_queue.contains_key(&executing_address)
+        if self.breakpoint_in_range(executing_address)
+            && self.breakpoint_queue.contains_key(&executing_address)
             && self.resume_from != Some(executing_address)
         {
             self.breakpoint_hit = Some(executing_address);
@@ -354,7 +358,28 @@ impl R3000a {
             EmulatorState::Running
         };
 
+        if self.breakpoint_range.is_none() {
+            self.breakpoint_range = Some((address, address));
+        } else {
+            let (min, max) = self.breakpoint_range.unwrap();
+            self.breakpoint_range = Some((min.min(address), max.max(address)));
+        }
+
         self.breakpoint_queue.insert(address, action).is_none()
+    }
+
+    pub fn breakpoint_in_range(&self, address: u32) -> bool {
+        if let Some((min, max)) = self.breakpoint_range {
+            return address >= min && address <= max;
+        }
+
+        false
+    }
+
+    pub fn remove_breakpoint(&mut self, address: u32) {
+        self.breakpoint_queue.remove(&address);
+        let keys = self.breakpoint_queue.keys().copied();
+        self.breakpoint_range = keys.clone().min().zip(keys.max());
     }
 
     // 3.3.2 in See mips run (TODO; make sure to cross reference the rustation guide + ppsx-spx):

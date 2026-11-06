@@ -159,6 +159,7 @@ pub struct Session {
     pub rumble_strength: f32,
     pub controller_hotkey_fired: bool,
     pub rom_dialog: Option<PendingDialog>,
+    pub speed: u8,
 }
 
 impl Session {
@@ -172,7 +173,6 @@ impl Session {
         let mut display = config.display.clone();
         display.width = Some(display.width.unwrap_or(1280));
         display.height = Some(display.height.unwrap_or(900));
-        let show_fps = config.show_fps;
         let mut gilrs = Gilrs::new().ok();
 
         let rumble_effect = if let Some(gilrs) = &mut gilrs {
@@ -225,7 +225,7 @@ impl Session {
             input_source: None,
             startup_deadline: Some(Instant::now() + Duration::from_secs(1)),
             paused_due_to_minimize: false,
-            show_fps,
+            show_fps: config.show_fps.unwrap_or(true),
             show_notifications: config.show_notifications.unwrap_or(true),
             // realizing that my poor and impulsive cotrol over a mouse requires this
             destructive_action_popup: config.destructive_action_popup.unwrap_or(false),
@@ -242,6 +242,7 @@ impl Session {
             rumble_strength: config.rumble_strength.unwrap_or(1.0),
             controller_hotkey_fired: false,
             rom_dialog: None,
+            speed: config.speed.unwrap_or(1).clamp(1, 5),
         }
     }
 
@@ -324,6 +325,8 @@ impl Session {
             self.key_bindings.keys(key_id)
         };
 
+        emulator.set_speed(self.speed);
+
         emulator.run(
             &get_relevant_key_presses(
                 &keymap[..index],
@@ -371,13 +374,14 @@ impl Session {
             master_volume: Some(self.master_volume),
             gif_settings: self.gif.settings(),
             display: self.display,
-            show_fps: self.show_fps,
+            show_fps: Some(self.show_fps),
             show_notifications: Some(self.show_notifications),
             destructive_action_popup: Some(self.destructive_action_popup),
             analog_deadzone_radius: Some(self.analog_deadzone_radius),
             map_analog_to_dpad: self.map_analog_to_dpad,
             rumble_effect_on: self.rumble_effect_on,
             rumble_strength: Some(self.rumble_strength),
+            speed: Some(self.speed),
         };
 
         save_config(&config)
