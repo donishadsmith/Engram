@@ -14,10 +14,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             target: ubuntu_x64
             ext: ''
-          - runner: ubuntu-26.04-arm
+          - runner: ubuntu-22.04-arm
             target: ubuntu_arm64
             ext: ''
           - runner: windows-latest
