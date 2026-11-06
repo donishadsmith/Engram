@@ -171,6 +171,8 @@ pub struct Registers {
     pub lo: u32,
     pub pending_branch: bool,
     pub in_delay_slot: bool,
+    pub load_delay_1: Option<(usize, u32)>,
+    pub load_delay_2: Option<(usize, u32)>,
 }
 
 impl Registers {
@@ -185,6 +187,8 @@ impl Registers {
             lo: 0,
             pending_branch: false,
             in_delay_slot: false,
+            load_delay_1: None,
+            load_delay_2: None,
         }
     }
 
@@ -214,7 +218,10 @@ impl Registers {
             }
             RegisterAlias::Hi => self.hi = value,
             RegisterAlias::Lo => self.lo = value,
-            _ => self.r[alias as usize] = value,
+            _ => {
+                self.cancel_load(alias as usize);
+                self.r[alias as usize] = value
+            }
         }
     }
 
@@ -228,6 +235,8 @@ impl Registers {
     }
 
     pub fn write_cpu_register(&mut self, index: usize, value: u32) {
+        self.cancel_load(index);
+
         if index != 0 {
             self.r[index] = value;
         }
@@ -240,6 +249,49 @@ impl Registers {
 
     pub fn link(&mut self, destination: usize) {
         self.write_cpu_register(destination, self.next_pc);
+    }
+
+    /*
+    Forgot about the load delay thing
+
+    https://problemkaputt.de/psxspx-cpu-load-store-opcodes.htm
+    Caution - Load Delay
+    The loaded data is NOT available to the next opcode, ie. the
+    target register isn't updated until the next opcode has completed.
+    So, if the next opcode tries to read from the load destination
+    register, then it would (usually) receive the OLD value of that
+    register (unless an IRQ occurs between the load and next opcode,
+    in that case the load would complete during IRQ handling, and so,
+    the next opcode would receive the NEW value).
+
+    https://github.com/stenzek/duckstation/blob/master/src/core/cpu_core.cpp
+     */
+    pub fn take_pending_load(&mut self) {
+        if let Some((register, value)) = self.load_delay_1.take() {
+            self.write_cpu_register(register, value)
+        }
+
+        self.load_delay_1 = self.load_delay_2.take();
+    }
+
+    pub fn cancel_load(&mut self, register: usize) {
+        if let Some((pending_register, _)) = &self.load_delay_1
+            && *pending_register == register
+        {
+            self.load_delay_1 = None;
+        }
+
+        if let Some((pending_register, _)) = &self.load_delay_2
+            && *pending_register == register
+        {
+            self.load_delay_2 = None;
+        }
+    }
+
+    pub fn set_load(&mut self, register: usize, value: u32) {
+        self.cancel_load(register);
+
+        self.load_delay_2 = Some((register, value));
     }
 }
 
@@ -288,6 +340,8 @@ impl R3000a {
         // less, read stuff when cache miss occurs, can do cache stuff later for accuracy
         // cache probably should be [CacheLine; 256]
 
+        self.registers.take_pending_load();
+
         self.execute_instruction(MipsInstruction(
             bus.read::<u32>(executing_address, MemoryAccessor::Cpu),
         ));
@@ -313,6 +367,7 @@ impl R3000a {
             self.registers.current_pc,
             self.registers.in_delay_slot,
         );
+
         self.registers.pc = handler_address;
         self.registers.next_pc = self.registers.pc.wrapping_add(4);
     }
@@ -520,7 +575,8 @@ impl R3000a {
 
     fn lb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
-        self.registers.write_cpu_register(
+
+        self.registers.set_load(
             instruction.rt(),
             bus.read::<u8>(address, MemoryAccessor::Cpu) as i8 as i32 as u32,
         );
@@ -528,7 +584,8 @@ impl R3000a {
 
     fn lbu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
-        self.registers.write_cpu_register(
+
+        self.registers.set_load(
             instruction.rt(),
             bus.read::<u8>(address, MemoryAccessor::Cpu) as u32,
         );
@@ -543,7 +600,7 @@ impl R3000a {
             return;
         }
 
-        self.registers.write_cpu_register(
+        self.registers.set_load(
             instruction.rt(),
             bus.read::<u16>(address, MemoryAccessor::Cpu) as i16 as i32 as u32,
         );
@@ -558,7 +615,7 @@ impl R3000a {
             return;
         }
 
-        self.registers.write_cpu_register(
+        self.registers.set_load(
             instruction.rt(),
             bus.read::<u16>(address, MemoryAccessor::Cpu) as u32,
         );
@@ -578,7 +635,7 @@ impl R3000a {
             return;
         }
 
-        self.registers.write_cpu_register(
+        self.registers.set_load(
             instruction.rt(),
             bus.read::<u32>(address, MemoryAccessor::Cpu),
         );
@@ -588,12 +645,35 @@ impl R3000a {
         todo!()
     }
 
+    fn get_value(&self, instruction: MipsInstruction) -> u32 {
+        match self.registers.load_delay_1 {
+            Some((register, pending)) if register == instruction.rt() => pending,
+            _ => self.registers.r[instruction.rt()],
+        }
+    }
+
     fn lwl(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
-        todo!()
+        let address = self.create_address(instruction);
+        let word = bus.read::<u32>(address & !3, MemoryAccessor::Cpu);
+        let offset = ((address & 3) * 8) as usize;
+        let start_index = 24 - offset;
+        let mut value = self.get_value(instruction);
+        value.clear_bit_range(start_index..32);
+
+        self.registers
+            .set_load(instruction.rt(), value | (word << start_index));
     }
 
     fn lwr(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
-        todo!()
+        let address = self.create_address(instruction);
+        let word = bus.read::<u32>(address & !3, MemoryAccessor::Cpu);
+        let offset = ((address & 3) * 8) as usize;
+        let end_index = 32 - offset;
+        let mut value = self.get_value(instruction);
+        value.clear_bit_range(0..end_index);
+
+        self.registers
+            .set_load(instruction.rt(), value | (word >> offset));
     }
 
     fn mfcz(&mut self, instruction: MipsInstruction) {
