@@ -37,8 +37,8 @@ fn conf() -> Conf {
 
     Conf {
         window_title: "Engram".to_string(),
-        window_width: display.width.unwrap_or(1280),
-        window_height: display.height.unwrap_or(900),
+        window_width: display.width.unwrap_or(1600),
+        window_height: display.height.unwrap_or(1200),
         fullscreen: display.fullscreen,
         high_dpi: true,
         // apparantly vsync is kinda sorta togglelable in miniquad: https://docs.rs/miniquad/0.4.11/miniquad/conf/struct.Platform.html

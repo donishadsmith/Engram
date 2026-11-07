@@ -6,7 +6,7 @@ use macroquad::{
 };
 use shared::{
     EmulatorId, EmulatorState,
-    constants::SAVE_STATE_SLOTS,
+    constants::{FAST_FORWARD, SAVE_STATE_SLOTS},
     input::{
         enums::{Hotkeys, KeyId},
         utils::keycode_to_string,
@@ -390,8 +390,8 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
                 .clicked()
             {
                 set_fullscreen(false);
-                let screen_width = 1280.0 / screen_dpi_scale();
-                let screen_height = 900.0 / screen_dpi_scale();
+                let screen_width = 1600.0 / screen_dpi_scale();
+                let screen_height = 1200.0 / screen_dpi_scale();
                 request_new_screen_size(screen_width, screen_height);
                 session.display.fullscreen = false;
             }
@@ -670,7 +670,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         egui::ComboBox::from_id_salt("Speed")
             .selected_text(layout_job)
             .show_ui(ui, |ui| {
-                for speed in 1..=5 {
+                for speed in 1..=FAST_FORWARD {
                     ui.selectable_value(&mut session.speed, speed, format!("{speed}x"));
                 }
             });

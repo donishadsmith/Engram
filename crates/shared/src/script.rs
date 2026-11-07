@@ -1,6 +1,6 @@
 use crate::{
     EmulatorId, EmulatorState, ScriptTarget,
-    constants::SAVE_STATE_SLOTS,
+    constants::{FAST_FORWARD, SAVE_STATE_SLOTS},
     debug::DebugPage,
     enums::{FetchSource, Width},
     input::constants::DEFAULT_GBA_KEYS,
@@ -765,10 +765,10 @@ impl ScriptEngine {
             })?)?;
 
             emulator.set("fast_forward", scope.create_function(|_, speed: i64| {
-                if (1..=5).contains(&speed) {
+                if (1..=(FAST_FORWARD as i64)).contains(&speed) {
                     requests.borrow_mut().push(ScriptRequest::FastForward(speed as u8));
                 } else {
-                    output.borrow_mut().push("speed must be an integer value from 1 to 5".to_string());
+                    output.borrow_mut().push(format!("speed must be an integer value from 1 to {FAST_FORWARD}"));
                 }
 
                 Ok(())

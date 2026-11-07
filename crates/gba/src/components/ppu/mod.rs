@@ -447,20 +447,24 @@ impl Ppu {
         mode_type: RenderType,
         matrix: Option<AffineMatrix>,
     ) {
-        for pixel in 0..SCREEN_WIDTH {
-            let index = match mode_type {
-                RenderType::Text => self.get_text_bg_palette_index(bg_line.id, pixel),
-                RenderType::Affine => {
-                    self.get_affine_bg_palette_index(bg_line.id, pixel, matrix.unwrap())
-                }
-                RenderType::Bitmap => self.get_bitmap_palette_index(
-                    get_bitmap_mode_params(self.current_mode()),
-                    pixel,
-                    matrix.unwrap(),
-                ),
-            };
+        if mode_type == RenderType::Text {
+            self.populate_text_line(bg_line);
+        } else {
+            for pixel in 0..SCREEN_WIDTH {
+                let index = match mode_type {
+                    RenderType::Affine => {
+                        self.get_affine_bg_palette_index(bg_line.id, pixel, matrix.unwrap())
+                    }
+                    RenderType::Bitmap => self.get_bitmap_palette_index(
+                        get_bitmap_mode_params(self.current_mode()),
+                        pixel,
+                        matrix.unwrap(),
+                    ),
+                    RenderType::Text => unreachable!(),
+                };
 
-            bg_line.palette_indices[pixel] = index
+                bg_line.palette_indices[pixel] = index
+            }
         }
 
         if self.bg_control.from_index(bg_line.id).is_set(6) {
@@ -559,8 +563,8 @@ impl Ppu {
         matches!(self.current_mode(), 3 | 5) && layer_id == LayerId::Bg2
     }
 
-    fn get_text_bg_palette_index(&mut self, bg_id: usize, lcd_pixel_x: usize) -> Option<usize> {
-        let control = self.bg_control.from_index(bg_id);
+    fn populate_text_line(&mut self, bg_line: &mut BgLine) {
+        let control = self.bg_control.from_index(bg_line.id);
         let character_base_block = control.get_bit_range(2..4) as usize;
         let screen_base_block = control.get_bit_range(8..13) as usize;
         let (bpp, bpp_value) = if control.is_set(7) {
@@ -569,18 +573,15 @@ impl Ppu {
             (Bpp::FourBpp, 4)
         };
 
-        let lcd = Coordinate {
-            x: lcd_pixel_x,
-            y: self.vertical_text_mosaic(bg_id),
-        };
-        let bg_screen_size = self.text_bg_screen_size(bg_id);
+        let lcd_y = self.vertical_text_mosaic(bg_line.id);
+        let bg_screen_size = self.text_bg_screen_size(bg_line.id);
         let bg_scroll = Coordinate {
-            x: self.bg_text_offset.from_index(bg_id * 2) as usize,
-            y: self.bg_text_offset.from_index((bg_id * 2) + 1) as usize,
+            x: self.bg_text_offset.from_index(bg_line.id * 2) as usize,
+            y: self.bg_text_offset.from_index((bg_line.id * 2) + 1) as usize,
         };
 
-        self.bg_debug_info[bg_id] = BgDebugInfo {
-            mosaic: self.bg_control.from_index(bg_id).is_set(6),
+        self.bg_debug_info[bg_line.id] = BgDebugInfo {
+            mosaic: control.is_set(6),
             affine: false,
             screen_size: (bg_screen_size.x, bg_screen_size.y),
             reference_coordinate: (bg_scroll.x as f32, bg_scroll.y as f32),
@@ -589,55 +590,55 @@ impl Ppu {
             screen_base_block,
         };
 
-        let bg_map_pixel = Coordinate {
-            x: (lcd.x + bg_scroll.x) % bg_screen_size.x,
-            y: (lcd.y + bg_scroll.y) % bg_screen_size.y,
-        };
-
-        let tile = Coordinate {
-            x: bg_map_pixel.x / 8,
-            y: bg_map_pixel.y / 8,
-        };
-
-        let mut pixel_inside_tile = Coordinate {
-            x: bg_map_pixel.x % 8,
-            y: bg_map_pixel.y % 8,
-        };
-
+        let bg_map_pixel_y = (lcd_y + bg_scroll.y) % bg_screen_size.y;
+        let tile_y = bg_map_pixel_y / 8;
         let blocks_per_row = (bg_screen_size.x / 8) / 32;
-        let screen_block_offset = (tile.y / 32) * blocks_per_row + (tile.x / 32);
-        let screen_block_vram_index = (screen_base_block + screen_block_offset) * 0x800
-            + ((tile.y % 32) * 32 + (tile.x % 32)) * 2;
 
-        let tile_attributes = u16::from_le_bytes([
-            self.vram[screen_block_vram_index],
-            self.vram[screen_block_vram_index + 1],
-        ]);
-        let tileset_offset = tile_attributes.get_bit_range(0..10) as usize;
-        pixel_inside_tile.x = if tile_attributes.is_set(10) {
-            7 - pixel_inside_tile.x
-        } else {
-            pixel_inside_tile.x
-        };
-        pixel_inside_tile.y = if tile_attributes.is_set(11) {
-            7 - pixel_inside_tile.y
-        } else {
-            pixel_inside_tile.y
-        };
-        let palette_bank = tile_attributes.get_bit_range(12..16) as usize;
+        let mut last_tile_x = usize::MAX;
+        let mut tile_attributes = 0u16;
 
-        let palette_index = self.read_tile_pixel_palette_index(
-            character_base_block,
-            tileset_offset,
-            pixel_inside_tile,
-            bpp,
-            palette_bank,
-        );
+        for lcd_x in 0..SCREEN_WIDTH {
+            let bg_map_pixel_x = (lcd_x + bg_scroll.x) % bg_screen_size.x;
+            let tile_x = bg_map_pixel_x / 8;
 
-        if palette_index == 0 {
-            None
-        } else {
-            Some(palette_index)
+            if tile_x != last_tile_x {
+                let screen_block_offset = (tile_y / 32) * blocks_per_row + (tile_x / 32);
+                let screen_block_vram_index = (screen_base_block + screen_block_offset) * 0x800
+                    + ((tile_y % 32) * 32 + (tile_x % 32)) * 2;
+                tile_attributes = u16::from_le_bytes([
+                    self.vram[screen_block_vram_index],
+                    self.vram[screen_block_vram_index + 1],
+                ]);
+
+                last_tile_x = tile_x;
+            }
+
+            let pixel_inside_tile = Coordinate {
+                x: if tile_attributes.is_set(10) {
+                    7 - bg_map_pixel_x % 8
+                } else {
+                    bg_map_pixel_x % 8
+                },
+                y: if tile_attributes.is_set(11) {
+                    7 - bg_map_pixel_y % 8
+                } else {
+                    bg_map_pixel_y % 8
+                },
+            };
+
+            let palette_index = self.read_tile_pixel_palette_index(
+                character_base_block,
+                tile_attributes.get_bit_range(0..10) as usize,
+                pixel_inside_tile,
+                bpp,
+                tile_attributes.get_bit_range(12..16) as usize,
+            );
+
+            bg_line.palette_indices[lcd_x] = if palette_index == 0 {
+                None
+            } else {
+                Some(palette_index)
+            };
         }
     }
 

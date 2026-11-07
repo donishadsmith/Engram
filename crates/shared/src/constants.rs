@@ -6,3 +6,8 @@ pub const ALLOWED_AUDIO_PITCH_DEVIATION: f64 = 0.005;
 pub const MAX_FRAMES_PER_CALL: u32 = 4;
 
 pub const SAVE_STATE_SLOTS: usize = 12;
+
+// TODO: Optimize gba ppu, dying a little inside that my gba ppu does a lot of work per pixel and kneecaped the gba fps to
+// be anywhere from 240 fos to 450 for my cpu, but still increasing since gameboy can technically reach 1000-1200 max but still capping
+// to 500 fps
+pub const FAST_FORWARD: u8 = 10;
