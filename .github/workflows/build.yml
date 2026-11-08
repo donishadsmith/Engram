@@ -46,7 +46,7 @@ jobs:
 
       - name: Rename binary
         shell: bash
-        run: mv target/release/Engram${{ matrix.ext }} target/release/Engram-${{ matrix.target }}${{ matrix.ext }}
+        run: mv target/release/Engram${{ matrix.ext }} target/release/Engram-${{ github.ref_name }}-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Attach files to GitHub Release
         uses: softprops/action-gh-release@v2
