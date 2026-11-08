@@ -11,3 +11,5 @@ pub const SAVE_STATE_SLOTS: usize = 12;
 // be anywhere from 240 fos to 450 for my cpu, but still increasing since gameboy can technically reach 1000-1200 max but still capping
 // to 500 fps
 pub const FAST_FORWARD: u8 = 10;
+
+pub const GB_REFRESH_RATE: f64 = 59.727;

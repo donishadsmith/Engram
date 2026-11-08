@@ -937,12 +937,38 @@ impl R3000a {
         todo!()
     }
 
+    /*
+    psx-spx
+
+    The CPU has four separate byte-access signals, so, within a 32bit location,
+    it can transfer all fragments of Rt at once (including for odd 24bit amounts).
+    The transferred data is not zero- or sign-expanded, eg. when transferring 8bit
+    data, the other 24bit of Rt and [mem] will remain intact.
+     */
+
     fn swl(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
-        todo!()
+        let address = self.create_address(instruction);
+        let mut word = bus.read::<u32>(address & !3, MemoryAccessor::CpuReadWriteModify);
+        let offset = ((address & 3) * 8) as usize;
+        let end_index = offset + 8;
+        let value = self.registers.r[instruction.rt()];
+        word.clear_bit_range(0..end_index);
+
+        bus.write::<u32>(
+            address & !3,
+            word | (value >> (32 - end_index)),
+            MemoryAccessor::Cpu,
+        );
     }
 
     fn swr(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
-        todo!()
+        let address = self.create_address(instruction);
+        let mut word = bus.read::<u32>(address & !3, MemoryAccessor::CpuReadWriteModify);
+        let offset = ((address & 3) * 8) as usize;
+        let value = self.registers.r[instruction.rt()];
+        word.clear_bit_range(offset..32);
+
+        bus.write::<u32>(address & !3, word | (value << offset), MemoryAccessor::Cpu);
     }
 
     fn syscall(&mut self, instruction: MipsInstruction) {

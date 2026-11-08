@@ -160,6 +160,7 @@ pub enum MemoryAccessor {
     Cpu,
     Dma, // for organization but may do something wiht it later
     Lua,
+    CpuReadWriteModify,
 }
 
 impl MemoryAccessor {

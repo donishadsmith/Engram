@@ -23,7 +23,9 @@ use shared::{
     DebugInterface, Emulator, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
     config::system_dir,
-    constants::{ALLOWED_AUDIO_PITCH_DEVIATION, MAX_FRAMES_PER_CALL, SAVE_STATE_SLOTS},
+    constants::{
+        ALLOWED_AUDIO_PITCH_DEVIATION, GB_REFRESH_RATE, MAX_FRAMES_PER_CALL, SAVE_STATE_SLOTS,
+    },
     debug::DebugPage,
     render::{Frame, Screen},
     script::ScriptEngine,
@@ -160,8 +162,8 @@ impl GBASession {
         let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
             / (AUDIO_TARGET_OCCUPANCY as f64))
             .clamp(-1.0, 1.0);
-        let ideal_sample_period =
-            GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64 * self.speed as f64;
+        let ideal_sample_period = GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64
+            * (self.get_fps() / GB_REFRESH_RATE).clamp(1.0, self.speed as f64);
         self.gba.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
         self.gba
