@@ -245,8 +245,9 @@ impl EmulatorSession for GBASession {
                 }
             }
         } else {
+            let start = Instant::now();
             for _ in 0..self.speed {
-                if !self.run_frame(volume) {
+                if !self.run_frame(volume) || start.elapsed() >= self.frame_period {
                     break;
                 }
             }
