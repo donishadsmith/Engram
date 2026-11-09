@@ -89,7 +89,7 @@ impl GBA {
         } else {
             self.cpu.step(bus);
 
-            if self.cpu.breakpoint_hit.is_some() {
+            if self.cpu.breakpoint_manager.hit.is_some() {
                 return;
             }
         }
@@ -247,12 +247,9 @@ impl GBA {
         data.bus.watchpoint_pause = self.bus.watchpoint_pause;
 
         swap(
-            &mut data.cpu.breakpoint_queue,
-            &mut self.cpu.breakpoint_queue,
+            &mut data.cpu.breakpoint_manager,
+            &mut self.cpu.breakpoint_manager,
         );
-        data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
-        data.cpu.resume_from = self.cpu.resume_from;
-        data.cpu.breakpoint_range = self.cpu.breakpoint_range;
 
         swap(&mut data.bus.gamepak.rom, &mut self.bus.gamepak.rom);
         swap(
@@ -336,24 +333,29 @@ impl Emulator for GBA {
     }
 
     fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        self.cpu.set_breakpoint(address, pause)
+        self.cpu.breakpoint_manager.set(address, pause)
     }
 
     fn remove_breakpoint(&mut self, address: u32) {
-        self.cpu.remove_breakpoint(address);
+        self.cpu.breakpoint_manager.remove(address);
     }
 
     fn take_breakpoint_hit(&mut self) -> Option<u32> {
-        take(&mut self.cpu.breakpoint_hit)
+        take(&mut self.cpu.breakpoint_manager.hit)
     }
 
     fn clear_all_breakpoints(&mut self) {
-        self.cpu.breakpoint_queue.clear();
-        self.cpu.breakpoint_range = None;
+        self.cpu.breakpoint_manager.queue.clear();
+        self.cpu.breakpoint_manager.range = None;
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
-        self.cpu.breakpoint_queue.clone().into_iter().collect()
+        self.cpu
+            .breakpoint_manager
+            .queue
+            .clone()
+            .into_iter()
+            .collect()
     }
 
     fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {

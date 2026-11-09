@@ -1,8 +1,6 @@
 pub mod arm;
 pub mod thumb;
 
-use std::collections::HashMap;
-
 use arm::{decode::*, execute::*};
 use thumb::decode::*;
 
@@ -11,7 +9,7 @@ use crate::components::{
     bus::{AccessType, Bus},
 };
 use serde::{Deserialize, Serialize};
-use shared::{EmulatorState, traits::BitOps};
+use shared::{structs::BreakpointManager, traits::BitOps};
 
 /*
 The ARM University Program, ARM Architecture Fundamentals: https://www.youtube.com/watch?v=7LqPJGnBPMM
@@ -506,13 +504,7 @@ pub struct Arm7tdmi {
     pub intr_wait_resume: bool,
     pub entered_idle_loop: bool,
     #[serde(skip)]
-    pub breakpoint_range: Option<(u32, u32)>,
-    #[serde(skip)]
-    pub breakpoint_hit: Option<u32>,
-    #[serde(skip)]
-    pub breakpoint_queue: HashMap<u32, EmulatorState>,
-    #[serde(skip)]
-    pub resume_from: Option<u32>,
+    pub breakpoint_manager: BreakpointManager,
 }
 
 impl Arm7tdmi {
@@ -525,10 +517,7 @@ impl Arm7tdmi {
             next_fetch_access: AccessType::Sequential,
             intr_wait_resume: false,
             entered_idle_loop: false,
-            breakpoint_hit: None,
-            breakpoint_range: None,
-            breakpoint_queue: HashMap::new(),
-            resume_from: None,
+            breakpoint_manager: BreakpointManager::default(),
         }
     }
 
@@ -537,51 +526,20 @@ impl Arm7tdmi {
         self.registers.reset_to_boot();
     }
 
-    pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        let action = if pause {
-            EmulatorState::Paused
-        } else {
-            EmulatorState::Running
-        };
-
-        if self.breakpoint_range.is_none() {
-            self.breakpoint_range = Some((address, address));
-        } else {
-            let (min, max) = self.breakpoint_range.unwrap();
-            self.breakpoint_range = Some((min.min(address), max.max(address)));
-        }
-
-        self.breakpoint_queue.insert(address, action).is_none()
-    }
-
-    pub fn breakpoint_in_range(&self, address: u32) -> bool {
-        if let Some((min, max)) = self.breakpoint_range {
-            return address >= min && address <= max;
-        }
-
-        false
-    }
-
-    pub fn remove_breakpoint(&mut self, address: u32) {
-        self.breakpoint_queue.remove(&address);
-        let keys = self.breakpoint_queue.keys().copied();
-        self.breakpoint_range = keys.clone().min().zip(keys.max());
-    }
-
     pub fn step(&mut self, bus: &mut Bus) {
         if self.pipeline.full() {
             let address = self.next_executing_address();
-            if self.breakpoint_in_range(address)
-                && self.breakpoint_queue.contains_key(&address)
-                && self.resume_from != Some(address)
+            if self.breakpoint_manager.in_range(address)
+                && self.breakpoint_manager.queue.contains_key(&address)
+                && self.breakpoint_manager.resume_from != Some(address)
             {
-                self.breakpoint_hit = Some(address);
+                self.breakpoint_manager.hit = Some(address);
 
                 return;
             }
         }
 
-        self.resume_from = None;
+        self.breakpoint_manager.resume_from = None;
 
         self.branched = false;
         self.entered_idle_loop = false;

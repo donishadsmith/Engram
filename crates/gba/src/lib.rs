@@ -144,11 +144,7 @@ impl GBASession {
 
     fn drain_audio(&mut self, volume: u8) {
         for sample in self.gba.bus.apu.sample_buffer.drain(..) {
-            match &mut self.audio {
-                Some(audio) => audio.play(sample, volume),
-                None => {}
-            }
-
+            let _ = self.audio.as_mut().map(|audio| audio.play(sample, volume));
             self.recorded_audio
                 .extend_from_slice(&f32::to_le_bytes(sample));
         }
@@ -189,7 +185,7 @@ impl GBASession {
 
         self.drain_audio(volume);
 
-        if self.gba.cpu.breakpoint_hit.is_some() {
+        if self.gba.cpu.breakpoint_manager.hit.is_some() {
             self.set_resume();
         }
     }
@@ -198,7 +194,7 @@ impl GBASession {
         loop {
             self.tick(volume);
 
-            if self.gba.cpu.breakpoint_hit.is_some()
+            if self.gba.cpu.breakpoint_manager.hit.is_some()
                 || self.gba.bus.watchpoint_pause
                 || self.gba.pause_at_current_cycle()
             {
@@ -256,8 +252,9 @@ impl EmulatorSession for GBASession {
         let breakpoint_action = self
             .gba
             .cpu
-            .breakpoint_hit
-            .and_then(|address| self.gba.cpu.breakpoint_queue.get(&address).copied());
+            .breakpoint_manager
+            .hit
+            .and_then(|address| self.gba.cpu.breakpoint_manager.queue.get(&address).copied());
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, false);
 
@@ -354,7 +351,7 @@ impl EmulatorSession for GBASession {
         while !self.gba.bus.ppu.frame_ready {
             self.tick(volume);
 
-            if self.gba.cpu.breakpoint_hit.is_some()
+            if self.gba.cpu.breakpoint_manager.hit.is_some()
                 || self.gba.bus.watchpoint_pause
                 || self.gba.pause_at_current_cycle()
             {
@@ -366,7 +363,7 @@ impl EmulatorSession for GBASession {
     }
 
     fn set_resume(&mut self) {
-        self.gba.cpu.resume_from = Some(self.gba.cpu.next_executing_address());
+        self.gba.cpu.breakpoint_manager.resume_from = Some(self.gba.cpu.next_executing_address());
     }
 
     fn save_state(&mut self, slot: usize) -> Result<(), Error> {

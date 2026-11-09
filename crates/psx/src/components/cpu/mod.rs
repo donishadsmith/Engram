@@ -44,8 +44,8 @@ use crate::components::{
     },
 };
 use serde::{Deserialize, Serialize};
-use shared::{EmulatorState, script::MemoryAccessor, traits::BitOps};
-use std::{collections::HashMap, mem::take};
+use shared::{script::MemoryAccessor, structs::BreakpointManager, traits::BitOps};
+use std::mem::take;
 
 pub trait SignOps {
     fn sign_extend(self) -> u32;
@@ -66,6 +66,10 @@ impl MipsInstruction {
     }
 
     pub fn secondary_opcode(self) -> u32 {
+        self.0.get_bit_range(16..21)
+    }
+
+    pub fn tertiary_opcode(self) -> u32 {
         self.0.get_bit_range(0..6)
     }
 
@@ -300,13 +304,7 @@ pub struct R3000a {
     pub registers: Registers,
     pub cop0: Cop0,
     #[serde(skip)]
-    pub breakpoint_range: Option<(u32, u32)>,
-    #[serde(skip)]
-    pub breakpoint_hit: Option<u32>,
-    #[serde(skip)]
-    pub breakpoint_queue: HashMap<u32, EmulatorState>,
-    #[serde(skip)]
-    pub resume_from: Option<u32>,
+    pub breakpoint_manager: BreakpointManager,
 }
 
 impl R3000a {
@@ -314,25 +312,25 @@ impl R3000a {
         Self {
             registers: Registers::new(),
             cop0: Cop0::new(),
-            breakpoint_range: None,
-            breakpoint_hit: None,
-            breakpoint_queue: HashMap::new(),
-            resume_from: None,
+            breakpoint_manager: BreakpointManager::default(),
         }
     }
 
     pub fn step(&mut self, bus: &mut Bus) {
         let executing_address = self.registers.pc;
-        if self.breakpoint_in_range(executing_address)
-            && self.breakpoint_queue.contains_key(&executing_address)
-            && self.resume_from != Some(executing_address)
+        if self.breakpoint_manager.in_range(executing_address)
+            && self
+                .breakpoint_manager
+                .queue
+                .contains_key(&executing_address)
+            && self.breakpoint_manager.resume_from != Some(executing_address)
         {
-            self.breakpoint_hit = Some(executing_address);
+            self.breakpoint_manager.hit = Some(executing_address);
 
             return;
         }
 
-        self.resume_from = None;
+        self.breakpoint_manager.resume_from = None;
 
         self.registers.in_delay_slot = take(&mut self.registers.pending_branch);
         self.registers.current_pc = executing_address;
@@ -346,42 +344,17 @@ impl R3000a {
 
         self.registers.take_pending_load();
 
-        self.execute_instruction(MipsInstruction(
-            bus.read::<u32>(executing_address, MemoryAccessor::Cpu),
-        ));
-    }
+        if !executing_address.is_multiple_of(4) {
+            self.cop0.set_bad_address(executing_address);
+            self.exception(ExceptionCode::LoadAddressError);
 
-    // TODO: alot of the same breakpoint logic copy and pasted for all emus since it works
-    // consolidate later when less tired
-    pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        let action = if pause {
-            EmulatorState::Paused
-        } else {
-            EmulatorState::Running
+            return;
         };
 
-        if self.breakpoint_range.is_none() {
-            self.breakpoint_range = Some((address, address));
-        } else {
-            let (min, max) = self.breakpoint_range.unwrap();
-            self.breakpoint_range = Some((min.min(address), max.max(address)));
-        }
-
-        self.breakpoint_queue.insert(address, action).is_none()
-    }
-
-    pub fn breakpoint_in_range(&self, address: u32) -> bool {
-        if let Some((min, max)) = self.breakpoint_range {
-            return address >= min && address <= max;
-        }
-
-        false
-    }
-
-    pub fn remove_breakpoint(&mut self, address: u32) {
-        self.breakpoint_queue.remove(&address);
-        let keys = self.breakpoint_queue.keys().copied();
-        self.breakpoint_range = keys.clone().min().zip(keys.max());
+        self.execute_instruction(
+            MipsInstruction(bus.read::<u32>(executing_address, MemoryAccessor::Cpu)),
+            bus,
+        );
     }
 
     // 3.3.2 in See mips run (TODO; make sure to cross reference the rustation guide + ppsx-spx):
@@ -399,7 +372,85 @@ impl R3000a {
         self.registers.next_pc = self.registers.pc.wrapping_add(4);
     }
 
-    pub fn execute_instruction(&mut self, instruction: MipsInstruction) {}
+    pub fn execute_instruction(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        match instruction.primary_opcode() {
+            0b0 => match instruction.tertiary_opcode() {
+                0b100000 => self.add(instruction),
+                0b100001 => self.addu(instruction),
+                0b100100 => self.and(instruction),
+                0b001101 => self.breakpoint(instruction),
+                0b011010 => self.div(instruction, bus),
+                0b011011 => self.divu(instruction, bus),
+                0b001001 => self.jalr(instruction),
+                0b001000 => self.jr(instruction),
+                0b010000 => self.mfhi(instruction),
+                0b010010 => self.mflo(instruction),
+                0b010001 => self.mthi(instruction),
+                0b010011 => self.mtlo(instruction),
+                0b011000 => self.mult(instruction, bus),
+                0b011001 => self.multu(instruction, bus),
+                0b100111 => self.nor(instruction),
+                0b100101 => self.or(instruction),
+                0b0 => self.sll(instruction),
+                0b000100 => self.sllv(instruction),
+                0b101010 => self.slt(instruction),
+                0b101011 => self.sltu(instruction),
+                0b000011 => self.sra(instruction),
+                0b000111 => self.srav(instruction),
+                0b000010 => self.srl(instruction),
+                0b000110 => self.srlv(instruction),
+                0b100010 => self.sub(instruction),
+                0b100011 => self.subu(instruction),
+                0b001100 => self.syscall(instruction),
+                0b100110 => self.xor(instruction),
+                _ => todo!(),
+            },
+            0b001000 => self.addi(instruction),
+            0b001001 => self.addiu(instruction),
+            0b001100 => self.andi(instruction),
+            0b000100 => self.beq(instruction),
+            0b000001 => match instruction.secondary_opcode() {
+                0b00001 => self.bgez(instruction),
+                0b10001 => self.bgezal(instruction),
+                0b0 => self.bltz(instruction),
+                0b10000 => self.bltzal(instruction),
+                _ => todo!(),
+            },
+            0b000111 => self.bgtz(instruction),
+            0b000110 => self.blez(instruction),
+            0b000101 => self.bne(instruction),
+            0b010000..=0b010011 => match instruction.rs() {
+                0 => self.mfcz(instruction),
+                0b00010 => self.cfcz(instruction),
+                0b00100 => self.mtcz(instruction),
+                0b00110 => self.ctcz(instruction),
+                rs if (rs as u8).is_set(4) => self.copz(instruction),
+                _ => todo!(),
+            },
+            0b000010 => self.jump(instruction),
+            0b000011 => self.jal(instruction),
+            0b100000 => self.lb(instruction, bus),
+            0b100100 => self.lbu(instruction, bus),
+            0b100001 => self.lh(instruction, bus),
+            0b100101 => self.lhu(instruction, bus),
+            0b001111 => self.lui(instruction),
+            0b100011 => self.lw(instruction, bus),
+            0b110000..=0b110011 => self.lwcz(instruction, bus),
+            0b100010 => self.lwl(instruction, bus),
+            0b100110 => self.lwr(instruction, bus),
+            0b001101 => self.ori(instruction),
+            0b101000 => self.sb(instruction, bus),
+            0b101001 => self.sh(instruction, bus),
+            0b001010 => self.slti(instruction),
+            0b001011 => self.sltiu(instruction),
+            0b101011 => self.sw(instruction, bus),
+            0b111000..=0b111011 => self.swcz(instruction, bus),
+            0b101010 => self.swl(instruction, bus),
+            0b101110 => self.swr(instruction, bus),
+            0b001110 => self.xori(instruction),
+            _ => todo!(),
+        }
+    }
 
     // https://cgi.cse.unsw.edu.au/~cs3231/doc/R3000.pdf
     //  https://psx-spx.consoledev.net/cpuspecifications/
@@ -475,8 +526,9 @@ impl R3000a {
     }
 
     fn bgezal(&mut self, instruction: MipsInstruction) {
+        let condition = self.registers.r[instruction.rs()].is_clear(31);
         self.registers.link(31);
-        self.branch_if(self.registers.r[instruction.rs()].is_clear(31), instruction);
+        self.branch_if(condition, instruction);
     }
 
     fn bgtz(&mut self, instruction: MipsInstruction) {
@@ -500,8 +552,9 @@ impl R3000a {
     }
 
     fn bltzal(&mut self, instruction: MipsInstruction) {
+        let condition = self.registers.r[instruction.rs()].is_set(31);
         self.registers.link(31);
-        self.branch_if(self.registers.r[instruction.rs()].is_set(31), instruction);
+        self.branch_if(condition, instruction);
     }
 
     fn bne(&mut self, instruction: MipsInstruction) {
@@ -572,28 +625,12 @@ impl R3000a {
 
     fn jalr(&mut self, instruction: MipsInstruction) {
         let address = self.registers.r[instruction.rs()];
-
-        if !address.is_multiple_of(4) {
-            self.cop0.set_bad_address(address);
-            self.exception(ExceptionCode::LoadAddressError);
-
-            return;
-        };
-
         self.registers.link(instruction.rd());
         self.registers.branch(address);
     }
 
     fn jr(&mut self, instruction: MipsInstruction) {
-        let address = self.registers.r[instruction.rs()];
-        if !address.is_multiple_of(4) {
-            self.cop0.set_bad_address(address);
-            self.exception(ExceptionCode::LoadAddressError);
-
-            return;
-        };
-
-        self.registers.branch(address);
+        self.registers.branch(self.registers.r[instruction.rs()]);
     }
 
     fn create_address(&mut self, instruction: MipsInstruction) -> u32 {
@@ -708,7 +745,7 @@ impl R3000a {
             0 => match Cop0Registers::to_register(instruction.rd()) {
                 Ok(usable_register) => self
                     .registers
-                    .write_cpu_register(instruction.rt(), self.cop0.move_from(usable_register)),
+                    .set_load(instruction.rt(), self.cop0.move_from(usable_register)),
                 Err(reserved) => self.exception(reserved),
             },
             2 => todo!(),
@@ -756,7 +793,7 @@ impl R3000a {
         bus.add_cycles(match rs {
             0..=0x000007FF | 0xFFFFF800..=0xFFFFFFFF => 6,
             0x00000800..=0x000FFFFF | 0xFFF00000..=0xFFFFF801 => 9,
-            0x00100000..=0x7FFFFFFF | 0x80000000..=0xFFF00001 => 13,
+            0x00100000..=0xFFF00001 => 13,
         });
     }
 

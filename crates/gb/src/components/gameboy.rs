@@ -69,7 +69,7 @@ impl GameBoy {
         let hits_before = self.cpu.bus.watchpoint_hits.borrow().len();
 
         let machine_cycles = self.cpu.cycle() as u32;
-        if self.cpu.breakpoint_hit.is_some() {
+        if self.cpu.breakpoint_manager.hit.is_some() {
             return 0;
         }
 
@@ -125,7 +125,7 @@ impl GameBoy {
                 self.cpu.bus.gamepak.mbc.reset_rumble_counter();
             }
 
-            if self.cpu.breakpoint_hit.is_some()
+            if self.cpu.breakpoint_manager.hit.is_some()
                 || self.cpu.bus.watchpoint_pause.get()
                 || self.cpu.bus.ppu.frame_ready
                 || self.cpu.bus.ppu.lcd_off_frame && self.remaining_cycles <= 0
@@ -234,12 +234,9 @@ impl GameBoy {
         );
 
         swap(
-            &mut data.cpu.breakpoint_queue,
-            &mut self.cpu.breakpoint_queue,
+            &mut data.cpu.breakpoint_manager,
+            &mut self.cpu.breakpoint_manager,
         );
-        data.cpu.breakpoint_hit = self.cpu.breakpoint_hit;
-        data.cpu.resume_from = self.cpu.resume_from;
-        data.cpu.breakpoint_range = self.cpu.breakpoint_range;
 
         data.apu_sample_period = self.apu_sample_period;
 
@@ -315,24 +312,29 @@ impl Emulator for GameBoy {
     }
 
     fn remove_breakpoint(&mut self, address: u32) {
-        self.cpu.remove_breakpoint(address);
+        self.cpu.breakpoint_manager.remove(address);
     }
 
     fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        self.cpu.set_breakpoint(address, pause)
+        self.cpu.breakpoint_manager.set(address, pause)
     }
 
     fn take_breakpoint_hit(&mut self) -> Option<u32> {
-        take(&mut self.cpu.breakpoint_hit)
+        take(&mut self.cpu.breakpoint_manager.hit)
     }
 
     fn clear_all_breakpoints(&mut self) {
-        self.cpu.breakpoint_queue.clear();
-        self.cpu.breakpoint_range = None;
+        self.cpu.breakpoint_manager.queue.clear();
+        self.cpu.breakpoint_manager.range = None;
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
-        self.cpu.breakpoint_queue.clone().into_iter().collect()
+        self.cpu
+            .breakpoint_manager
+            .queue
+            .clone()
+            .into_iter()
+            .collect()
     }
 
     fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {

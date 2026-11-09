@@ -4,9 +4,7 @@ pub mod instructions;
 pub mod interrupts;
 pub mod registers;
 
-use std::collections::HashMap;
-
-use shared::{EmulatorState, script::MemoryAccessor};
+use shared::{script::MemoryAccessor, structs::BreakpointManager};
 
 use crate::components::{
     bus::AddressBus,
@@ -175,13 +173,7 @@ where
     pub halted: bool,
     pub interrupt: Interrupt,
     #[serde(skip)]
-    pub breakpoint_range: Option<(u32, u32)>,
-    #[serde(skip)]
-    pub breakpoint_hit: Option<u32>,
-    #[serde(skip)]
-    pub breakpoint_queue: HashMap<u32, EmulatorState>,
-    #[serde(skip)]
-    pub resume_from: Option<u32>,
+    pub breakpoint_manager: BreakpointManager,
 }
 
 impl<A> SharpSm83<A>
@@ -195,10 +187,7 @@ where
             halt_bug: false,
             halted: false,
             interrupt: Interrupt::new(),
-            breakpoint_range: None,
-            breakpoint_hit: None,
-            breakpoint_queue: HashMap::new(),
-            resume_from: None,
+            breakpoint_manager: BreakpointManager::default(),
         };
 
         cpu.fetch();
@@ -213,10 +202,7 @@ where
             halt_bug: false,
             halted: false,
             interrupt: Interrupt::new(),
-            breakpoint_range: None,
-            breakpoint_hit: None,
-            breakpoint_queue: HashMap::new(),
-            resume_from: None,
+            breakpoint_manager: BreakpointManager::default(),
         };
 
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
@@ -224,38 +210,6 @@ where
             Some(cpu.bus.read(opcode_address, MemoryAccessor::Cpu));
 
         cpu
-    }
-
-    pub fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        let address = address as u16 as u32;
-        let action = if pause {
-            EmulatorState::Paused
-        } else {
-            EmulatorState::Running
-        };
-
-        if self.breakpoint_range.is_none() {
-            self.breakpoint_range = Some((address, address));
-        } else {
-            let (min, max) = self.breakpoint_range.unwrap();
-            self.breakpoint_range = Some((min.min(address), max.max(address)));
-        }
-
-        self.breakpoint_queue.insert(address, action).is_none()
-    }
-
-    pub fn breakpoint_in_range(&self, address: u32) -> bool {
-        if let Some((min, max)) = self.breakpoint_range {
-            return address >= min && address <= max;
-        }
-
-        false
-    }
-
-    pub fn remove_breakpoint(&mut self, address: u32) {
-        self.breakpoint_queue.remove(&(address as u16 as u32));
-        let keys = self.breakpoint_queue.keys().copied();
-        self.breakpoint_range = keys.clone().min().zip(keys.max());
     }
 
     pub fn push(&mut self, address: u16) {
@@ -309,17 +263,20 @@ where
         */
         if !self.halted {
             let executing_address = self.registers.program_counter.address.wrapping_sub(1) as u32;
-            if self.breakpoint_in_range(executing_address)
-                && self.breakpoint_queue.contains_key(&executing_address)
-                && self.resume_from != Some(executing_address)
+            if self.breakpoint_manager.in_range(executing_address)
+                && self
+                    .breakpoint_manager
+                    .queue
+                    .contains_key(&executing_address)
+                && self.breakpoint_manager.resume_from != Some(executing_address)
             {
-                self.breakpoint_hit = Some(executing_address);
+                self.breakpoint_manager.hit = Some(executing_address);
 
                 return 0;
             }
         }
 
-        self.resume_from = None;
+        self.breakpoint_manager.resume_from = None;
 
         if self.halted {
             if self.bus.pending_interrupt() == 0 {

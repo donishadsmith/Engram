@@ -89,11 +89,7 @@ impl GameBoySession {
 
     fn drain_audio(&mut self, volume: u8) {
         for sample in self.gameboy.cpu.bus.apu.sample_buffer.drain(..) {
-            match &mut self.audio {
-                Some(audio) => audio.play(sample, volume),
-                None => {}
-            }
-
+            let _ = self.audio.as_mut().map(|audio| audio.play(sample, volume));
             self.recorded_audio
                 .extend_from_slice(&f32::to_le_bytes(sample));
         }
@@ -143,7 +139,7 @@ impl GameBoySession {
 
         self.draw();
 
-        if self.gameboy.cpu.breakpoint_hit.is_some() {
+        if self.gameboy.cpu.breakpoint_manager.hit.is_some() {
             self.set_resume();
         }
     }
@@ -155,7 +151,7 @@ impl GameBoySession {
         let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
             / (AUDIO_TARGET_OCCUPANCY as f64))
             .clamp(-1.0, 1.0);
-        let ideal_sample_period = GB_CLOCK_SPEED as f64 / audio.sample_rate as f64
+        let ideal_sample_period = GB_CLOCK_SPEED / audio.sample_rate as f64
             * (self.get_fps() / GB_REFRESH_RATE).clamp(1.0, self.speed as f64);
         self.gameboy.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
@@ -189,7 +185,7 @@ impl GameBoySession {
                 self.on_frame();
             }
 
-            if self.gameboy.cpu.breakpoint_hit.is_some()
+            if self.gameboy.cpu.breakpoint_manager.hit.is_some()
                 || self.gameboy.cpu.bus.watchpoint_pause.get()
                 || self.gameboy.pause_at_current_cycle()
             {
@@ -244,11 +240,14 @@ impl EmulatorSession for GameBoySession {
             }
         }
 
-        let breakpoint_action = self
-            .gameboy
-            .cpu
-            .breakpoint_hit
-            .and_then(|address| self.gameboy.cpu.breakpoint_queue.get(&address).copied());
+        let breakpoint_action = self.gameboy.cpu.breakpoint_manager.hit.and_then(|address| {
+            self.gameboy
+                .cpu
+                .breakpoint_manager
+                .queue
+                .get(&address)
+                .copied()
+        });
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, false);
 
@@ -332,7 +331,7 @@ impl EmulatorSession for GameBoySession {
         while !self.gameboy.cpu.bus.ppu.frame_ready && cycles < T_CYCLES_PER_FRAME_DOUBLE {
             cycles += self.gameboy.step();
 
-            if self.gameboy.cpu.breakpoint_hit.is_some()
+            if self.gameboy.cpu.breakpoint_manager.hit.is_some()
                 || self.gameboy.cpu.bus.watchpoint_pause.get()
             {
                 break;
@@ -343,7 +342,7 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn set_resume(&mut self) {
-        self.gameboy.cpu.resume_from = Some(
+        self.gameboy.cpu.breakpoint_manager.resume_from = Some(
             self.gameboy
                 .cpu
                 .registers

@@ -1,10 +1,12 @@
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread::spawn,
 };
 
 use crate::{
+    EmulatorState,
     traits::UnsignedInt,
     utils::{get_halfword_shift, get_word_mask, zero_arr},
 };
@@ -124,6 +126,58 @@ impl PendingDialog {
             Err(TryRecvError::Empty) => None,
             Ok(path) => Some(path),
             Err(TryRecvError::Disconnected) => Some(None),
+        }
+    }
+}
+
+// TODO: attempt to do something similar with watchpoints to clean up code when i feel like it
+pub struct BreakpointManager {
+    pub range: Option<(u32, u32)>,
+    pub hit: Option<u32>,
+    pub queue: HashMap<u32, EmulatorState>,
+    pub resume_from: Option<u32>,
+}
+
+impl BreakpointManager {
+    pub fn in_range(&self, address: u32) -> bool {
+        if let Some((min, max)) = self.range {
+            return address >= min && address <= max;
+        }
+
+        false
+    }
+
+    pub fn set(&mut self, address: u32, pause: bool) -> bool {
+        let action = if pause {
+            EmulatorState::Paused
+        } else {
+            EmulatorState::Running
+        };
+
+        if self.range.is_none() {
+            self.range = Some((address, address));
+        } else {
+            let (min, max) = self.range.unwrap();
+            self.range = Some((min.min(address), max.max(address)));
+        }
+
+        self.queue.insert(address, action).is_none()
+    }
+
+    pub fn remove(&mut self, address: u32) {
+        self.queue.remove(&address);
+        let keys = self.queue.keys().copied();
+        self.range = keys.clone().min().zip(keys.max());
+    }
+}
+
+impl Default for BreakpointManager {
+    fn default() -> Self {
+        Self {
+            range: None,
+            hit: None,
+            queue: HashMap::new(),
+            resume_from: None,
         }
     }
 }
