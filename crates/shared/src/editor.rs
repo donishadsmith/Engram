@@ -1,7 +1,7 @@
 use crate::{script::API, structs::PendingDialog};
 use arboard::Clipboard;
-use egui::{Context, ScrollArea, Window, text::CursorRange};
-use egui_code_editor::{CodeEditor, ColorTheme, Syntax};
+use egui::{Context, ScrollArea, Window, text::CCursorRange};
+use egui_code_editor::{CodeEditor, ColorTheme, Completer, Syntax};
 use egui_phosphor::regular as icons;
 use macroquad::input::{
     KeyCode::{self, RightShift},
@@ -10,7 +10,7 @@ use macroquad::input::{
 use regex::Regex;
 use rfd::FileDialog;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs::{read_to_string, write},
     hash::Hash,
     mem::take,
@@ -61,6 +61,19 @@ fn new_file_shortcut() -> bool {
     super_key_down() && is_key_pressed(KeyCode::N)
 }
 
+fn member_table(code: &str, cursor: usize) -> Option<&str> {
+    let is_word = |character: char| character.is_alphanumeric() || character == '_';
+    let end = code
+        .char_indices()
+        .nth(cursor)
+        .map_or(code.len(), |(index, _)| index);
+
+    let before = code[..end].trim_end_matches(is_word).strip_suffix('.')?;
+    let table = &before[before.trim_end_matches(is_word).len()..];
+
+    (!table.is_empty()).then_some(table)
+}
+
 #[derive(Clone, Debug)]
 struct ScriptTab {
     id: u64,
@@ -72,6 +85,72 @@ struct ScriptTab {
 impl Hash for ScriptTab {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
+    }
+}
+
+// https://github.com/microsoft/vscode/blob/main/extensions/theme-defaults/themes/hc_black.json
+// goated theme
+pub const DARK_HIGH_CONTRAST: ColorTheme = ColorTheme {
+    name: "Dark High Contrast",
+    dark: true,
+    bg: "000000",
+    cursor: "FFFFFF",
+    selection: "264F78",
+    comments: "7ca668",
+    functions: "DCDCAA",
+    keywords: "569cd6",
+    literals: "9cdcfe",
+    numerics: "b5cea8",
+    punctuation: "d4d4d4",
+    strs: "ce9178",
+    types: "4EC9B0",
+    special: "DCDCAA",
+};
+
+// the illusion of choice, but primarily just different dark theme variants
+// just adding a single white theme
+#[derive(Clone, Copy)]
+pub enum EditorTheme {
+    DarkHighContrast,
+    GithubDark,
+    GithubLight, // yikes
+    AyuDark,
+    AyuMirage,
+    GruvboxDark,
+}
+
+impl EditorTheme {
+    pub fn from_name(name: String) -> EditorTheme {
+        match name.as_str() {
+            "Ayu Dark" => EditorTheme::AyuDark,
+            "Dark High Contrast" => EditorTheme::DarkHighContrast,
+            "Gruvbox Dark" => EditorTheme::GruvboxDark,
+            "Ayu Mirage" => EditorTheme::AyuMirage,
+            "Github Light" => EditorTheme::GithubLight,
+            _ => EditorTheme::GithubDark,
+        }
+    }
+
+    pub fn to_name(self) -> String {
+        match self {
+            EditorTheme::AyuDark => "Ayu Dark".to_string(),
+            EditorTheme::DarkHighContrast => "Dark High Contrast".to_string(),
+            EditorTheme::AyuMirage => "Ayu Mirage".to_string(),
+            EditorTheme::GruvboxDark => "Gruvbox Dark".to_string(),
+            EditorTheme::GithubLight => "Github Light".to_string(),
+            _ => "Github Dark".to_string(),
+        }
+    }
+
+    fn to_theme(self) -> ColorTheme {
+        match self {
+            EditorTheme::AyuDark => ColorTheme::AYU_DARK,
+            EditorTheme::DarkHighContrast => DARK_HIGH_CONTRAST,
+            EditorTheme::AyuMirage => ColorTheme::AYU_MIRAGE,
+            EditorTheme::GruvboxDark => ColorTheme::GRUVBOX_DARK,
+            EditorTheme::GithubLight => ColorTheme::GITHUB_LIGHT,
+            _ => ColorTheme::GITHUB_DARK,
+        }
     }
 }
 
@@ -89,19 +168,50 @@ pub struct LuaEditor {
     file_dialog: Option<(EditorDialog, PendingDialog)>,
     regex: Regex,
     next_tab_id: u64,
+    syntax: Syntax,
+    completer: Completer,
+    member_completers: HashMap<&'static str, Completer>,
+    last_cursor: usize,
+    pub theme: EditorTheme,
 }
 
 impl LuaEditor {
-    pub fn new() -> Self {
-        let mut tabs = Vec::with_capacity(5);
-        let scipt = ScriptTab {
+    pub fn new(theme: EditorTheme) -> Self {
+        let mut tabs = Vec::with_capacity(MAX_TABS);
+        let script = ScriptTab {
             id: 1,
             code: String::new(),
             name: "Untitled-1".to_string(),
             path: None,
         };
 
-        tabs.push(scipt);
+        tabs.push(script);
+
+        let mut syntax = Syntax::lua();
+        let mut top_level_syntax = Syntax::lua();
+        let mut member_completers: HashMap<&'static str, Completer> = HashMap::new();
+
+        let api_call = Regex::new(r"(\w+)\.(\w+)\(").unwrap();
+        for call in api_call.captures_iter(API) {
+            let table = call.get(1).unwrap().as_str();
+            let method = call.get(2).unwrap().as_str();
+
+            syntax.special.insert(table);
+            syntax.special.insert(method);
+            top_level_syntax.special.insert(table);
+
+            member_completers
+                .entry(table)
+                .or_insert_with(|| Completer::default().with_auto_indent())
+                .push_word(method);
+        }
+
+        syntax.special.insert("print");
+        top_level_syntax.special.insert("print");
+
+        let completer = Completer::new_with_syntax(&top_level_syntax)
+            .with_user_words()
+            .with_auto_indent();
 
         Self {
             tabs,
@@ -117,6 +227,11 @@ impl LuaEditor {
             current_tab: 0,
             regex: Regex::new(r"^Untitled-\d{1,2}$").unwrap(),
             next_tab_id: 2,
+            syntax,
+            completer,
+            member_completers,
+            last_cursor: 0,
+            theme,
         }
     }
 
@@ -132,11 +247,23 @@ impl LuaEditor {
         let mut close_tab: Option<usize> = None;
         let mut add_tab = false;
 
+        let (bg_color, text_color) = match self.theme {
+            EditorTheme::DarkHighContrast => (egui::Color32::BLACK, egui::Color32::WHITE),
+            EditorTheme::GithubLight => (egui::Color32::WHITE, egui::Color32::BLACK),
+            _ => (egui::Color32::from_gray(27), egui::Color32::WHITE),
+        };
+
         Window::new("Lua Editor")
             .min_height(300.0)
             .min_width(400.0)
+            .default_height(700.0)
+            .frame(egui::Frame::window(&egui_ctx.global_style()).fill(bg_color))
             .open(&mut opened)
             .show(egui_ctx, |ui| {
+                if matches!(self.theme, EditorTheme::GithubLight) {
+                    *ui.visuals_mut() = egui::Visuals::light();
+                }
+
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.menu_button("File", |ui| {
@@ -154,7 +281,18 @@ impl LuaEditor {
                                 self.help_window = true;
                             }
 
-                            egui::Window::new("Help").default_width(500.0).vscroll(false).open(&mut self.help_window).show(ui.ctx(), |ui| {
+                            egui::Window::new("Help")
+                            .default_width(650.0)
+                            .vscroll(false)
+                            .frame(egui::Frame::window(&ui.ctx().global_style()).fill(bg_color))
+                            .open(&mut self.help_window)
+                            .show(ui.ctx(), |ui| {
+                                if matches!(self.theme, EditorTheme::GithubLight) {
+                                    *ui.visuals_mut() = egui::Visuals::light();
+                                }
+
+                                ui.visuals_mut().override_text_color = Some(text_color);
+
                                 ui.horizontal(|ui| {
                                     ui.selectable_value(&mut self.help_tab, HelpTab::Api, "API");
                                     ui.selectable_value(&mut self.help_tab, HelpTab::Shortcut, "Shortcuts");
@@ -180,6 +318,32 @@ impl LuaEditor {
                                     ).clicked() {
                                     self.termination_request = true;
                                 }
+
+                                ui.menu_button(format!("{}  Theme", icons::PAINT_BRUSH_BROAD), |ui| {
+                                    if ui.button("Ayu Dark").clicked() {
+                                        self.theme = EditorTheme::AyuDark
+                                    }
+
+                                    if ui.button("Ayu Mirage").clicked() {
+                                        self.theme = EditorTheme::AyuMirage
+                                    }
+
+                                    if ui.button("Dark High Contrast").clicked() {
+                                        self.theme = EditorTheme::DarkHighContrast
+                                    }
+
+                                    if ui.button("Github Dark").clicked() {
+                                        self.theme = EditorTheme::GithubDark
+                                    }
+
+                                    if ui.button("Github Light").clicked() {
+                                        self.theme = EditorTheme::GithubLight
+                                    }
+
+                                    if ui.button("Gruvbox Dark").clicked() {
+                                        self.theme = EditorTheme::GruvboxDark
+                                    }
+                                });
                             });
 
                             if ui.button(format!("{}  Run", icons::PLAY)).clicked() {
@@ -208,8 +372,7 @@ impl LuaEditor {
                         let plus_width = if can_add_tab { 28.0 } else { 0.0 };
                         let tab_width = (ui.available_width() - plus_width - gap_count * spacing) / tab_count;
 
-                        let current_id = self.tabs[self.current_tab].id;
-                        egui_dnd::dnd(ui, "Tabs").show_vec_sized(&mut self.tabs, egui::vec2(tab_width, tab_height), |ui, tab, handle, state| {
+                        egui_dnd::dnd(ui, "Tabs").with_drag_axis(egui_dnd::DragAxis::Horizontal).show_vec_sized(&mut self.tabs, egui::vec2(tab_width, tab_height), |ui, tab, handle, state| {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
@@ -265,26 +428,58 @@ impl LuaEditor {
                     self.add_tab();
                 }
 
-                egui::TopBottomPanel::top("Lua")
+                ui.separator();
+                if let Some(path) = self.get_script_ref().path.clone() {
+                    ui.horizontal(|ui| {
+                        ui.add_space(10.0);
+                        let steal_vs_code_breadcrumb_design = path
+                        .components()
+                        .filter(|component| !matches!(component.as_os_str().to_str(), Some("\\") | Some("/")))
+                        .map(|component| component.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join(" > ");
+
+                        ui.add(egui::Label::new(steal_vs_code_breadcrumb_design).wrap_mode(egui::TextWrapMode::Truncate));
+                    });
+                } else {
+                    ui.label("");
+                }
+
+                egui::Panel::top("Lua")
                     .resizable(true)
-                    .default_height(200.0)
-                    .show_inside(ui, |ui| {
-                        let editor = CodeEditor::default()
+                    .frame(egui::Frame::window(&egui_ctx.global_style()).fill(bg_color))
+                    .default_size(400.0)
+                    .show(ui, |ui| {
+                        let completer = if let Some(table) = member_table(&self.tabs[self.current_tab].code, self.last_cursor)
+                            && let Some(member_completer) = self.member_completers.get_mut(table)
+                        {
+                            member_completer
+                        } else {
+                            &mut self.completer
+                        };
+
+                        let (editor, _) = CodeEditor::default()
                             .id_source("Lua Editpr")
                             .with_rows(16)
                             .with_fontsize(14.0)
-                            .with_theme(ColorTheme::GITHUB_DARK)
-                            .with_syntax(Syntax::lua())
+                            .with_theme(self.theme.to_theme())
                             .with_numlines(true)
                             .vscroll(true)
-                            .show(ui, &mut self.get_script_mut().code);
+                            .show_with_completer(ui, &mut self.tabs[self.current_tab].code, &self.syntax, completer);
 
                         focused = editor.response.has_focus();
+
+                        if let Some(range) = editor.cursor_range {
+                            self.last_cursor = range.primary.index.into();
+                        }
 
                         self.bootleg_copy_shortcut(editor.cursor_range);
                     });
 
                 ui.add_space(3.0);
+                ui.separator();
+                ui.monospace(egui::RichText::new(format!("{} Console", icons::TERMINAL_WINDOW)).color(text_color));
+                ui.separator();
 
                 ScrollArea::vertical()
                     .id_salt("Lua Output")
@@ -297,13 +492,13 @@ impl LuaEditor {
                         self.output.len(),
                         |ui, range| {
                             for line in &self.output[range] {
-                                ui.monospace(line);
+                                ui.monospace(egui::RichText::new(line).color(text_color));
                             }
                         },
                     );
 
                 if new_file_shortcut() && self.file_dialog.is_none() {
-                    self.new_file();
+                    self.add_tab();
                 }
 
                 if save_shortcut() {
@@ -366,8 +561,8 @@ impl LuaEditor {
         self.tabs.get(self.current_tab).unwrap()
     }
 
-    fn untitled_name(&self) -> String {
-        let mut values: HashSet<u64> = HashSet::with_capacity(5);
+    fn steal_vs_code_naming_scheme(&self) -> String {
+        let mut values: HashSet<u64> = HashSet::with_capacity(MAX_TABS);
         for tab in self.tabs.iter() {
             if self.regex.is_match(&tab.name) {
                 values.insert(
@@ -390,10 +585,6 @@ impl LuaEditor {
         format!("Untitled-{number}")
     }
 
-    fn new_file(&mut self) {
-        self.add_tab();
-    }
-
     fn max_tabs_reached(&self) -> bool {
         self.tabs.len() == MAX_TABS
     }
@@ -410,7 +601,7 @@ impl LuaEditor {
         let tab = ScriptTab {
             id,
             code: String::new(),
-            name: self.untitled_name(),
+            name: self.steal_vs_code_naming_scheme(),
             path: None,
         };
 
@@ -502,15 +693,15 @@ impl LuaEditor {
 
     // found that only way to get copy to clipboard is work is by delaying setting it to clipboard
     // else it just fails/gets wiped: https://github.com/not-fl3/miniquad/blob/master/src/native/windows/clipboard.rs
-    fn bootleg_copy_shortcut(&mut self, cursor_range: Option<CursorRange>) {
+    fn bootleg_copy_shortcut(&mut self, cursor_range: Option<CCursorRange>) {
         let Some(range) = cursor_range else { return };
 
         if !(super_key_down() && is_key_pressed(KeyCode::C)) {
             return;
         }
 
-        let primary = range.primary.ccursor.index;
-        let secondary = range.secondary.ccursor.index;
+        let primary: usize = range.primary.index.into();
+        let secondary: usize = range.secondary.index.into();
         let (start_index, end_index) = (primary.min(secondary), primary.max(secondary));
 
         if start_index != end_index {

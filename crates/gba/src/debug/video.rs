@@ -3,7 +3,7 @@
 // is the fact that 128 independent textures - confirmed this was the issue
 
 use crate::components::{gba::GBA, ppu::BgDebugInfo};
-use egui::{Color32, RichText, Sense, TextureHandle, Window, vec2};
+use egui::{Color32, RichText, Sense, TextureHandle, Ui, Window, vec2};
 use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
     render::{Frame, rgb555_to_rgb888},
@@ -169,7 +169,9 @@ impl PpuDebugger {
 
     // TODO: continue improving this and improving accuracy, vra palette
 
-    pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
+    pub fn show_ui(&mut self, ui: &mut Ui, gba: &mut GBA) {
+        let egui_ctx = &ui.ctx().clone();
+
         if !self.frozen {
             self.palette = gba.bus.ppu.palette_ram.clone();
 
@@ -197,8 +199,8 @@ impl PpuDebugger {
             .collapsible(true)
             .default_size([360.0, 820.0])
             .min_width(120.0)
-            .default_pos(egui_ctx.screen_rect().right_top() + vec2(-370.0, 10.0))
-            .show(egui_ctx, |ui| {
+            .default_pos(egui_ctx.content_rect().right_top() + vec2(-370.0, 10.0))
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         ui.label(RichText::new("Debugger Status:").strong());
@@ -279,7 +281,7 @@ impl PpuDebugger {
 
         create_game_screen(
             &mut self.texture,
-            egui_ctx,
+            ui,
             &mut gba.bus.ppu.frontend,
             "Game Screen".to_string(),
         );

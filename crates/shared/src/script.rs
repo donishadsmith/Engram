@@ -16,7 +16,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-// https://github.com/ioncodes/gecko/blob/master/crates/scripting/src/lib.rs
+// cool api's used for inspo:
+// - https://tasvideos.org/Bizhawk/LuaFunctions
+// - https://mgba.io/docs/scripting.html
+// - https://github.com/ioncodes/gecko/blob/master/crates/scripting/src/lib.rs
 
 pub const API: &str = r#"
 Console:
@@ -64,13 +67,13 @@ emulator.volume(volume)
     - volume is an integer value from 0 to 100
 
 Breakpoints:
-debug.set_breakpoint(address, {pause = true})
-debug.remove_breakpoint(address)
-debug.clear_all_breakpoints()
-debug.check_breakpoints()
+debugger.set_breakpoint(address, {pause = true})
+debugger.remove_breakpoint(address)
+debugger.clear_all_breakpoints()
+debugger.check_breakpoints()
 
 Watchpoints (bus accesses):
-debug.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all"})
+debugger.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all"})
   - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
   - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
     a watchpoint only fires for the specified access width
@@ -78,17 +81,17 @@ debug.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width
     at the address being accessed; the watchpoint only fires for the specified target
   - end_address: if included the watchpoint becomes an inclusive range (start_address..=end_address)
   - accessor: "all", "cpu", "dma"; restricts hits to the hardware accessing memory
-debug.remove_watchpoint(address, {end_address}): end_address is required to remove a range
-debug.clear_all_watchpoints()
-debug.check_watchpoints()
+debugger.remove_watchpoint(address, {end_address}): end_address is required to remove a range
+debugger.clear_all_watchpoints()
+debugger.check_watchpoints()
 
 Scripts:
 script.stop(): stops Lua scripts, hooks, and clears all watchpoints and breakpoints
 
 Hooks:
 function emulator.on_frame(): runs once per frame
-function debug.on_breakpoint(address): runs when a breakpoint is hit
-function debug.on_watchpoint(hit): runs once per watchpoint hit; hit is a table with
+function debugger.on_breakpoint(address): runs when a breakpoint is hit
+function debugger.on_watchpoint(hit): runs once per watchpoint hit; hit is a table with
   address, value, pc, on, width, pause, cycle, accessor, domain, offset, pc_offset
 "#;
 
@@ -437,7 +440,7 @@ pub struct ScriptEngine {
     stop_scripts: bool,
     clear_console: bool,
     memory: Table,
-    debug: Table,
+    debugger: Table,
     controller: Table,
     color: Table,
     emulator: Table,
@@ -454,8 +457,8 @@ impl ScriptEngine {
         let memory = lua.create_table().unwrap();
         let _ = lua.globals().set("memory", &memory);
 
-        let debug = lua.create_table().unwrap();
-        let _ = lua.globals().set("debug", &debug);
+        let debugger = lua.create_table().unwrap();
+        let _ = lua.globals().set("debugger", &debugger);
 
         let controller = lua.create_table().unwrap();
         let _ = lua.globals().set("controller", &controller);
@@ -502,7 +505,7 @@ impl ScriptEngine {
             stop_scripts: false,
             clear_console: false,
             memory,
-            debug,
+            debugger,
             controller,
             color,
             emulator,
@@ -544,8 +547,8 @@ impl ScriptEngine {
             self.pending.clear();
             self.step_done = false;
             let _ = self.emulator.set("on_frame", Value::Nil);
-            let _ = self.debug.set("on_breakpoint", Value::Nil);
-            let _ = self.debug.set("on_watchpoint", Value::Nil);
+            let _ = self.debugger.set("on_breakpoint", Value::Nil);
+            let _ = self.debugger.set("on_watchpoint", Value::Nil);
             target.clear_all_breakpoints();
             target.clear_all_watchpoints();
             target.take_breakpoint_hit();
@@ -577,7 +580,7 @@ impl ScriptEngine {
             stop_scripts,
             clear_console,
             memory,
-            debug,
+            debugger,
             controller,
             color,
             emulator,
@@ -833,7 +836,7 @@ impl ScriptEngine {
                 }
             }
 
-            debug.set("set_breakpoint",
+            debugger.set("set_breakpoint",
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
 
@@ -851,7 +854,7 @@ impl ScriptEngine {
                     Ok(())
                 })?)?;
 
-            debug.set("remove_breakpoint", scope.create_function(|_, address: u32| {
+            debugger.set("remove_breakpoint", scope.create_function(|_, address: u32| {
                 target.borrow_mut().remove_breakpoint(address);
                 output
                     .borrow_mut()
@@ -859,7 +862,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            debug.set("clear_all_breakpoints", scope.create_function(|_, (): ()| {
+            debugger.set("clear_all_breakpoints", scope.create_function(|_, (): ()| {
                 target.borrow_mut().clear_all_breakpoints();
                 output
                     .borrow_mut()
@@ -867,7 +870,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            debug.set("check_breakpoints", scope.create_function(|_, (): ()| {
+            debugger.set("check_breakpoints", scope.create_function(|_, (): ()| {
                 let breakpoints = target.borrow_mut().check_breakpoints();
                 if !breakpoints.is_empty() {
                     for (address, state) in breakpoints.iter() {
@@ -888,7 +891,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            debug.set("set_watchpoint",
+            debugger.set("set_watchpoint",
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
                     let (watchpoint_range, watchpoint_args) =
@@ -912,7 +915,7 @@ impl ScriptEngine {
                     Ok(())
                 })?)?;
 
-            debug.set("remove_watchpoint", scope.create_function(|_, (address, kwargs):  (u32, Option<Table>)| {
+            debugger.set("remove_watchpoint", scope.create_function(|_, (address, kwargs):  (u32, Option<Table>)| {
                 let watchpoint_range = WatchpointRange {
                     start_address: address,
                     end_address: if let Some(table) = kwargs && let Ok(some_option) = table.get::<Option<u32>>("end_address") && let Some(end_address) = some_option {
@@ -937,7 +940,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            debug.set("clear_all_watchpoints", scope.create_function(|_, (): ()| {
+            debugger.set("clear_all_watchpoints", scope.create_function(|_, (): ()| {
                 target.borrow_mut().clear_all_watchpoints();
                 output
                     .borrow_mut()
@@ -945,7 +948,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            debug.set("check_watchpoints", scope.create_function(|_, (): ()| {
+            debugger.set("check_watchpoints", scope.create_function(|_, (): ()| {
                 let watchpoints = target.borrow_mut().check_watchpoints();
                 if !watchpoints.is_empty() {
                     for (watchpoint_range, watchpoint_args) in watchpoints.iter() {
@@ -982,11 +985,11 @@ impl ScriptEngine {
             // yeah default behavior when no hook is less annoying
             let hit = target.borrow_mut().take_breakpoint_hit();
             if let Some(address) = hit {
-                if let Ok(hook) = debug.get::<Function>("on_breakpoint") {
+                if let Ok(hook) = debugger.get::<Function>("on_breakpoint") {
                     time_limit(lua, Duration::from_millis(5));
                     if let Err(err) = hook.call::<()>(address) {
                         output.borrow_mut().push(format!("{err}"));
-                        let _ = debug.set("on_breakpoint", Value::Nil);
+                        let _ = debugger.set("on_breakpoint", Value::Nil);
                     }
                 } else {
                     output
@@ -997,7 +1000,7 @@ impl ScriptEngine {
 
             let hits = target.borrow_mut().take_watchpoint_hits();
             if !hits.is_empty() {
-                let hook = debug.get::<Function>("on_watchpoint").ok();
+                let hook = debugger.get::<Function>("on_watchpoint").ok();
                 for hit in hits {
                     if hook.is_none() {
                         output.borrow_mut().push(format!(
@@ -1039,7 +1042,7 @@ impl ScriptEngine {
                     time_limit(lua, Duration::from_millis(5));
                     if let Err(err) = hook.call::<()>(table) {
                         output.borrow_mut().push(format!("{err}"));
-                        let _ = debug.set("on_watchpoint", Value::Nil);
+                        let _ = debugger.set("on_watchpoint", Value::Nil);
                         break;
                     }
                 }

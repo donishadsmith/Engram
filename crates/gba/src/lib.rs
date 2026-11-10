@@ -19,6 +19,7 @@ use crate::{
     debug::video::PpuDebugger,
 };
 use debug::audio::AudioDebugger;
+use egui::Ui;
 use shared::{
     DebugInterface, Emulator, EmulatorId, EmulatorSession, EmulatorState, SolarSensor,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
@@ -491,10 +492,10 @@ impl DebugInterface for GBASession {
         };
     }
 
-    fn show_ui(&mut self, egui_ctx: &egui::Context) {
+    fn show_ui(&mut self, ui: &mut Ui) {
         match self.active_debug {
-            Some(DebugPage::Audio) => self.audio_debugger.show_ui(egui_ctx, &mut self.gba),
-            Some(DebugPage::Video) => self.ppu_debugger.show_ui(egui_ctx, &mut self.gba),
+            Some(DebugPage::Audio) => self.audio_debugger.show_ui(ui, &mut self.gba),
+            Some(DebugPage::Video) => self.ppu_debugger.show_ui(ui, &mut self.gba),
             None => {}
         }
     }

@@ -1,6 +1,6 @@
 use std::mem::take;
 
-use egui::{Color32, RichText, SidePanel, TextureHandle, TopBottomPanel};
+use egui::{Color32, Panel, RichText, TextureHandle, Ui};
 use egui_plot::{HLine, Line, Plot};
 
 use crate::components::{apu::Apu, dma::FifoChannel, gba::GBA};
@@ -192,7 +192,7 @@ impl AudioDebugger {
         }
     }
 
-    pub fn show_ui(&mut self, egui_ctx: &egui::Context, gba: &mut GBA) {
+    pub fn show_ui(&mut self, ui: &mut Ui, gba: &mut GBA) {
         if !self.frozen {
             let registers = &gba.bus.apu.psg_registers;
             self.registers.channel1 = [
@@ -224,7 +224,7 @@ impl AudioDebugger {
         }
 
         let apu = &gba.bus.apu;
-        SidePanel::right("FIFO Audio").show(egui_ctx, |ui| {
+        Panel::right("FIFO Audio").show(ui, |ui| {
             ui.heading("FIFO Audio").highlight();
             ui.separator();
 
@@ -322,7 +322,7 @@ impl AudioDebugger {
                 });
         });
 
-        SidePanel::left("PSG").show(egui_ctx, |ui| {
+        Panel::left("PSG").show(ui, |ui| {
             ui.heading("PSG Channels").highlight();
             ui.separator();
 
@@ -416,7 +416,7 @@ impl AudioDebugger {
                 });
         });
 
-        TopBottomPanel::top("Global Controls").show(egui_ctx, |ui| {
+        Panel::top("Global Controls").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Global Control Register Settings").highlight();
 
@@ -505,7 +505,7 @@ impl AudioDebugger {
                 })
         });
 
-        TopBottomPanel::bottom("Registers").show(egui_ctx, |ui| {
+        Panel::bottom("Registers").show(ui, |ui| {
             ui.heading("PSG Registers").highlight();
             ui.separator();
 
@@ -532,7 +532,7 @@ impl AudioDebugger {
 
         create_game_screen(
             &mut self.texture,
-            egui_ctx,
+            ui,
             &mut gba.bus.ppu.frontend,
             "Game Screen".to_string(),
         );

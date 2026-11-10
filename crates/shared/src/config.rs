@@ -86,6 +86,7 @@ pub struct Config {
     pub rumble_effect_on: RumbleEffect,
     pub rumble_strength: Option<f32>,
     pub speed: Option<u8>,
+    pub lua_editor_theme: Option<String>,
 }
 
 fn get_config_path() -> PathBuf {

@@ -98,15 +98,15 @@ pub fn compute_size(size: Vec2, frame: &Frame) -> Vec2 {
 
 pub fn create_game_screen(
     texture_handle: &mut Option<TextureHandle>,
-    egui_ctx: &egui::Context,
+    ui: &mut egui::Ui,
     frame: &mut Frame,
     id: String,
 ) {
-    let texture_id = get_texture_id(texture_handle, egui_ctx, frame, id);
+    let texture_id = get_texture_id(texture_handle, ui.ctx(), frame, id);
 
     CentralPanel::default()
         .frame(egui::Frame::NONE)
-        .show(egui_ctx, |ui| {
+        .show(ui, |ui| {
             let size = compute_size(ui.available_size(), frame);
             ui.centered_and_justified(|ui| {
                 ui.image((texture_id, size));

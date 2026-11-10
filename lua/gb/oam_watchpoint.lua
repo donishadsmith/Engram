@@ -1,6 +1,6 @@
-debug.set_watchpoint(0xFE00, { end_address = 0xFE9F, on = "write", accessor = "dma", pause = false })
+debugger.set_watchpoint(0xFE00, { end_address = 0xFE9F, on = "write", accessor = "dma", pause = false })
 
-function debug.on_watchpoint(hit)
+function debugger.on_watchpoint(hit)
     print(string.format("%s %s at %04X value=%04X from pc=%04X, accessor=%s",
         hit.on, hit.width, hit.address, hit.value, hit.pc, hit.accessor))
 end

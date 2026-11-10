@@ -1,0 +1,37 @@
+[package]
+name = "egui-macroquad"
+version = "0.17.3"
+authors = ["Ilya Sheprut <optozorax@gmail.com>"]
+edition = "2021"
+license = "MIT/Apache-2.0"
+homepage = "https://github.com/optozorax/egui-macroquad"
+repository = "https://github.com/optozorax/egui-macroquad"
+description = "Bindings between egui and macroquad"
+readme = "README.md"
+categories = ["gui", "game-development"]
+keywords = ["gui", "imgui", "immediate", "portable", "gamedev"]
+include = [
+  "LICENSE-APACHE",
+  "LICENSE-MIT",
+  "**/*.rs",
+  "Cargo.toml",
+]
+
+[dependencies]
+egui = "0.36"
+egui-miniquad = { path = "../egui-miniquad" }
+macroquad = { version = "0.4.16", default-features = false }
+
+[features]
+default = ["audio"]
+audio = ["macroquad/audio"]
+logs-rs = ["macroquad/log-rs"]
+
+[dev-dependencies]
+egui_demo_lib = "0.36"
+
+[profile.release]
+opt-level = 2
+
+[lints.rust]
+static_mut_refs = { level = "allow" }

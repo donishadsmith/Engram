@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/frontend", "crates/gb", "crates/gba", "crates/psx", "crates/shared"]
+exclude = ["vendor/egui-miniquad", "vendor/egui-macroquad"]
 resolver = "3"
 
 [workspace.dependencies]
@@ -7,32 +8,32 @@ shared = { path = "crates/shared" }
 gb = { path = "crates/gb" }
 gba = { path = "crates/gba" }
 psx = { path = "crates/psx" }
-egui = "0.31.1"
-egui-macroquad = { version = "0.17.3", default-features = false }
+egui = "0.36"
+egui-macroquad = { path = "vendor/egui-macroquad", default-features = false }
 macroquad = "0.4.16"
 rfd = "0.17.2"
 chrono = "0.4.45"
-egui_plot = "0.32.0"
+egui_plot = "0.37.0"
 cpal = "0.18.2"
 rtrb = "0.4.0"
 gif = "0.14.2"
 dirs = "7.0.0"
 toml = "1.1.6"
 serde = { version = "1.0.229", features = ["derive"] }
-egui_code_editor = "=0.2.13"
+egui_code_editor = "=0.4.2"
 mlua = { version = "0.12.1", features = ["lua54", "vendored"] }
 serde_json = "1"
 spin_sleep = "1.3.3"
 gilrs = "0.11.2"
-egui-notify = "0.19"
+egui-notify = "0.23"
 lz4_flex = { version = "0.14.0", default-features = false, features = ["std", "safe-encode", "safe-decode", "checked-decode"] } # probably need to incorporate now due to psx
 postcard = { version = "1.1.3", features = ["alloc"] }
 serde_bytes = "0.11.19"
-egui-phosphor = "0.9"
+egui-phosphor = "0.14"
 arboard = { version = "3.6.1", default-features = false }
 blip_buf = "0.2.1"
 regex = "1.13.1"
-egui_dnd = "0.12"
+egui_dnd = "0.17"
 
 [profile.dev]
 opt-level = 3

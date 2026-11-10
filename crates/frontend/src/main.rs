@@ -205,12 +205,14 @@ async fn main() -> Result<(), Error> {
             EmulatorState::SwapDisc => {}
         }
 
-        egui_macroquad::ui(|egui_ctx| {
+        egui_macroquad::ui(|root_ui| {
+            let egui_ctx = &root_ui.ctx().clone();
             egui_ctx.set_pixels_per_point(screen_dpi_scale());
-            let menu = egui::TopBottomPanel::top("Menu Bar").show(egui_ctx, |ui| {
+
+            let menu = egui::Panel::top("Menu Bar").show(root_ui, |ui| {
                 egui_ctx.set_fonts(ui_state.fonts.clone());
 
-                egui::menu::bar(ui, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
                     show_file_menu(ui, &mut session);
                     show_emulation_menu(ui, &mut session, &mut ui_state);
                     show_tools_menu(ui, &mut session, &mut ui_state);
@@ -229,7 +231,7 @@ async fn main() -> Result<(), Error> {
             if session.state == EmulatorState::Launch {
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
-                    .show(egui_ctx, |ui| {
+                    .show(root_ui, |ui| {
                         let response = ui
                             .allocate_response(ui.available_size(), egui::Sense::click())
                             .on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -261,7 +263,7 @@ async fn main() -> Result<(), Error> {
             if let Some(emulator) = session.emulator.as_mut() {
                 emulator.set_top_height(menu.response.rect.height());
                 if let Some(debugger) = emulator.debugger_mut() {
-                    debugger.show_ui(egui_ctx);
+                    debugger.show_ui(root_ui);
                 }
 
                 if session.state == EmulatorState::RomSelection {

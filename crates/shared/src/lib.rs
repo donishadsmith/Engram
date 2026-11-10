@@ -15,7 +15,7 @@ pub mod traits;
 pub mod utils;
 pub mod video;
 
-use egui::Context;
+use egui::Ui;
 use serde::{Deserialize, Serialize};
 use std::{io::Error, path::PathBuf};
 
@@ -117,7 +117,7 @@ pub trait DebugInterface {
 
     fn available_pages(&self) -> Vec<DebugPage>;
 
-    fn show_ui(&mut self, _egui_ctx: &Context);
+    fn show_ui(&mut self, _ui: &mut Ui);
 
     fn visible(&self, _debug_page: DebugPage) -> bool;
 

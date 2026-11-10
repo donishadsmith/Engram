@@ -32,12 +32,12 @@ pub fn show_file_menu(ui: &mut Ui, session: &mut Session) {
             .clicked()
         {
             session.add_transient_state(EmulatorState::RomSelection);
-            ui.close_menu();
+            ui.close();
         }
 
         if ui.button(format!("{} Quit", icons::SIGN_OUT)).clicked() {
             session.state = EmulatorState::Quit;
-            ui.close_menu();
+            ui.close();
         }
     });
 }
@@ -59,7 +59,7 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 session.add_transient_state(EmulatorState::Reset);
             }
 
-            ui.close_menu();
+            ui.close();
         }
 
         ui.horizontal(|ui| {
@@ -96,7 +96,7 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                             if session.destructive_action_popup && exists {
                                 ui_state.destructive_action =
                                     Some(DestructiveAction::Overwrite(slot));
-                                ui.close_menu();
+                                ui.close();
                             } else {
                                 save_slots_with_toast(emulator, &mut session.toasts, slot);
                             }
@@ -146,7 +146,7 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                         {
                             if session.destructive_action_popup {
                                 ui_state.destructive_action = Some(DestructiveAction::Delete(slot));
-                                ui.close_menu();
+                                ui.close();
                             } else {
                                 delete_slots_with_toast(emulator, &mut session.toasts, slot);
                             }
@@ -166,7 +166,7 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                     {
                         if session.destructive_action_popup {
                             ui_state.destructive_action = Some(DestructiveAction::DeleteAll);
-                            ui.close_menu();
+                            ui.close();
                         } else {
                             delete_all_slots_with_toast(emulator, &mut session.toasts);
                         }
@@ -221,7 +221,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                     .clicked()
                 {
                     session.lua_editor.opened = !session.lua_editor.opened;
-                    ui.close_menu();
+                    ui.close();
                 }
 
                 let mut binding_text =
@@ -279,7 +279,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                 ui_state.open_gif_settings = true;
             }
 
-            ui.close_menu();
+            ui.close();
         }
 
         let mut binding_text =
@@ -329,7 +329,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                 }
             }
 
-            ui.close_menu();
+            ui.close();
         }
     });
 }
@@ -348,7 +348,7 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
                 {
                     session.show_key_bindings = true;
                     ui_state.target_key_id = Some(KeyId::Emulator(EmulatorId::Gba));
-                    ui.close_menu();
+                    ui.close();
                 }
             },
         );
@@ -362,7 +362,7 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
         {
             session.show_hotkeys = true;
             ui_state.target_key_id = Some(KeyId::Hotkeys);
-            ui.close_menu();
+            ui.close();
         }
 
         let hotkey = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen));
@@ -436,7 +436,7 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
             .clicked()
         {
             ui_state.set_dirs = true;
-            ui.close_menu();
+            ui.close();
         }
 
         ui.separator();

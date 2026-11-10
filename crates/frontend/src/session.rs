@@ -7,6 +7,7 @@ use macroquad::{
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
 use shared::config::DataDirs;
+use shared::editor::EditorTheme;
 use shared::structs::PendingDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
@@ -202,6 +203,14 @@ impl Session {
             data_dir: PathBuf::from(&config.data_dirs.data_dir.as_ref().unwrap()),
         };
 
+        let lua_editor_theme = EditorTheme::from_name(
+            config
+                .lua_editor_theme
+                .as_ref()
+                .unwrap_or(&"Github Dark".to_string())
+                .to_string(),
+        );
+
         Self {
             state: EmulatorState::Launch,
             emulator: None,
@@ -214,7 +223,7 @@ impl Session {
             master_volume,
             solar_level,
             last_debug_page: initialize_debug_hashmap(),
-            lua_editor: LuaEditor::new(),
+            lua_editor: LuaEditor::new(lua_editor_theme),
             return_state: None,
             pending_steps: VecDeque::new(),
             gilrs,
@@ -382,6 +391,7 @@ impl Session {
             rumble_effect_on: self.rumble_effect_on,
             rumble_strength: Some(self.rumble_strength),
             speed: Some(self.speed),
+            lua_editor_theme: Some(self.lua_editor.theme.to_name()),
         };
 
         save_config(&config)
