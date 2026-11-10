@@ -126,7 +126,6 @@ impl GameBoySession {
         self.gameboy.replenish_remaining_cycles();
         self.gameboy.take_watchpoint_pause();
         self.gameboy.take_cycle_pause();
-        self.script_engine.step_completed();
 
         if self.gameboy.cpu.bus.ppu.frame_ready
             || self.gameboy.cpu.bus.ppu.lcd_off_frame && self.gameboy.remaining_cycles == 0
@@ -293,7 +292,6 @@ impl EmulatorSession for GameBoySession {
             self.gameboy.cpu.bus.ppu.frame.height,
         );
         self.frame_ready = false;
-        self.script_engine = ScriptEngine::new();
         self.frame_deadline = Instant::now() + self.frame_period;
 
         self.reset_fps();

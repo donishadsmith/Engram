@@ -131,8 +131,6 @@ impl GBASession {
         self.gba.take_watchpoint_pause();
         self.gba.take_cycle_pause();
 
-        self.script_engine.step_completed();
-
         if self.gba.bus.ppu.frame_ready {
             self.on_frame();
         } else {
@@ -308,7 +306,6 @@ impl EmulatorSession for GBASession {
         self.gba = GBA::boot(gamepak, apu_sample_period);
         self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
         self.frame_ready = false;
-        self.script_engine = ScriptEngine::new();
         self.frame_deadline = Instant::now() + self.frame_period;
         self.recorded_audio = Vec::new();
 
@@ -342,7 +339,20 @@ impl EmulatorSession for GBASession {
     }
 
     fn step_instruction(&mut self, volume: u8) {
-        self.tick(volume);
+        // just in case i forgot something that can freeze
+        for _ in 0..10 {
+            self.tick(volume);
+
+            if take(&mut self.gba.cpu.instruction_executed)
+                || self.gba.cpu.breakpoint_manager.hit.is_some()
+                || self.gba.bus.watchpoint_pause
+                || self.gba.cpu.is_halted()
+                || self.gba.pause_at_current_cycle()
+            {
+                break;
+            }
+        }
+
         self.step_end();
     }
 

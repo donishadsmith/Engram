@@ -207,6 +207,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
 
     let mut apply_run_updates = false;
     let mut reset_request = false;
+    let mut step_completed = false;
     if let Some(emulator) = &mut session.emulator
         && let Some(script_engine) = emulator.script_engine()
     {
@@ -327,7 +328,6 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                     session
                         .lua_editor
                         .push_output(vec!["emulator reset".to_string()]);
-                    session.state = EmulatorState::Reset;
                     session.skip_toast = true;
                 }
                 ScriptRequest::StepInstruction | ScriptRequest::StepFrame => {
@@ -418,6 +418,8 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                     session.master_volume = volume;
                 }
             }
+
+            step_completed = true;
         }
 
         // executed outside for loop for one step per next frame await
@@ -443,6 +445,12 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
 
         if reset_request && session.state != EmulatorState::Reset {
             session.add_transient_state(EmulatorState::Reset);
+        }
+
+        if step_completed && let Some(emulator) = session.emulator.as_mut() {
+            emulator
+                .script_engine()
+                .map(|engine| engine.step_completed());
         }
     }
 

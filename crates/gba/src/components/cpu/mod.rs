@@ -505,6 +505,8 @@ pub struct Arm7tdmi {
     pub entered_idle_loop: bool,
     #[serde(skip)]
     pub breakpoint_manager: BreakpointManager,
+    #[serde(skip)]
+    pub instruction_executed: bool,
 }
 
 impl Arm7tdmi {
@@ -518,6 +520,7 @@ impl Arm7tdmi {
             intr_wait_resume: false,
             entered_idle_loop: false,
             breakpoint_manager: BreakpointManager::default(),
+            instruction_executed: false,
         }
     }
 
@@ -534,6 +537,8 @@ impl Arm7tdmi {
                 && self.breakpoint_manager.resume_from != Some(address)
             {
                 self.breakpoint_manager.hit = Some(address);
+
+                self.instruction_executed = false;
 
                 return;
             }
@@ -561,13 +566,17 @@ impl Arm7tdmi {
                     executing_address, decoded_arm.condition, decoded_arm.instruction,
                 ));
 
+                self.instruction_executed = true;
                 if self.registers.condition_passed(decoded_arm.condition) {
                     execute_arm(decoded_arm.instruction, &mut self.registers, bus)
                 } else {
                     None
                 }
             }
-            None => None,
+            None => {
+                self.instruction_executed = false;
+                None
+            }
         };
 
         if let Some(request) = side_effect {

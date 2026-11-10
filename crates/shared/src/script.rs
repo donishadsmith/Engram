@@ -490,6 +490,95 @@ impl ScriptEngine {
                 emulator._step_frame()
                 coroutine.yield()
             end
+
+            function emulator.pause()
+                emulator._pause()
+                coroutine.yield()
+            end
+
+            function emulator.resume()
+                emulator._resume()
+                coroutine.yield()
+            end
+
+            function emulator.reset()
+                emulator._reset()
+                coroutine.yield()
+            end
+
+            function emulator.screenshot()
+                emulator._screenshot()
+                coroutine.yield()
+            end
+
+            function emulator.start_gif()
+                emulator._start_gif()
+                coroutine.yield()
+            end
+
+            function emulator.stop_gif()
+                emulator._stop_gif()
+                coroutine.yield()
+            end
+
+            function emulator.start_video()
+                emulator._start_video()
+                coroutine.yield()
+            end
+
+            function emulator.stop_video()
+                emulator._stop_video()
+                coroutine.yield()
+            end
+
+            function emulator.save_state(slot)
+                emulator._save_state(slot)
+                coroutine.yield()
+            end
+
+            function emulator.load_state(slot)
+                emulator._load_state(slot)
+                coroutine.yield()
+            end
+
+            function emulator.delete_state(slot)
+                emulator._delete_state(slot)
+                coroutine.yield()
+            end
+
+            function emulator.elapsed_cycles()
+                return emulator._elapsed_cycles()
+            end
+
+            function emulator.pause_at_cycle(cycle)
+                emulator._pause_at_cycle(cycle)
+                coroutine.yield()
+            end
+
+            function emulator.pause_after_elapsed_cycles(elapsed_cycles)
+                emulator._pause_after_elapsed_cycles(elapsed_cycles)
+                coroutine.yield()
+            end
+
+            function emulator.open_debugger(debug_page)
+                emulator._open_debugger(debug_page)
+                coroutine.yield()
+            end
+
+            function emulator.close_debugger()
+                emulator._close_debugger()
+                coroutine.yield()
+            end
+
+            function emulator.fast_forward(speed)
+                emulator._fast_forward(speed)
+                coroutine.yield()
+            end
+
+            function emulator.volume(volume)
+                emulator._volume(volume)
+                coroutine.yield()
+            end
         "#,
             )
             .exec()
@@ -732,33 +821,33 @@ impl ScriptEngine {
                     emulator.set(name, function)
                 };
 
-            set_emulator_controls("pause", || ScriptRequest::Pause)?;
-            set_emulator_controls("resume", || ScriptRequest::Resume)?;
+            set_emulator_controls("_pause", || ScriptRequest::Pause)?;
+            set_emulator_controls("_resume", || ScriptRequest::Resume)?;
             set_emulator_controls("_step_instruction", || ScriptRequest::StepInstruction)?;
             set_emulator_controls("_step_frame", || ScriptRequest::StepFrame)?;
-            set_emulator_controls("reset", || ScriptRequest::Reset)?;
+            set_emulator_controls("_reset", || ScriptRequest::Reset)?;
             set_emulator_controls(
-                "screenshot",
+                "_screenshot",
                 || ScriptRequest::Screenshot,
             )?;
             set_emulator_controls(
-                "start_gif",
+                "_start_gif",
                 || ScriptRequest::StartGif,
             )?;
             set_emulator_controls(
-                "stop_gif",
+                "_stop_gif",
                 || ScriptRequest::StopGif,
             )?;
             set_emulator_controls(
-                "start_video",
+                "_start_video",
                 || ScriptRequest::StartVideo,
             )?;
             set_emulator_controls(
-                "stop_video",
+                "_stop_video",
                 || ScriptRequest::StopVideo,
             )?;
             set_emulator_controls(
-                "close_debugger",
+                "_close_debugger",
                 || ScriptRequest::CloseDebugger,
             )?;
 
@@ -768,7 +857,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            emulator.set("fast_forward", scope.create_function(|_, speed: i64| {
+            emulator.set("_fast_forward", scope.create_function(|_, speed: i64| {
                 if (1..=(FAST_FORWARD as i64)).contains(&speed) {
                     requests.borrow_mut().push(ScriptRequest::FastForward(speed as u8));
                 } else {
@@ -778,7 +867,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            emulator.set("volume", scope.create_function(|_, volume: i64| {
+            emulator.set("_volume", scope.create_function(|_, volume: i64| {
                 if (0..=100).contains(&volume) {
                     requests.borrow_mut().push(ScriptRequest::Volume(volume as u8));
                 } else {
@@ -804,18 +893,18 @@ impl ScriptEngine {
                 emulator.set(name, function)
             };
 
-            set_emulator_save_state("save_state", ScriptRequest::SaveState)?;
-            set_emulator_save_state("load_state", ScriptRequest::LoadState)?;
-            set_emulator_save_state("delete_state", ScriptRequest::DeleteState)?;
+            set_emulator_save_state("_save_state", ScriptRequest::SaveState)?;
+            set_emulator_save_state("_load_state", ScriptRequest::LoadState)?;
+            set_emulator_save_state("_delete_state", ScriptRequest::DeleteState)?;
 
-            emulator.set("pause_at_cycle", scope
+            emulator.set("_pause_at_cycle", scope
                 .create_function(|_, cycle: u64| {
                     target.borrow_mut().set_cycle_pause(cycle);
 
                     Ok(())
                 })?)?;
 
-            emulator.set("pause_after_elapsed_cycles",  scope
+            emulator.set("_pause_after_elapsed_cycles",  scope
                 .create_function(|_, elapsed_cycles: u64| {
                     let current_cycle = target.borrow().elapsed_cycles();
                     target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles + current_cycle);

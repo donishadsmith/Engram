@@ -36,7 +36,7 @@ regex = "1.13.1"
 egui_dnd = "0.17"
 
 [profile.dev]
-opt-level = 3
+opt-level = 2
 
 [profile.profiling]
 inherits = "release"
@@ -44,6 +44,6 @@ debug = true
 
 # https://doc.rust-lang.org/cargo/reference/profiles.html
 [profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
+opt-level = 2
+# lto = true
+# codegen-units = 1

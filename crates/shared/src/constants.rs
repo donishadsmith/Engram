@@ -13,3 +13,5 @@ pub const SAVE_STATE_SLOTS: usize = 12;
 pub const FAST_FORWARD: u8 = 10;
 
 pub const GB_REFRESH_RATE: f64 = 59.727;
+
+pub const VALID_EXTENSIONS: [&'static str; 3] = [".gba", ".gb", ".gbc"];
