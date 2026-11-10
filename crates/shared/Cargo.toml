@@ -24,3 +24,5 @@ lz4_flex.workspace = true
 egui-phosphor.workspace = true
 arboard.workspace = true
 blip_buf.workspace = true
+regex.workspace = true
+egui_dnd.workspace = true

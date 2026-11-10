@@ -7,9 +7,12 @@ use macroquad::input::{
     KeyCode::{self, RightShift},
     is_key_down, is_key_pressed,
 };
+use regex::Regex;
 use rfd::FileDialog;
 use std::{
+    collections::HashSet,
     fs::{read_to_string, write},
+    hash::Hash,
     mem::take,
     path::PathBuf,
     time::{Duration, Instant},
@@ -18,15 +21,19 @@ use std::{
 const COPY_DELAY: Duration = Duration::from_millis(200);
 const SHORTCUT: &str = r#"
 Shift+Enter: run the current script
-Ctrl+N: new script
+Ctrl+N: new script (max of 5)
 Ctrl+S: save the current script
 Ctrl+C: copy the selected text
+
 F8: open or close the Lua editor
 
 Notes:
     - Cmd button can replace Ctrl
     - Other shortcuts such as Ctrl+Z, Ctrl+V, Ctrl+A, also usable
 "#;
+
+const MAX_TABS: usize = 5;
+
 #[derive(PartialEq)]
 enum HelpTab {
     Api,
@@ -54,8 +61,23 @@ fn new_file_shortcut() -> bool {
     super_key_down() && is_key_pressed(KeyCode::N)
 }
 
+#[derive(Clone, Debug)]
+struct ScriptTab {
+    id: u64,
+    name: String,
+    code: String,
+    path: Option<PathBuf>,
+}
+
+impl Hash for ScriptTab {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
 pub struct LuaEditor {
-    pub code: String,
+    tabs: Vec<ScriptTab>,
+    current_tab: usize,
     pub opened: bool,
     focused: bool,
     pub output: Vec<String>,
@@ -63,16 +85,26 @@ pub struct LuaEditor {
     pending_copy: Option<(String, Instant)>,
     clipboard: Option<Clipboard>,
     pub help_window: bool,
-    script_name: String, // very vs coded
-    script_path: Option<PathBuf>,
     help_tab: HelpTab,
     file_dialog: Option<(EditorDialog, PendingDialog)>,
+    regex: Regex,
+    next_tab_id: u64,
 }
 
 impl LuaEditor {
     pub fn new() -> Self {
-        Self {
+        let mut tabs = Vec::with_capacity(5);
+        let scipt = ScriptTab {
+            id: 1,
             code: String::new(),
+            name: "Untitled-1".to_string(),
+            path: None,
+        };
+
+        tabs.push(scipt);
+
+        Self {
+            tabs,
             opened: false,
             focused: false,
             output: Vec::new(),
@@ -80,10 +112,11 @@ impl LuaEditor {
             pending_copy: None,
             clipboard: Clipboard::new().ok(),
             help_window: false,
-            script_name: "Untitled-1.lua".to_string(),
-            script_path: None,
             help_tab: HelpTab::Api,
             file_dialog: None,
+            current_tab: 0,
+            regex: Regex::new(r"^Untitled-\d{1,2}$").unwrap(),
+            next_tab_id: 2,
         }
     }
 
@@ -95,16 +128,18 @@ impl LuaEditor {
         let mut focused = false;
         let mut run = false;
 
+        let mut select_tab: Option<usize> = None;
+        let mut close_tab: Option<usize> = None;
+        let mut add_tab = false;
+
         Window::new("Lua Editor")
+            .min_height(300.0)
+            .min_width(400.0)
             .open(&mut opened)
             .show(egui_ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.menu_button("File", |ui| {
-                            if ui.button(format!("{}  New Script", icons::FILE)).clicked() && self.file_dialog.is_none() {
-                                self.new_file();
-                            }
-
                             if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() && self.file_dialog.is_none() {
                                 self.load_lua_script();
                             }
@@ -142,7 +177,7 @@ impl LuaEditor {
 
                                 if ui.button(format!("{}  Stop Scripts", icons::STOP_CIRCLE)).on_hover_text(
                                     "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints"
-                                ).clicked() {
+                                    ).clicked() {
                                     self.termination_request = true;
                                 }
                             });
@@ -158,15 +193,77 @@ impl LuaEditor {
                         });
                     });
 
+                    let current_id = self.tabs[self.current_tab].id;
+
                     ui.horizontal(|ui| {
-                        ui.add_sized(
-                            [200.0, ui.available_height()],
-                            egui::Label::new(&self.script_name)
-                                .wrap_mode(egui::TextWrapMode::Truncate)
-                                .selectable(false)
-                        );
+                        ui.add_space(40.0);
+                        let can_add_tab = !self.max_tabs_reached();
+                        let can_close_tab = self.tabs.len() > 1;
+                        let tab_height = ui.spacing().interact_size.y;
+
+                        let tab_count = self.tabs.len() as f32;
+                        let spacing = ui.spacing().item_spacing.x;
+                        let gap_count = if can_add_tab { tab_count } else { tab_count - 1.0 };
+
+                        let plus_width = if can_add_tab { 28.0 } else { 0.0 };
+                        let tab_width = (ui.available_width() - plus_width - gap_count * spacing) / tab_count;
+
+                        let current_id = self.tabs[self.current_tab].id;
+                        egui_dnd::dnd(ui, "Tabs").show_vec_sized(&mut self.tabs, egui::vec2(tab_width, tab_height), |ui, tab, handle, state| {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if state.index + 1 < tab_count as usize || can_add_tab {
+                                        ui.separator();
+                                    }
+
+                                    if can_close_tab
+                                        && ui.add(egui::Button::new(icons::X).small().frame(false)).clicked()
+                                    {
+                                        close_tab = Some(state.index);
+                                    }
+
+                                    handle.ui(ui, |ui| {
+                                        let text = if tab.id == current_id {
+                                            egui::RichText::new(&tab.name).strong().underline()
+                                        } else {
+                                            egui::RichText::new(&tab.name)
+                                        };
+
+                                        let name_response = ui
+                                            .add_sized(
+                                                [ui.available_width(), tab_height],
+                                                egui::Label::new(text)
+                                                    .wrap_mode(egui::TextWrapMode::Truncate)
+                                                    .selectable(false)
+                                                    .sense(egui::Sense::click()),
+                                            );
+
+                                        if name_response.clicked() {
+                                            select_tab = Some(state.index);
+                                        }
+                                    });
+                                },
+                            );
+                        });
+
+                        if can_add_tab && ui.button(icons::PLUS).on_hover_text("New script").clicked() {
+                            add_tab = true;
+                        }
                     });
+
+                    self.current_tab = self.tabs.iter().position(|tab| tab.id == current_id).unwrap();
                 });
+
+                if let Some(index) = close_tab {
+                    self.drop_tab(index);
+                } else if let Some(index) = select_tab {
+                    self.current_tab = index;
+                }
+
+                if add_tab {
+                    self.add_tab();
+                }
 
                 egui::TopBottomPanel::top("Lua")
                     .resizable(true)
@@ -180,7 +277,7 @@ impl LuaEditor {
                             .with_syntax(Syntax::lua())
                             .with_numlines(true)
                             .vscroll(true)
-                            .show(ui, &mut self.code);
+                            .show(ui, &mut self.get_script_mut().code);
 
                         focused = editor.response.has_focus();
 
@@ -210,7 +307,7 @@ impl LuaEditor {
                 }
 
                 if save_shortcut() {
-                    if let Some(path) = self.script_path.clone() && path.exists() && self.file_dialog.is_none() {
+                    if let Some(path) = self.get_script_ref().path.clone() && path.exists() && self.file_dialog.is_none() {
                         self.quick_save(&path);
                     } else {
                         self.save_lua_script();
@@ -221,13 +318,14 @@ impl LuaEditor {
         self.opened = opened;
         self.focused = focused;
 
-        run.then(|| self.code.clone())
+        run.then(|| self.get_script_ref().code.clone())
     }
 
     pub fn poll_file_dialog(&mut self) {
         let Some((kind, dialog)) = &self.file_dialog else {
             return;
         };
+
         let kind = *kind;
 
         let Some(result) = dialog.poll() else {
@@ -260,14 +358,81 @@ impl LuaEditor {
         take(&mut self.termination_request)
     }
 
-    pub fn new_file(&mut self) {
-        self.code.clear();
-        self.script_path = None;
-        self.script_name = "Untitled-1.lua".to_string();
+    fn get_script_mut(&mut self) -> &mut ScriptTab {
+        self.tabs.get_mut(self.current_tab).unwrap()
     }
 
-    pub fn quick_save(&mut self, path: &PathBuf) {
-        match write(path, self.code.clone()) {
+    fn get_script_ref(&self) -> &ScriptTab {
+        self.tabs.get(self.current_tab).unwrap()
+    }
+
+    fn untitled_name(&self) -> String {
+        let mut values: HashSet<u64> = HashSet::with_capacity(5);
+        for tab in self.tabs.iter() {
+            if self.regex.is_match(&tab.name) {
+                values.insert(
+                    tab.name
+                        .split("-")
+                        .last()
+                        .and_then(|string| string.parse::<u64>().ok())
+                        .unwrap(),
+                );
+            }
+        }
+
+        let possible_values: HashSet<u64> = (1..=MAX_TABS as u64).collect();
+        let differences = possible_values
+            .difference(&values)
+            .cloned()
+            .collect::<Vec<u64>>();
+        let number = differences.iter().min().unwrap();
+
+        format!("Untitled-{number}")
+    }
+
+    fn new_file(&mut self) {
+        self.add_tab();
+    }
+
+    fn max_tabs_reached(&self) -> bool {
+        self.tabs.len() == MAX_TABS
+    }
+
+    fn add_tab(&mut self) {
+        // for safety in case i forget to add protection elsewhere
+        if self.max_tabs_reached() {
+            return;
+        }
+
+        let id = self.next_tab_id;
+        self.next_tab_id += 1;
+
+        let tab = ScriptTab {
+            id,
+            code: String::new(),
+            name: self.untitled_name(),
+            path: None,
+        };
+
+        self.tabs.push(tab);
+
+        self.current_tab = self.tabs.len() - 1
+    }
+
+    fn drop_tab(&mut self, index: usize) {
+        if self.tabs.len() == 1 {
+            return;
+        }
+
+        self.tabs.remove(index);
+
+        if self.current_tab > index || self.current_tab == self.tabs.len() {
+            self.current_tab -= 1;
+        }
+    }
+
+    fn quick_save(&mut self, path: &PathBuf) {
+        match write(path, self.get_script_ref().code.clone()) {
             Ok(_) => {
                 self.update_script_path(path.to_path_buf());
                 self.output.push(format!(
@@ -275,8 +440,8 @@ impl LuaEditor {
                     path.to_str().unwrap()
                 ));
             }
-            Err(e) => {
-                self.output.push(e.to_string());
+            Err(err) => {
+                self.output.push(err.to_string());
 
                 return;
             }
@@ -286,10 +451,10 @@ impl LuaEditor {
     fn load_script(&mut self, path: PathBuf) {
         match read_to_string(&path) {
             Ok(text) => {
-                self.code = text;
+                self.get_script_mut().code = text;
                 self.update_script_path(path);
             }
-            Err(e) => self.output.push(format!("Failed to read script: {e}")),
+            Err(err) => self.output.push(format!("Failed to read script: {err}")),
         }
     }
 
@@ -306,10 +471,13 @@ impl LuaEditor {
             return;
         }
 
-        let source_path = if let Some(script_path) = self.script_path.clone() {
+        let source_path = if let Some(script_path) = self.get_script_ref().path.clone() {
             script_path
         } else {
-            PathBuf::from(self.script_name.clone())
+            let mut name = self.get_script_ref().name.clone();
+            name.push_str(".lua");
+
+            PathBuf::from(name)
         };
 
         self.file_dialog = Some((
@@ -326,10 +494,10 @@ impl LuaEditor {
         if let Some(filename) = path.file_name()
             && let Some(script_name) = filename.to_owned().into_string().ok()
         {
-            self.script_name = script_name;
+            self.get_script_mut().name = script_name;
         }
 
-        self.script_path = Some(path);
+        self.get_script_mut().path = Some(path);
     }
 
     // found that only way to get copy to clipboard is work is by delaying setting it to clipboard
@@ -347,6 +515,7 @@ impl LuaEditor {
 
         if start_index != end_index {
             let selected_text = self
+                .get_script_ref()
                 .code
                 .chars()
                 .skip(start_index)
