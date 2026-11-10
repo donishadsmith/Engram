@@ -111,13 +111,17 @@ fn soft_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
 // https://problemkaputt.de/gbatek-bios-reset-functions.htm
 fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
     let reset_flags = cpu.registers.r[0];
+    bus.ppu.dispcnt = 0x0080;
 
     if reset_flags.is_set(0) {
         bus.ewram.fill(0);
     }
 
     if reset_flags.is_set(1) {
-        bus.iwram.fill(0);
+        // https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c#L38
+        // cleared entire thing when i should not have
+        let end = bus.iwram.len() - 0x200;
+        bus.iwram[..end].fill(0);
     }
 
     if reset_flags.is_set(2) {

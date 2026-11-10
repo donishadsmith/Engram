@@ -626,6 +626,10 @@ impl Session {
     }
 
     pub fn toggle_fullscreen(&mut self) {
+        if self.paused_due_to_minimize || screen_width() < 1.0 {
+            return;
+        }
+
         self.display.fullscreen = !self.display.fullscreen;
         // unfortunate windows task bar issue with fullscreen when taskbar is not on autohide so can partially obstruct screen
         // not an issue on the pi since the bar is on the top by default for pi os
@@ -643,7 +647,7 @@ impl Session {
     }
 
     pub fn record_window_size(&mut self) {
-        if !self.display.fullscreen {
+        if !self.display.fullscreen && !(self.paused_due_to_minimize || screen_width() < 1.0) {
             let (screen_width, screen_height) = (
                 screen_width() * screen_dpi_scale(),
                 screen_height() * screen_dpi_scale(),
