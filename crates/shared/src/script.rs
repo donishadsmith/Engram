@@ -157,6 +157,18 @@ impl Accessor {
             ))),
         }
     }
+
+    pub fn allows(&self, accessor: MemoryAccessor) -> bool {
+        matches!(
+            (self, accessor),
+            (Accessor::All, _)
+                | (
+                    Accessor::Cpu,
+                    MemoryAccessor::Cpu | MemoryAccessor::CpuReadWriteModify
+                )
+                | (Accessor::Dma, MemoryAccessor::Dma)
+        )
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -170,9 +182,9 @@ pub enum MemoryAccessor {
 impl MemoryAccessor {
     pub fn to_string(self) -> &'static str {
         match self {
-            MemoryAccessor::Cpu => "cpu",
+            MemoryAccessor::Cpu | MemoryAccessor::CpuReadWriteModify => "cpu",
             MemoryAccessor::Dma => "dma",
-            _ => unreachable!(),
+            MemoryAccessor::Lua => "lua",
         }
     }
 }
@@ -187,6 +199,19 @@ pub enum AddressRange {
 pub struct WatchpointRange {
     pub start_address: u32,
     pub end_address: Option<u32>,
+}
+
+impl WatchpointRange {
+    pub fn overlaps(&self, address: u32, width: Width) -> bool {
+        let last = address.saturating_add(match width {
+            Width::Byte => 0,
+            Width::Halfword => 1,
+            Width::Word => 3,
+        });
+        let end = self.end_address.unwrap_or(self.start_address);
+
+        self.start_address <= last && address <= end
+    }
 }
 
 pub fn find_watchpoint(
@@ -992,10 +1017,9 @@ impl ScriptEngine {
                     Ok(())
                 })?)?;
 
-            emulator.set("_pause_after_elapsed_cycles",  scope
+            emulator.set("_pause_after_elapsed_cycles", scope
                 .create_function(|_, elapsed_cycles: u64| {
-                    let current_cycle = target.borrow().elapsed_cycles();
-                    target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles + current_cycle);
+                    target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles);
 
                     Ok(())
                 })?)?;
@@ -1092,26 +1116,33 @@ impl ScriptEngine {
                     Ok(())
                 })?)?;
 
-            debugger.set("remove_watchpoint", scope.create_function(|_, (address, kwargs):  (u32, Option<Table>)| {
-                let watchpoint_range = WatchpointRange {
-                    start_address: address,
-                    end_address: if let Some(table) = kwargs && let Ok(some_option) = table.get::<Option<u32>>("end_address") && let Some(end_address) = some_option {
-                        Some(end_address)
-                    } else {
-                        None
-                    }
+            debugger.set("remove_watchpoint", scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
+                let end_address = match &kwargs {
+                    Some(table) => table.get::<Option<u32>>("end_address")?,
+                    None => None,
                 };
 
-                target.borrow_mut().remove_watchpoint(watchpoint_range);
+                let stored = target
+                    .borrow()
+                    .check_watchpoints()
+                    .into_iter()
+                    .find(|(range, args)| {
+                        range.start_address == args.width.align(address)
+                            && range.end_address == end_address.map(|end| args.width.align(end))
+                    })
+                    .map(|(range, _)| range);
 
-                if let Some(end_address) = watchpoint_range.end_address {
-                    output
-                        .borrow_mut()
-                        .push(format!("watchpoint range at {address:08X}..={end_address:08X} removed"));
-                } else {
-                    output
-                        .borrow_mut()
-                        .push(format!("watchpoint at {address:08X} removed"));
+                let label = match end_address {
+                    Some(end_address) => format!("watchpoint range at {address:08X}..={end_address:08X}"),
+                    None => format!("watchpoint at {address:08X}"),
+                };
+
+                match stored {
+                    Some(range) => {
+                        target.borrow_mut().remove_watchpoint(range);
+                        output.borrow_mut().push(format!("{label} removed"));
+                    }
+                    None => output.borrow_mut().push(format!("{label} not found")),
                 }
 
                 Ok(())

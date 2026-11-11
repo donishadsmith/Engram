@@ -14,7 +14,7 @@
 // Just do an afterboot startup
 
 // https://problemkaputt.de/gbatek.htm#GBAUnpreduse std::{
-use std::{collections::HashMap, env::var, fmt::Arguments, fs::File, io::BufWriter};
+use std::{env::var, fmt::Arguments, fs::File, io::BufWriter};
 
 use crate::components::{
     apu::Apu,
@@ -28,16 +28,8 @@ use crate::components::{
 };
 
 use shared::{
-    debug::Trace,
-    enums::Width,
-    psg::PsgMixerRegister,
-    scheduler::EventScheduler,
-    script::{
-        Accessor, Comparison, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
-        WatchpointType, find_watchpoint,
-    },
-    traits::BitOps,
-    utils::zero_arr,
+    debug::Trace, enums::Width, psg::PsgMixerRegister, scheduler::EventScheduler,
+    script::MemoryAccessor, structs::WatchpointManager, traits::BitOps, utils::zero_arr,
 };
 
 use serde::{Deserialize, Serialize};
@@ -110,6 +102,10 @@ fn bios() -> Box<[u8]> {
     zero_arr::<u8>(0x4000)
 }
 
+fn cpu_accessor() -> MemoryAccessor {
+    MemoryAccessor::Cpu
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct Bus {
     pub scheduler: EventScheduler<Event>,
@@ -140,11 +136,8 @@ pub struct Bus {
     pub interrupt_enable_copy: u16,
     pub interrupt_master_enable_copy: u32,
     #[serde(skip)]
-    pub watchpoint_queue: HashMap<WatchpointRange, WatchpointArgs>,
-    #[serde(skip)]
-    pub watchpoint_hits: Vec<WatchpointHit>,
-    #[serde(skip)]
-    pub watchpoint_pause: bool,
+    pub watchpoint_manager: WatchpointManager,
+    #[serde(skip, default = "cpu_accessor")]
     accessor: MemoryAccessor,
 }
 
@@ -190,9 +183,7 @@ impl Bus {
             interrupt_flag_copy: 0,
             interrupt_enable_copy: 0,
             interrupt_master_enable_copy: 0,
-            watchpoint_queue: HashMap::new(),
-            watchpoint_hits: Vec::new(),
-            watchpoint_pause: false,
+            watchpoint_manager: WatchpointManager::default(),
             accessor: MemoryAccessor::Cpu,
         }
     }
@@ -280,7 +271,16 @@ impl Bus {
             }
         };
 
-        self.check_read_watchpoint(address, access_type, Width::Byte, value as u32);
+        // just gonna spam this everwhere instead of actually fixing it
+        if access_type != AccessType::Lua {
+            self.watchpoint_manager.check_read(
+                address,
+                self.accessor,
+                value as u32,
+                self.scheduler.current,
+                Width::Byte,
+            );
+        }
 
         value
     }
@@ -288,7 +288,15 @@ impl Bus {
     pub fn write_u8(&mut self, address: u32, value: u8, access_type: AccessType) {
         self.cost(address, 8, access_type);
 
-        self.check_write_watchpoint(address, access_type, Width::Byte, value as u32);
+        if access_type != AccessType::Lua {
+            self.watchpoint_manager.check_write(
+                address,
+                self.accessor,
+                value as u32,
+                self.scheduler.current,
+                Width::Byte,
+            );
+        }
 
         // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
@@ -417,7 +425,19 @@ impl Bus {
             }
         };
 
-        self.check_read_watchpoint(address, access_type, Width::Halfword, value as u32);
+        if access_type != AccessType::Lua {
+            self.watchpoint_manager.check_read(
+                if matches!(address >> 24, 0x0E | 0x0F) {
+                    address
+                } else {
+                    address & !1
+                },
+                self.accessor,
+                value as u32,
+                self.scheduler.current,
+                Width::Halfword,
+            );
+        }
 
         value
     }
@@ -425,7 +445,19 @@ impl Bus {
     pub fn write_u16(&mut self, mut address: u32, value: u16, access_type: AccessType) {
         self.cost(address, 16, access_type);
 
-        self.check_write_watchpoint(address, access_type, Width::Halfword, value as u32);
+        if access_type != AccessType::Lua {
+            self.watchpoint_manager.check_write(
+                if matches!(address >> 24, 0x0E | 0x0F) {
+                    address
+                } else {
+                    address & !1
+                },
+                self.accessor,
+                value as u32,
+                self.scheduler.current,
+                Width::Halfword,
+            );
+        }
 
         if self.is_eeprom_address(address) {
             self.eeprom_write_u16(value);
@@ -535,7 +567,19 @@ impl Bus {
             }
         };
 
-        self.check_read_watchpoint(address, access_type, Width::Word, value);
+        if access_type != AccessType::Lua {
+            self.watchpoint_manager.check_read(
+                if matches!(address >> 24, 0x0E | 0x0F) {
+                    address
+                } else {
+                    address & !3
+                },
+                self.accessor,
+                value,
+                self.scheduler.current,
+                Width::Word,
+            );
+        }
 
         value
     }
@@ -543,7 +587,19 @@ impl Bus {
     pub fn write_u32(&mut self, mut address: u32, value: u32, access_type: AccessType) {
         self.cost(address, 32, access_type);
 
-        self.check_write_watchpoint(address, access_type, Width::Word, value);
+        if access_type != AccessType::Lua {
+            self.watchpoint_manager.check_write(
+                if matches!(address >> 24, 0x0E | 0x0F) {
+                    address
+                } else {
+                    address & !3
+                },
+                self.accessor,
+                value,
+                self.scheduler.current,
+                Width::Word,
+            );
+        }
 
         let bytes = value.to_le_bytes();
         if address & !1 == 0x4000300 {
@@ -1076,125 +1132,6 @@ impl Bus {
         self.interrupt_flag_copy = self.interrupt_flag;
         self.interrupt_enable_copy = self.interrupt_enable;
         self.interrupt_master_enable_copy = self.interrupt_master_enable;
-    }
-
-    #[inline]
-    fn check_read_watchpoint(
-        &mut self,
-        address: u32,
-        access_type: AccessType,
-        width: Width,
-        value: u32,
-    ) {
-        if access_type == AccessType::Lua || self.watchpoint_queue.is_empty() {
-            return;
-        }
-
-        let address = width.align(address);
-        let Some(range) = find_watchpoint(address, &self.watchpoint_queue) else {
-            return;
-        };
-
-        let args = &self.watchpoint_queue[&range];
-
-        if args.accessor != Accessor::All
-            && args.accessor.to_string().to_lowercase() != self.accessor.to_string().to_lowercase()
-        {
-            return;
-        }
-
-        let target = args.target;
-        let compare = args.compare;
-
-        if args.width == width && args.fires_on_read(value) {
-            self.push_watchpoint_hit(
-                address,
-                value,
-                args.pause,
-                width,
-                WatchpointType::Read,
-                target,
-                compare,
-            );
-        }
-    }
-
-    #[inline]
-    fn check_write_watchpoint(
-        &mut self,
-        address: u32,
-        access_type: AccessType,
-        width: Width,
-        value: u32,
-    ) {
-        if access_type == AccessType::Lua || self.watchpoint_queue.is_empty() {
-            return;
-        }
-
-        let address = width.align(address);
-        let Some(range) = find_watchpoint(address, &self.watchpoint_queue) else {
-            return;
-        };
-
-        let args = self.watchpoint_queue.get_mut(&range).unwrap();
-
-        if args.accessor != Accessor::All
-            && args.accessor.to_string().to_lowercase() != self.accessor.to_string().to_lowercase()
-        {
-            return;
-        }
-
-        if args.width != width {
-            return;
-        }
-
-        let pause = args.pause;
-        let on = if args.on == WatchpointType::Change {
-            WatchpointType::Change
-        } else {
-            WatchpointType::Write
-        };
-
-        let target = args.target;
-        let compare = args.compare;
-
-        if args.should_fire_on_write(address, value) {
-            self.push_watchpoint_hit(address, value, pause, width, on, target, compare);
-        }
-    }
-
-    #[inline]
-    fn push_watchpoint_hit(
-        &mut self,
-        address: u32,
-        value: u32,
-        pause: bool,
-        width: Width,
-        on: WatchpointType,
-        target: Option<u32>,
-        compare: Comparison,
-    ) {
-        if pause {
-            self.watchpoint_pause = true;
-        }
-
-        if self.watchpoint_hits.len() >= WatchpointHit::MAX_PENDING {
-            return;
-        }
-
-        self.watchpoint_hits.push(WatchpointHit {
-            address,
-            value,
-            pause,
-            width,
-            on,
-            pc: 0,
-            fetch_source: None,
-            cycle: self.scheduler.current,
-            accessor: self.accessor,
-            target,
-            compare,
-        });
     }
 }
 

@@ -66,7 +66,7 @@ impl GameBoy {
 
     pub fn step(&mut self) -> u32 {
         let pc = self.cpu.registers.program_counter.address.wrapping_sub(1) as u32;
-        let hits_before = self.cpu.bus.watchpoint_hits.borrow().len();
+        let hits_before = self.cpu.bus.watchpoint_manager.hits.len();
 
         let machine_cycles = self.cpu.cycle() as u32;
         if self.cpu.breakpoint_manager.hit.is_some() {
@@ -74,7 +74,7 @@ impl GameBoy {
         }
 
         let t_cycles = machine_cycles * 4;
-        self.cpu.bus.t_cycles += machine_cycles as u64;
+        self.cpu.bus.t_cycles += t_cycles as u64;
 
         for _ in 0..machine_cycles {
             self.cpu.bus.oam_dma_step();
@@ -104,8 +104,7 @@ impl GameBoy {
             .apu
             .tick(ppu_t_cycles, self.apu_sample_period, div_apu);
 
-        let mut hits = self.cpu.bus.watchpoint_hits.borrow_mut();
-        for hit in &mut hits[hits_before..] {
+        for hit in &mut self.cpu.bus.watchpoint_manager.hits[hits_before..] {
             hit.pc = pc;
         }
 
@@ -126,7 +125,7 @@ impl GameBoy {
             }
 
             if self.cpu.breakpoint_manager.hit.is_some()
-                || self.cpu.bus.watchpoint_pause.get()
+                || self.cpu.bus.watchpoint_manager.pause
                 || self.cpu.bus.ppu.frame_ready
                 || self.cpu.bus.ppu.lcd_off_frame && self.remaining_cycles <= 0
                 || self.pause_at_current_cycle()
@@ -148,7 +147,7 @@ impl GameBoy {
     }
 
     pub fn take_watchpoint_pause(&mut self) -> bool {
-        self.cpu.bus.watchpoint_pause.replace(false)
+        take(&mut self.cpu.bus.watchpoint_manager.pause)
     }
 
     pub fn replenish_remaining_cycles(&mut self) {
@@ -221,16 +220,8 @@ impl GameBoy {
         self.save()?;
 
         swap(
-            &mut data.cpu.bus.watchpoint_queue,
-            &mut self.cpu.bus.watchpoint_queue,
-        );
-        swap(
-            &mut data.cpu.bus.watchpoint_hits,
-            &mut self.cpu.bus.watchpoint_hits,
-        );
-        swap(
-            &mut data.cpu.bus.watchpoint_pause,
-            &mut self.cpu.bus.watchpoint_pause,
+            &mut data.cpu.bus.watchpoint_manager,
+            &mut self.cpu.bus.watchpoint_manager,
         );
 
         swap(
@@ -340,8 +331,8 @@ impl Emulator for GameBoy {
     fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {
         self.cpu
             .bus
-            .watchpoint_queue
-            .borrow()
+            .watchpoint_manager
+            .queue
             .iter()
             .map(|(&watchpoint_range, args)| (watchpoint_range, args.clone()))
             .collect()
@@ -352,25 +343,25 @@ impl Emulator for GameBoy {
         watchpoint_range: WatchpointRange,
         watchpoint_args: WatchpointArgs,
     ) -> bool {
-        let mut queue = self.cpu.bus.watchpoint_queue.borrow_mut();
+        let queue = &mut self.cpu.bus.watchpoint_manager.queue;
 
         queue.insert(watchpoint_range, watchpoint_args).is_some()
     }
 
     fn clear_all_watchpoints(&mut self) {
-        self.cpu.bus.watchpoint_queue.borrow_mut().clear();
+        self.cpu.bus.watchpoint_manager.queue.clear();
     }
 
     fn remove_watchpoint(&mut self, watchpoint_range: WatchpointRange) {
         self.cpu
             .bus
-            .watchpoint_queue
-            .borrow_mut()
+            .watchpoint_manager
+            .queue
             .remove(&watchpoint_range);
     }
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
-        take(&mut self.cpu.bus.watchpoint_hits.borrow_mut())
+        take(&mut self.cpu.bus.watchpoint_manager.hits)
     }
 
     fn frontend_mut(&mut self) -> &mut Frame {

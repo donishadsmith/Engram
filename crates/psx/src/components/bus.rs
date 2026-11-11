@@ -2,16 +2,14 @@
 // https://nsec.sjtu.edu.cn/data/MK.Computer.Organization.and.Design.4th.Edition.Oct.2011.pdf
 
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, env::var, fmt::Arguments, fs::File, io::BufWriter};
+use std::{env::var, fmt::Arguments, fs::File, io::BufWriter};
 
 use shared::{
     debug::Trace,
     enums::Width,
     scheduler::EventScheduler,
-    script::{
-        Accessor, Comparison, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
-        WatchpointType, find_watchpoint,
-    },
+    script::{MemoryAccessor, WatchpointArgs, WatchpointRange},
+    structs::WatchpointManager,
     traits::BitOps,
     utils::{kilobytes, zero_arr},
 };
@@ -53,13 +51,9 @@ pub trait BusAccess: BitOps {
                 *input |= Self::to_u32(value) << shift
             }
             Width::Halfword => {
-                if address.is_clear(0) {
-                    input.clear_bit_range(0..16);
-                    *input |= Self::to_u32(value)
-                } else {
-                    input.clear_bit_range(16..32);
-                    *input |= Self::to_u32(value) << 16
-                }
+                let shift = 8 * address.get_bit_range(0..2) as usize;
+                input.clear_bit_range(shift..shift + 16);
+                *input |= Self::to_u32(value) << shift
             }
             Width::Word => *input = Self::to_u32(value),
         };
@@ -152,11 +146,7 @@ pub struct Bus {
     #[serde(skip)]
     trace: Option<Trace>,
     #[serde(skip)]
-    pub watchpoint_queue: HashMap<WatchpointRange, WatchpointArgs>,
-    #[serde(skip)]
-    pub watchpoint_hits: Vec<WatchpointHit>,
-    #[serde(skip)]
-    pub watchpoint_pause: bool,
+    pub watchpoint_manager: WatchpointManager,
 }
 
 impl Bus {
@@ -181,9 +171,7 @@ impl Bus {
             istat: 0,
             imask: 0,
             trace,
-            watchpoint_queue: HashMap::new(),
-            watchpoint_hits: Vec::new(),
-            watchpoint_pause: false,
+            watchpoint_manager: WatchpointManager::default(),
         }
     }
 
@@ -204,7 +192,13 @@ impl Bus {
             _ => T::read(0xFFFFFFFF, address),
         };
 
-        self.check_read_watchpoint(address, T::ACCESS_WIDTH, T::to_u32(value), accessor);
+        self.watchpoint_manager.check_read(
+            address,
+            accessor,
+            T::to_u32(value),
+            self.scheduler.current,
+            T::ACCESS_WIDTH,
+        );
 
         value
     }
@@ -234,7 +228,13 @@ impl Bus {
             _ => {}
         }
 
-        self.check_write_watchpoint(address, T::ACCESS_WIDTH, T::to_u32(value), accessor);
+        self.watchpoint_manager.check_write(
+            address,
+            accessor,
+            T::to_u32(value),
+            self.scheduler.current,
+            T::ACCESS_WIDTH,
+        );
     }
 
     pub fn write_register<T: BusAccess>(&mut self, address: u32, value: T) {
@@ -265,135 +265,17 @@ impl Bus {
         self.scheduler.current += cycles;
     }
 
-    // maybe consolidate logic later when works, just copy and pasted from the gba with minimal revisions
-    // nice to do but i probably will never do it tbh
-    #[inline]
-    fn check_read_watchpoint(
-        &mut self,
-        address: u32,
-        width: Width,
-        value: u32,
-        accessor: MemoryAccessor,
-    ) {
-        if accessor == MemoryAccessor::Lua || self.watchpoint_queue.is_empty() {
-            return;
-        }
-
-        let Some(range) = find_watchpoint(address, &self.watchpoint_queue) else {
-            return;
-        };
-
-        let args = &self.watchpoint_queue[&range];
-
-        if args.accessor != Accessor::All
-            && args.accessor.to_string().to_lowercase() != accessor.to_string().to_lowercase()
-        {
-            return;
-        }
-
-        let target = args.target;
-        let compare = args.compare;
-
-        if args.width == width && args.fires_on_read(value) {
-            self.push_watchpoint_hit(
-                address,
-                value,
-                args.pause,
-                width,
-                WatchpointType::Read,
-                accessor,
-                target,
-                compare,
-            );
-        }
-    }
-
-    #[inline]
-    fn check_write_watchpoint(
-        &mut self,
-        address: u32,
-        width: Width,
-        value: u32,
-        accessor: MemoryAccessor,
-    ) {
-        if accessor == MemoryAccessor::Lua || self.watchpoint_queue.is_empty() {
-            return;
-        }
-
-        let Some(range) = find_watchpoint(address, &self.watchpoint_queue) else {
-            return;
-        };
-
-        let args = self.watchpoint_queue.get_mut(&range).unwrap();
-
-        if args.accessor != Accessor::All
-            && args.accessor.to_string().to_lowercase() != accessor.to_string().to_lowercase()
-        {
-            return;
-        }
-
-        if args.width != width {
-            return;
-        }
-
-        let pause = args.pause;
-        let on = if args.on == WatchpointType::Change {
-            WatchpointType::Change
-        } else {
-            WatchpointType::Write
-        };
-
-        let target = args.target;
-        let compare = args.compare;
-
-        if args.should_fire_on_write(address, value) {
-            self.push_watchpoint_hit(address, value, pause, width, on, accessor, target, compare);
-        }
-    }
-
-    #[inline]
-    fn push_watchpoint_hit(
-        &mut self,
-        address: u32,
-        value: u32,
-        pause: bool,
-        width: Width,
-        on: WatchpointType,
-        accessor: MemoryAccessor,
-        target: Option<u32>,
-        compare: Comparison,
-    ) {
-        if pause {
-            self.watchpoint_pause = true;
-        }
-
-        if self.watchpoint_hits.len() >= WatchpointHit::MAX_PENDING {
-            return;
-        }
-
-        self.watchpoint_hits.push(WatchpointHit {
-            address,
-            value,
-            pause,
-            width,
-            on,
-            pc: 0,
-            fetch_source: None,
-            cycle: self.scheduler.current,
-            accessor,
-            target,
-            compare,
-        });
-    }
-
     pub fn set_watchpoint(&mut self, range: WatchpointRange, args: WatchpointArgs) -> bool {
-        self.watchpoint_queue
+        self.watchpoint_manager
+            .queue
             .insert(translate_watchpoint(range), args)
             .is_some()
     }
 
     pub fn remove_watchpoint(&mut self, range: WatchpointRange) {
-        self.watchpoint_queue.remove(&translate_watchpoint(range));
+        self.watchpoint_manager
+            .queue
+            .remove(&translate_watchpoint(range));
     }
 }
 

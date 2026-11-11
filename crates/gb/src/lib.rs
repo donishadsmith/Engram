@@ -185,7 +185,7 @@ impl GameBoySession {
             }
 
             if self.gameboy.cpu.breakpoint_manager.hit.is_some()
-                || self.gameboy.cpu.bus.watchpoint_pause.get()
+                || self.gameboy.cpu.bus.watchpoint_manager.pause
                 || self.gameboy.pause_at_current_cycle()
             {
                 return false;
@@ -330,7 +330,8 @@ impl EmulatorSession for GameBoySession {
             cycles += self.gameboy.step();
 
             if self.gameboy.cpu.breakpoint_manager.hit.is_some()
-                || self.gameboy.cpu.bus.watchpoint_pause.get()
+                || self.gameboy.cpu.bus.watchpoint_manager.pause
+                || self.gameboy.pause_at_current_cycle()
             {
                 break;
             }

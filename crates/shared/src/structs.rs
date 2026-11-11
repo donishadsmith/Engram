@@ -7,6 +7,8 @@ use std::{
 
 use crate::{
     EmulatorState,
+    enums::Width,
+    script::{MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange, WatchpointType},
     traits::UnsignedInt,
     utils::{get_halfword_shift, get_word_mask, zero_arr},
 };
@@ -178,6 +180,139 @@ impl Default for BreakpointManager {
             hit: None,
             queue: HashMap::new(),
             resume_from: None,
+        }
+    }
+}
+
+// another manager to prevent the drift that occurs when i forget to update something
+pub struct WatchpointManager {
+    pub queue: HashMap<WatchpointRange, WatchpointArgs>,
+    pub hits: Vec<WatchpointHit>,
+    pub pause: bool,
+}
+
+impl WatchpointManager {
+    #[inline]
+    pub fn check_read(
+        &mut self,
+        address: u32,
+        accessor: MemoryAccessor,
+        value: u32,
+        cycle: u64,
+        width: Width,
+    ) {
+        if matches!(
+            accessor,
+            MemoryAccessor::Lua | MemoryAccessor::CpuReadWriteModify
+        ) || self.queue.is_empty()
+        {
+            return;
+        }
+
+        let address = width.align(address);
+
+        let Self { queue, hits, pause } = self;
+
+        for (range, args) in queue.iter() {
+            if args.width != width
+                || !range.overlaps(address, width)
+                || !args.accessor.allows(accessor)
+            {
+                continue;
+            }
+
+            if args.fires_on_read(value) {
+                push_hit(
+                    hits,
+                    pause,
+                    WatchpointHit {
+                        address,
+                        value,
+                        pause: args.pause,
+                        width,
+                        on: WatchpointType::Read,
+                        pc: 0,
+                        fetch_source: None,
+                        cycle,
+                        accessor,
+                        target: args.target,
+                        compare: args.compare,
+                    },
+                );
+            }
+        }
+    }
+
+    #[inline]
+    pub fn check_write(
+        &mut self,
+        address: u32,
+        accessor: MemoryAccessor,
+        value: u32,
+        cycle: u64,
+        width: Width,
+    ) {
+        if accessor == MemoryAccessor::Lua || self.queue.is_empty() {
+            return;
+        }
+
+        let address = width.align(address);
+
+        let Self { queue, hits, pause } = self;
+
+        for (range, args) in queue.iter_mut() {
+            if args.width != width
+                || !range.overlaps(address, width)
+                || !args.accessor.allows(accessor)
+            {
+                continue;
+            }
+
+            let on = if args.on == WatchpointType::Change {
+                WatchpointType::Change
+            } else {
+                WatchpointType::Write
+            };
+
+            if args.should_fire_on_write(address, value) {
+                push_hit(
+                    hits,
+                    pause,
+                    WatchpointHit {
+                        address,
+                        value,
+                        pause: args.pause,
+                        width,
+                        on,
+                        pc: 0,
+                        fetch_source: None,
+                        cycle,
+                        accessor,
+                        target: args.target,
+                        compare: args.compare,
+                    },
+                );
+            }
+        }
+    }
+}
+
+fn push_hit(hits: &mut Vec<WatchpointHit>, pause: &mut bool, hit: WatchpointHit) {
+    if hit.pause {
+        *pause = true;
+    }
+
+    if hits.len() < WatchpointHit::MAX_PENDING {
+        hits.push(hit);
+    }
+}
+
+impl Default for WatchpointManager {
+    fn default() -> Self {
+        Self {
+            queue: HashMap::new(),
+            hits: Vec::new(),
+            pause: false,
         }
     }
 }

@@ -539,7 +539,7 @@ where
         high_byte.merge_bytes(low_byte)
     }
 
-    fn fetch_source_value(&self, source: u8) -> u8 {
+    fn fetch_source_value(&mut self, source: u8) -> u8 {
         match source {
             0 => self.registers.b,
             1 => self.registers.c,
@@ -814,7 +814,7 @@ where
         }
     }
 
-    fn read_from_hl_address(&self) -> u8 {
+    fn read_from_hl_address(&mut self) -> u8 {
         let address = self.registers.get_16bit(Register16Bits::HL);
         self.bus.read(address, MemoryAccessor::Cpu)
     }
@@ -914,7 +914,7 @@ impl TestBus {
 }
 
 impl AddressBus for TestBus {
-    fn read(&self, address: u16, _accessor: MemoryAccessor) -> u8 {
+    fn read(&mut self, address: u16, _accessor: MemoryAccessor) -> u8 {
         self.ram[address as usize]
     }
 

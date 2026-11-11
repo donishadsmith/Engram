@@ -20,7 +20,7 @@ use std::{
     mem::{swap, take},
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA3";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA4";
 pub const HBLANK_OFFSET: u64 = 1006;
 pub const CYCLES_PER_SCANLINE: u64 = 1232;
 pub const APU_SEQUENCER: u64 = 32768;
@@ -82,7 +82,7 @@ impl GBA {
         let bus = &mut self.bus;
 
         let pc = self.cpu.next_executing_address();
-        let hits_before = bus.watchpoint_hits.len();
+        let hits_before = bus.watchpoint_manager.hits.len();
 
         if self.cpu.is_halted() {
             bus.scheduler.skip_to_next_event();
@@ -113,7 +113,7 @@ impl GBA {
         self.bus.copy_interrupt_info();
         self.check_interrupts();
 
-        for hit in &mut self.bus.watchpoint_hits[hits_before..] {
+        for hit in &mut self.bus.watchpoint_manager.hits[hits_before..] {
             hit.pc = pc;
         }
     }
@@ -214,7 +214,7 @@ impl GBA {
     }
 
     pub fn take_watchpoint_pause(&mut self) -> bool {
-        take(&mut self.bus.watchpoint_pause)
+        take(&mut self.bus.watchpoint_manager.pause)
     }
 
     pub fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
@@ -240,11 +240,9 @@ impl GBA {
 
         // struct that I made was roundabout-ish, but the worse part was that I realized couldn't save trace
         swap(
-            &mut data.bus.watchpoint_queue,
-            &mut self.bus.watchpoint_queue,
+            &mut data.bus.watchpoint_manager,
+            &mut self.bus.watchpoint_manager,
         );
-        swap(&mut data.bus.watchpoint_hits, &mut self.bus.watchpoint_hits);
-        data.bus.watchpoint_pause = self.bus.watchpoint_pause;
 
         swap(
             &mut data.cpu.breakpoint_manager,
@@ -359,7 +357,12 @@ impl Emulator for GBA {
     }
 
     fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {
-        self.bus.watchpoint_queue.clone().into_iter().collect()
+        self.bus
+            .watchpoint_manager
+            .queue
+            .clone()
+            .into_iter()
+            .collect()
     }
 
     fn set_watchpoint(
@@ -368,21 +371,22 @@ impl Emulator for GBA {
         watchpoint_args: WatchpointArgs,
     ) -> bool {
         self.bus
-            .watchpoint_queue
+            .watchpoint_manager
+            .queue
             .insert(watchpoint_range, watchpoint_args)
             .is_some()
     }
 
     fn clear_all_watchpoints(&mut self) {
-        self.bus.watchpoint_queue.clear();
+        self.bus.watchpoint_manager.queue.clear();
     }
 
     fn remove_watchpoint(&mut self, watchpoint_range: WatchpointRange) {
-        self.bus.watchpoint_queue.remove(&watchpoint_range);
+        self.bus.watchpoint_manager.queue.remove(&watchpoint_range);
     }
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
-        take(&mut self.bus.watchpoint_hits)
+        take(&mut self.bus.watchpoint_manager.hits)
     }
 
     fn frontend_mut(&mut self) -> &mut Frame {
@@ -538,17 +542,17 @@ impl ScriptTarget for GBA {
     }
 
     fn address_to_domain(&self, address: u32) -> Option<(&'static str, usize)> {
-        let (domain, base) = match address >> 24 {
-            0x02 => ("ewram", 0x02000000),
-            0x03 => ("iwram", 0x03000000),
-            0x05 => ("palette", 0x05000000),
-            0x06 => ("vram", 0x06000000),
-            0x07 => ("oam", 0x07000000),
-            0x08..=0x0D => ("rom", 0x08000000),
+        let (domain, offset) = match address >> 24 {
+            0x02 => ("ewram", Bus::ewram_index(address)),
+            0x03 => ("iwram", Bus::iwram_index(address)),
+            0x05 => ("palette", Bus::palette_index(address)),
+            0x06 => ("vram", Bus::vram_index(address)),
+            0x07 => ("oam", Bus::oam_index(address)),
+            0x08..=0x0D => ("rom", address.get_bit_range(0..25) as usize),
             _ => return None,
         };
 
-        Some((domain, base))
+        Some((domain, offset))
     }
 
     fn set_scripted_inputs(&mut self, keys: Option<Vec<bool>>) {

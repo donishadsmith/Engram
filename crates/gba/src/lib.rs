@@ -194,7 +194,7 @@ impl GBASession {
             self.tick(volume);
 
             if self.gba.cpu.breakpoint_manager.hit.is_some()
-                || self.gba.bus.watchpoint_pause
+                || self.gba.bus.watchpoint_manager.pause
                 || self.gba.pause_at_current_cycle()
             {
                 return false;
@@ -345,7 +345,7 @@ impl EmulatorSession for GBASession {
 
             if take(&mut self.gba.cpu.instruction_executed)
                 || self.gba.cpu.breakpoint_manager.hit.is_some()
-                || self.gba.bus.watchpoint_pause
+                || self.gba.bus.watchpoint_manager.pause
                 || self.gba.cpu.is_halted()
                 || self.gba.pause_at_current_cycle()
             {
@@ -363,7 +363,7 @@ impl EmulatorSession for GBASession {
             self.tick(volume);
 
             if self.gba.cpu.breakpoint_manager.hit.is_some()
-                || self.gba.bus.watchpoint_pause
+                || self.gba.bus.watchpoint_manager.pause
                 || self.gba.pause_at_current_cycle()
             {
                 break;
