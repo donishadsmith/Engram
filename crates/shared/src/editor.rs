@@ -166,7 +166,7 @@ pub struct LuaEditor {
     clipboard: Option<Clipboard>,
     pub help_window: bool,
     help_tab: HelpTab,
-    file_dialog: Option<(EditorDialog, PendingDialog)>,
+    file_dialog: Option<(EditorDialog, u64, PendingDialog)>,
     regex: Regex,
     next_tab_id: u64,
     syntax: Syntax,
@@ -445,7 +445,7 @@ impl LuaEditor {
                         }
                     });
 
-                    self.go_to_current_tab(current_id);
+                    self.current_tab = self.get_tab_from_id(current_id);
                 });
 
                 if let Some(index) = close_tab {
@@ -459,7 +459,7 @@ impl LuaEditor {
                 }
 
                 ui.separator();
-                if let Some(path) = self.get_script_ref().path.clone() {
+                if let Some(path) = self.get_current_tab_ref().path.clone() {
                     ui.horizontal(|ui| {
                         ui.add_space(10.0);
                         let steal_vs_code_breadcrumb_design = path
@@ -499,7 +499,7 @@ impl LuaEditor {
                             .show_with_completer(ui, &mut self.tabs[self.current_tab].code, &self.syntax, completer);
 
                         if previous_code != self.tabs[self.current_tab].code {
-                            self.get_script_mut().progress_unsaved = true;
+                            self.get_current_tab_mut().progress_unsaved = true;
                         }
 
                         focused = editor.response.has_focus();
@@ -537,7 +537,7 @@ impl LuaEditor {
                 }
 
                 if save_shortcut() {
-                    if let Some(path) = self.get_script_ref().path.clone() && path.exists() && self.file_dialog.is_none() {
+                    if let Some(path) = self.get_current_tab_ref().path.clone() && path.exists() && self.file_dialog.is_none() {
                         self.quick_save(&path);
                     } else {
                         self.save_lua_script();
@@ -548,11 +548,11 @@ impl LuaEditor {
         self.opened = opened;
         self.focused = focused;
 
-        run.then(|| self.get_script_ref().code.clone())
+        run.then(|| self.get_current_tab_ref().code.clone())
     }
 
     pub fn poll_file_dialog(&mut self) {
-        let Some((kind, dialog)) = &self.file_dialog else {
+        let Some((kind, _, dialog)) = &self.file_dialog else {
             return;
         };
 
@@ -562,14 +562,14 @@ impl LuaEditor {
             return;
         };
 
-        self.file_dialog = None;
-
         if let Some(path) = result {
             match kind {
                 EditorDialog::Open => self.load_script(path),
                 EditorDialog::Save => self.quick_save(&path),
             }
         }
+
+        self.file_dialog = None;
     }
 
     pub fn push_output(&mut self, lines: Vec<String>) {
@@ -588,12 +588,20 @@ impl LuaEditor {
         take(&mut self.termination_request)
     }
 
-    fn get_script_mut(&mut self) -> &mut ScriptTab {
+    fn get_current_tab_mut(&mut self) -> &mut ScriptTab {
         self.tabs.get_mut(self.current_tab).unwrap()
     }
 
-    fn get_script_ref(&self) -> &ScriptTab {
+    fn get_current_tab_ref(&self) -> &ScriptTab {
         self.tabs.get(self.current_tab).unwrap()
+    }
+
+    fn get_tab_ref(&self, tab: usize) -> &ScriptTab {
+        self.tabs.get(tab).unwrap()
+    }
+
+    fn get_tab_mut(&mut self, tab: usize) -> &mut ScriptTab {
+        self.tabs.get_mut(tab).unwrap()
     }
 
     fn steal_vs_code_naming_scheme(&self) -> String {
@@ -643,15 +651,11 @@ impl LuaEditor {
 
         self.tabs.push(tab);
 
-        self.go_to_current_tab(id);
+        self.current_tab = self.get_tab_from_id(id);
     }
 
-    fn go_to_current_tab(&mut self, current_id: u64) {
-        self.current_tab = self
-            .tabs
-            .iter()
-            .position(|tab| tab.id == current_id)
-            .unwrap();
+    fn get_tab_from_id(&mut self, tab_id: u64) -> usize {
+        self.tabs.iter().position(|tab| tab.id == tab_id).unwrap()
     }
 
     fn drop_tab(&mut self, index: usize) {
@@ -667,9 +671,17 @@ impl LuaEditor {
     }
 
     fn quick_save(&mut self, path: &PathBuf) {
-        match write(path, self.get_script_ref().code.clone()) {
+        let tab_id = if let Some((_, tab_id, _)) = self.file_dialog {
+            tab_id
+        } else {
+            self.get_current_tab_ref().id
+        };
+
+        let tab_position = self.get_tab_from_id(tab_id);
+
+        match write(path, self.get_tab_ref(tab_position).code.clone()) {
             Ok(_) => {
-                self.update_script_path(path.to_path_buf());
+                self.update_script_path(path.to_path_buf(), tab_id);
                 self.output.push(format!(
                     "current script saved to: {}",
                     path.to_str().unwrap()
@@ -682,17 +694,19 @@ impl LuaEditor {
             }
         }
 
-        self.get_script_mut().progress_unsaved = false;
+        self.get_tab_mut(tab_position).progress_unsaved = false;
     }
 
     fn load_script(&mut self, path: PathBuf) {
-        // stealing more vscode behavior
+        // stealing more vscode behavior, with a few differences
         match read_to_string(&path) {
             Ok(text) => {
-                let tab = self.get_script_ref();
-                if !tab.progress_unsaved {
-                    self.get_script_mut().code = text;
-                    self.update_script_path(path);
+                let tab = self.get_current_tab_ref();
+                // a specific case where a script is there, maybe contents removed with control + a but can technically
+                // return with control + z, so still put in nect tab
+                if !tab.progress_unsaved && tab.code.is_empty() {
+                    self.get_current_tab_mut().code = text;
+                    self.update_script_path(path, self.get_current_tab_ref().id);
                 } else if self.max_tabs_reached() {
                     self.output.push(format!(
                         "failed to load script since the max tabs ({}) have been reached",
@@ -702,8 +716,8 @@ impl LuaEditor {
                     return;
                 } else {
                     self.add_tab();
-                    self.get_script_mut().code = text;
-                    self.update_script_path(path);
+                    self.get_current_tab_mut().code = text;
+                    self.update_script_path(path, self.get_current_tab_ref().id);
                 }
             }
             Err(err) => self.output.push(format!("failed to read script: {err}")),
@@ -715,7 +729,11 @@ impl LuaEditor {
             return;
         }
 
-        self.file_dialog = Some((EditorDialog::Open, PendingDialog::open_lua_script()));
+        self.file_dialog = Some((
+            EditorDialog::Open,
+            self.get_current_tab_ref().id,
+            PendingDialog::open_lua_script(),
+        ));
     }
 
     fn save_lua_script(&mut self) {
@@ -723,10 +741,10 @@ impl LuaEditor {
             return;
         }
 
-        let source_path = if let Some(script_path) = self.get_script_ref().path.clone() {
+        let source_path = if let Some(script_path) = self.get_current_tab_ref().path.clone() {
             script_path
         } else {
-            let mut name = self.get_script_ref().name.clone();
+            let mut name = self.get_current_tab_ref().name.clone();
             name.push_str(".lua");
 
             PathBuf::from(name)
@@ -734,6 +752,7 @@ impl LuaEditor {
 
         self.file_dialog = Some((
             EditorDialog::Save,
+            self.get_current_tab_ref().id,
             PendingDialog::new(move || {
                 FileDialog::new()
                     .set_file_name(source_path.file_name().unwrap().to_string_lossy())
@@ -742,14 +761,15 @@ impl LuaEditor {
         ));
     }
 
-    fn update_script_path(&mut self, path: PathBuf) {
+    fn update_script_path(&mut self, path: PathBuf, tab_id: u64) {
+        let tab_id = self.get_tab_from_id(tab_id);
         if let Some(filename) = path.file_name()
             && let Some(script_name) = filename.to_owned().into_string().ok()
         {
-            self.get_script_mut().name = script_name;
+            self.get_tab_mut(tab_id).name = script_name;
         }
 
-        self.get_script_mut().path = Some(path);
+        self.get_tab_mut(tab_id).path = Some(path);
     }
 
     // found that only way to get copy to clipboard is work is by delaying setting it to clipboard
@@ -767,7 +787,7 @@ impl LuaEditor {
 
         if start_index != end_index {
             let selected_text = self
-                .get_script_ref()
+                .get_current_tab_ref()
                 .code
                 .chars()
                 .skip(start_index)
