@@ -1,4 +1,4 @@
-debugger.clear_all_breakpoints()
+debugger.clear_all_watchpoints()
 
 local log = io.open("encounters.txt", "a")
 

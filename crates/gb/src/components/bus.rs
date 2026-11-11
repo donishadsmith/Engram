@@ -17,8 +17,8 @@ MemoryMap
 use shared::{
     enums::Width,
     script::{
-        Accessor, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange, WatchpointType,
-        find_watchpoint,
+        Accessor, Comparison, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
+        WatchpointType, find_watchpoint,
     },
     traits::BitOps,
     utils::zero_arr,
@@ -302,9 +302,7 @@ impl Bus {
             self.vram_dma.in_progress = false;
         }
     }
-}
 
-impl Bus {
     #[inline]
     fn check_read_watchpoint(&self, address: u16, accessor: MemoryAccessor, value: u8) {
         if accessor == MemoryAccessor::Lua {
@@ -329,7 +327,15 @@ impl Bus {
         }
 
         if args.fires_on_read(value as u32) {
-            self.push_watchpoint_hit(address, value, args.pause, WatchpointType::Read, accessor);
+            self.push_watchpoint_hit(
+                address,
+                value,
+                args.pause,
+                WatchpointType::Read,
+                accessor,
+                args.target,
+                args.compare,
+            );
         }
     }
 
@@ -364,7 +370,15 @@ impl Bus {
         }
 
         if args.should_fire_on_write(address as u32, value as u32) {
-            self.push_watchpoint_hit(address, value, pause, on, accessor);
+            self.push_watchpoint_hit(
+                address,
+                value,
+                pause,
+                on,
+                accessor,
+                args.target,
+                args.compare,
+            );
         }
     }
 
@@ -376,6 +390,8 @@ impl Bus {
         pause: bool,
         on: WatchpointType,
         accessor: MemoryAccessor,
+        target: Option<u32>,
+        compare: Comparison,
     ) {
         if pause {
             self.watchpoint_pause.set(true);
@@ -395,7 +411,9 @@ impl Bus {
             pc: 0,
             fetch_source: None,
             cycle: self.t_cycles,
-            accessor: accessor,
+            accessor,
+            target,
+            compare,
         });
     }
 }

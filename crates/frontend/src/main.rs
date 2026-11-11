@@ -1,6 +1,6 @@
 // TODO: I think I can just flash firmware on the pico, wire then map buttons to the gpio pins, then connect via usb
 // https://gp2040-ce.info/web-configurator/menu-pages/gpio-pin-mapping
-#![windows_subsystem = "windows"]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 pub mod gui;
 pub mod session;

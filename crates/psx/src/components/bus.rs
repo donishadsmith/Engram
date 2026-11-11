@@ -9,8 +9,8 @@ use shared::{
     enums::Width,
     scheduler::EventScheduler,
     script::{
-        Accessor, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange, WatchpointType,
-        find_watchpoint,
+        Accessor, Comparison, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
+        WatchpointType, find_watchpoint,
     },
     traits::BitOps,
     utils::{kilobytes, zero_arr},
@@ -291,6 +291,9 @@ impl Bus {
             return;
         }
 
+        let target = args.target;
+        let compare = args.compare;
+
         if args.width == width && args.fires_on_read(value) {
             self.push_watchpoint_hit(
                 address,
@@ -299,6 +302,8 @@ impl Bus {
                 width,
                 WatchpointType::Read,
                 accessor,
+                target,
+                compare,
             );
         }
     }
@@ -338,8 +343,11 @@ impl Bus {
             WatchpointType::Write
         };
 
+        let target = args.target;
+        let compare = args.compare;
+
         if args.should_fire_on_write(address, value) {
-            self.push_watchpoint_hit(address, value, pause, width, on, accessor);
+            self.push_watchpoint_hit(address, value, pause, width, on, accessor, target, compare);
         }
     }
 
@@ -352,6 +360,8 @@ impl Bus {
         width: Width,
         on: WatchpointType,
         accessor: MemoryAccessor,
+        target: Option<u32>,
+        compare: Comparison,
     ) {
         if pause {
             self.watchpoint_pause = true;
@@ -371,6 +381,8 @@ impl Bus {
             fetch_source: None,
             cycle: self.scheduler.current,
             accessor,
+            target,
+            compare,
         });
     }
 

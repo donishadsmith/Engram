@@ -73,12 +73,13 @@ debugger.clear_all_breakpoints()
 debugger.check_breakpoints()
 
 Watchpoints (bus accesses):
-debugger.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all"})
+debugger.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all", compare="=="})
   - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
   - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
     a watchpoint only fires for the specified access width
   - target: on writes it is the incoming value being written; on reads it is the current value
     at the address being accessed; the watchpoint only fires for the specified target
+  - compare: the comparison for target, valid options are "<", "<=", ">", ">=", "==", "!=".
   - end_address: if included the watchpoint becomes an inclusive range (start_address..=end_address)
   - accessor: "all", "cpu", "dma"; restricts hits to the hardware accessing memory
 debugger.remove_watchpoint(address, {end_address}): end_address is required to remove a range
@@ -92,7 +93,7 @@ Hooks:
 function emulator.on_frame(): runs once per frame
 function debugger.on_breakpoint(address): runs when a breakpoint is hit
 function debugger.on_watchpoint(hit): runs once per watchpoint hit; hit is a table with
-  address, value, pc, on, width, pause, cycle, accessor, domain, offset, pc_offset
+  address, value, pc, on, width, pause, cycle, accessor, domain, offset, pc_offset, target, compare
 "#;
 
 pub enum DomainError {
@@ -234,6 +235,56 @@ impl WatchpointType {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Comparison {
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Eq,
+    Ne,
+}
+
+impl Comparison {
+    pub fn from_string(
+        string: Option<String>,
+        target_set: bool,
+    ) -> Result<Comparison, mlua::Error> {
+        let Some(string) = string else {
+            return Ok(Comparison::Eq);
+        };
+
+        if !target_set {
+            return Err(mlua::Error::runtime(
+                "`target` must be specified for `compare` to be used".to_string(),
+            ));
+        }
+
+        match string.to_lowercase().as_str() {
+            "<" => Ok(Comparison::Lt),
+            "<=" => Ok(Comparison::Le),
+            ">" => Ok(Comparison::Gt),
+            ">=" => Ok(Comparison::Ge),
+            "==" => Ok(Comparison::Eq),
+            "!=" => Ok(Comparison::Ne),
+            _ => Err(mlua::Error::runtime(format!(
+                "invalid option for `compare`: {string}: valid options are '<', '<=', '>', '>=', '==', '!='."
+            ))),
+        }
+    }
+
+    pub fn to_string(self) -> &'static str {
+        match self {
+            Comparison::Lt => "<",
+            Comparison::Le => "<=",
+            Comparison::Gt => ">",
+            Comparison::Ge => ">=",
+            Comparison::Eq => "==",
+            Comparison::Ne => "!=",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct WatchpointArgs {
     pub pause: bool,
@@ -242,6 +293,7 @@ pub struct WatchpointArgs {
     pub width: Width,
     pub last_written: HashMap<u32, u32>,
     pub accessor: Accessor,
+    pub compare: Comparison,
 }
 
 impl WatchpointArgs {
@@ -251,9 +303,7 @@ impl WatchpointArgs {
 
     pub fn fires_on_read(&self, value: u32) -> bool {
         matches!(self.on, WatchpointType::Read | WatchpointType::ReadWrite)
-            && self
-                .target
-                .map_or(true, |target_value| target_value == value)
+            && self.comparison(value)
     }
 
     pub fn should_fire_on_write(&mut self, address: u32, value: u32) -> bool {
@@ -263,14 +313,42 @@ impl WatchpointArgs {
             WatchpointType::Read => false,
         };
 
-        kind_hit
-            && self
+        kind_hit && self.comparison(value)
+    }
+
+    pub fn comparison(&self, value: u32) -> bool {
+        match self.compare {
+            Comparison::Lt => self
                 .target
-                .map_or(true, |target_value| target_value == value)
+                .map_or(true, |target_value| value < target_value),
+            Comparison::Le => self
+                .target
+                .map_or(true, |target_value| value <= target_value),
+            Comparison::Gt => self
+                .target
+                .map_or(true, |target_value| value > target_value),
+            Comparison::Ge => self
+                .target
+                .map_or(true, |target_value| value >= target_value),
+            Comparison::Eq => self
+                .target
+                .map_or(true, |target_value| value == target_value),
+            Comparison::Ne => self
+                .target
+                .map_or(true, |target_value| value != target_value),
+        }
+    }
+
+    pub fn target_to_string(&self) -> Option<String> {
+        if let Some(target) = self.target {
+            Some(format!("{} {:x}", self.compare.to_string(), target))
+        } else {
+            None
+        }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct WatchpointHit {
     pub address: u32,
     pub value: u32,
@@ -281,10 +359,25 @@ pub struct WatchpointHit {
     pub fetch_source: Option<FetchSource>,
     pub cycle: u64,
     pub accessor: MemoryAccessor,
+    pub target: Option<u32>,
+    pub compare: Comparison,
 }
 
 impl WatchpointHit {
     pub const MAX_PENDING: usize = 4096;
+
+    pub fn target_to_string(&self) -> Option<String> {
+        if let Some(target) = self.target {
+            Some(format!(
+                "{:x} {} {:x}",
+                self.value,
+                self.compare.to_string(),
+                target
+            ))
+        } else {
+            None
+        }
+    }
 }
 
 fn cpu_error(name: &str, error: CpuError, valid: &[&str]) -> mlua::Error {
@@ -333,7 +426,7 @@ fn parse_watchpoint_args(
     address: u32,
     kwargs: &Option<Table>,
 ) -> Result<(WatchpointRange, WatchpointArgs), mlua::Error> {
-    let (end_address, pause, on, width, target, accessor) = match kwargs {
+    let (end_address, pause, on, width, target, accessor, compare) = match kwargs {
         Some(table) => (
             table.get::<Option<u32>>("end_address")?,
             table.get::<Option<bool>>("pause")?,
@@ -341,8 +434,9 @@ fn parse_watchpoint_args(
             table.get::<Option<String>>("width")?,
             table.get::<Option<u32>>("target")?,
             table.get::<Option<String>>("accessor")?,
+            table.get::<Option<String>>("compare")?,
         ),
-        None => (None, None, None, None, None, None),
+        None => (None, None, None, None, None, None, None),
     };
 
     let pause = pause.unwrap_or(true);
@@ -365,6 +459,8 @@ fn parse_watchpoint_args(
         Accessor::All
     };
 
+    let compare = Comparison::from_string(compare, target.is_some())?;
+
     if emulator_id == EmulatorId::Gb && width != Width::Byte {
         return Err(mlua::Error::runtime(
             "invalid option for `width`: gameboy only allows byte width",
@@ -378,6 +474,7 @@ fn parse_watchpoint_args(
         width,
         last_written: HashMap::new(),
         accessor,
+        compare,
     };
 
     let watchpoint_range = WatchpointRange {
@@ -546,10 +643,6 @@ impl ScriptEngine {
                 coroutine.yield()
             end
 
-            function emulator.elapsed_cycles()
-                return emulator._elapsed_cycles()
-            end
-
             function emulator.pause_at_cycle(cycle)
                 emulator._pause_at_cycle(cycle)
                 coroutine.yield()
@@ -557,11 +650,6 @@ impl ScriptEngine {
 
             function emulator.pause_after_elapsed_cycles(elapsed_cycles)
                 emulator._pause_after_elapsed_cycles(elapsed_cycles)
-                coroutine.yield()
-            end
-
-            function emulator.open_debugger(debug_page)
-                emulator._open_debugger(debug_page)
                 coroutine.yield()
             end
 
@@ -1054,9 +1142,8 @@ impl ScriptEngine {
                         };
                         let on = watchpoint_args.on.to_string();
                         let width = watchpoint_args.width.to_string();
-                        let target_message = if let Some(target) = watchpoint_args.target {
-
-                        format!(" with target={}", target)} else {
+                        let target_message = if let Some(target) = watchpoint_args.target_to_string() {
+                        format!(" with target: {}", target)} else {
                             "".to_string()
                         };
 
@@ -1092,7 +1179,7 @@ impl ScriptEngine {
                 let hook = debugger.get::<Function>("on_watchpoint").ok();
                 for hit in hits {
                     if hook.is_none() {
-                        output.borrow_mut().push(format!(
+                        let mut string = format!(
                             "watchpoint at {:08x} hit: {} {} value={:x} pc={:08x}, accessor={}",
                             hit.address,
                             hit.on.to_string(),
@@ -1100,7 +1187,13 @@ impl ScriptEngine {
                             hit.value,
                             hit.pc,
                             hit.accessor.to_string()
-                        ));
+                        );
+
+                        if let Some(target) = hit.target_to_string() {
+                            string.push_str(&format!(" fired_on: {target}"));
+                        }
+
+                        output.borrow_mut().push(string);
                     }
 
                     let Some(hook) = &hook else {
@@ -1110,12 +1203,16 @@ impl ScriptEngine {
                     let table = lua.create_table()?;
                     table.set("address", hit.address)?;
                     table.set("value", hit.value)?;
+                    table.set("target", hit.target)?;
                     table.set("pc", hit.pc)?;
                     table.set("on", hit.on.to_string())?;
                     table.set("width", hit.width.to_string())?;
                     table.set("pause", hit.pause)?;
                     table.set("cycle", hit.cycle)?;
                     table.set("accessor", hit.accessor.to_string())?;
+                    if hit.target.is_some() {
+                        table.set("compare", hit.compare.to_string())?;
+                    }
 
                     let domain = target.borrow().address_to_domain(hit.address);
                     if let Some((domain, offset)) = domain {

@@ -33,8 +33,8 @@ use shared::{
     psg::PsgMixerRegister,
     scheduler::EventScheduler,
     script::{
-        Accessor, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange, WatchpointType,
-        find_watchpoint,
+        Accessor, Comparison, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
+        WatchpointType, find_watchpoint,
     },
     traits::BitOps,
     utils::zero_arr,
@@ -1103,8 +1103,19 @@ impl Bus {
             return;
         }
 
+        let target = args.target;
+        let compare = args.compare;
+
         if args.width == width && args.fires_on_read(value) {
-            self.push_watchpoint_hit(address, value, args.pause, width, WatchpointType::Read);
+            self.push_watchpoint_hit(
+                address,
+                value,
+                args.pause,
+                width,
+                WatchpointType::Read,
+                target,
+                compare,
+            );
         }
     }
 
@@ -1144,8 +1155,11 @@ impl Bus {
             WatchpointType::Write
         };
 
+        let target = args.target;
+        let compare = args.compare;
+
         if args.should_fire_on_write(address, value) {
-            self.push_watchpoint_hit(address, value, pause, width, on);
+            self.push_watchpoint_hit(address, value, pause, width, on, target, compare);
         }
     }
 
@@ -1157,6 +1171,8 @@ impl Bus {
         pause: bool,
         width: Width,
         on: WatchpointType,
+        target: Option<u32>,
+        compare: Comparison,
     ) {
         if pause {
             self.watchpoint_pause = true;
@@ -1176,6 +1192,8 @@ impl Bus {
             fetch_source: None,
             cycle: self.scheduler.current,
             accessor: self.accessor,
+            target,
+            compare,
         });
     }
 }

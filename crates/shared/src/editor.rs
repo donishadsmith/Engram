@@ -80,6 +80,7 @@ struct ScriptTab {
     name: String,
     code: String,
     path: Option<PathBuf>,
+    progress_unsaved: bool,
 }
 
 impl Hash for ScriptTab {
@@ -183,6 +184,7 @@ impl LuaEditor {
             code: String::new(),
             name: "Untitled-1".to_string(),
             path: None,
+            progress_unsaved: false,
         };
 
         tabs.push(script);
@@ -358,7 +360,6 @@ impl LuaEditor {
                     });
 
                     let current_id = self.tabs[self.current_tab].id;
-
                     ui.horizontal(|ui| {
                         ui.add_space(40.0);
                         let can_add_tab = !self.max_tabs_reached();
@@ -387,22 +388,51 @@ impl LuaEditor {
                                     }
 
                                     handle.ui(ui, |ui| {
+                                        const DOT_RADIUS: f32 = 3.0;
+                                        const DOT_GAP: f32 = 5.0;
+
+                                        let dot_space = if tab.progress_unsaved {
+                                            DOT_RADIUS * 2.0 + DOT_GAP
+                                        } else {
+                                            0.0
+                                        };
+
                                         let text = if tab.id == current_id {
                                             egui::RichText::new(&tab.name).strong().underline()
                                         } else {
                                             egui::RichText::new(&tab.name)
                                         };
 
-                                        let name_response = ui
-                                            .add_sized(
-                                                [ui.available_width(), tab_height],
-                                                egui::Label::new(text)
-                                                    .wrap_mode(egui::TextWrapMode::Truncate)
-                                                    .selectable(false)
-                                                    .sense(egui::Sense::click()),
-                                            );
+                                        let (rect, name_response) = ui.allocate_exact_size(
+                                            egui::vec2(ui.available_width(), tab_height),
+                                            egui::Sense::click(),
+                                        );
 
-                                        if name_response.clicked() {
+                                        let galley = egui::WidgetText::from(text.clone()).into_galley(
+                                            ui,
+                                            Some(egui::TextWrapMode::Truncate),
+                                            rect.width() - dot_space,
+                                            egui::TextStyle::Body,
+                                        );
+
+                                        let text_color = ui.visuals().text_color();
+                                        let left = rect.center().x - (dot_space + galley.size().x) / 2.0;
+
+                                        if tab.progress_unsaved {
+                                            ui.painter().circle_filled(
+                                                egui::pos2(left + DOT_RADIUS, rect.center().y),
+                                                DOT_RADIUS,
+                                                text_color,
+                                            );
+                                        }
+
+                                        ui.painter().galley(
+                                            egui::pos2(left + dot_space, rect.center().y - galley.size().y / 2.0),
+                                            galley,
+                                            text_color,
+                                        );
+
+                                        if name_response.on_hover_text(text).clicked() {
                                             select_tab = Some(state.index);
                                         }
                                     });
@@ -415,7 +445,7 @@ impl LuaEditor {
                         }
                     });
 
-                    self.current_tab = self.tabs.iter().position(|tab| tab.id == current_id).unwrap();
+                    self.go_to_current_tab(current_id);
                 });
 
                 if let Some(index) = close_tab {
@@ -458,6 +488,7 @@ impl LuaEditor {
                             &mut self.completer
                         };
 
+                        let previous_code = self.tabs[self.current_tab].code.clone();
                         let (editor, _) = CodeEditor::default()
                             .id_source("Lua Editpr")
                             .with_rows(16)
@@ -466,6 +497,10 @@ impl LuaEditor {
                             .with_numlines(true)
                             .vscroll(true)
                             .show_with_completer(ui, &mut self.tabs[self.current_tab].code, &self.syntax, completer);
+
+                        if previous_code != self.tabs[self.current_tab].code {
+                            self.get_script_mut().progress_unsaved = true;
+                        }
 
                         focused = editor.response.has_focus();
 
@@ -603,11 +638,20 @@ impl LuaEditor {
             code: String::new(),
             name: self.steal_vs_code_naming_scheme(),
             path: None,
+            progress_unsaved: false,
         };
 
         self.tabs.push(tab);
 
-        self.current_tab = self.tabs.len() - 1
+        self.go_to_current_tab(id);
+    }
+
+    fn go_to_current_tab(&mut self, current_id: u64) {
+        self.current_tab = self
+            .tabs
+            .iter()
+            .position(|tab| tab.id == current_id)
+            .unwrap();
     }
 
     fn drop_tab(&mut self, index: usize) {
@@ -637,15 +681,32 @@ impl LuaEditor {
                 return;
             }
         }
+
+        self.get_script_mut().progress_unsaved = false;
     }
 
     fn load_script(&mut self, path: PathBuf) {
+        // stealing more vscode behavior
         match read_to_string(&path) {
             Ok(text) => {
-                self.get_script_mut().code = text;
-                self.update_script_path(path);
+                let tab = self.get_script_ref();
+                if !tab.progress_unsaved {
+                    self.get_script_mut().code = text;
+                    self.update_script_path(path);
+                } else if self.max_tabs_reached() {
+                    self.output.push(format!(
+                        "failed to load script since the max tabs ({}) have been reached",
+                        MAX_TABS
+                    ));
+
+                    return;
+                } else {
+                    self.add_tab();
+                    self.get_script_mut().code = text;
+                    self.update_script_path(path);
+                }
             }
-            Err(err) => self.output.push(format!("Failed to read script: {err}")),
+            Err(err) => self.output.push(format!("failed to read script: {err}")),
         }
     }
 

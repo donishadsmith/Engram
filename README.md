@@ -36,7 +36,7 @@ A Game Boy Advance & Game Boy/Game Boy Color emulator.
   </tr>
 </table>
 
-<p align="center"><sub>All screenshots, GIFs, and video in this README were captured with Engram's built-in capture tools.</sub></p>
+<p align="center"><sub>All game screenshots, GIFs, and video in this README were captured with Engram's built-in capture tools; the debugger and Lua editor screenshots were taken with the Windows Snipping Tool.</sub></p>
 
 ## Features
 **Systems**
@@ -60,12 +60,35 @@ Built with [macroquad](https://github.com/not-fl3/macroquad), [egui](https://git
 - Video: backgrounds, sprites, palettes, and register state
 - Audio: per-channel visualization and register state
 
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/debug1.png" width="290">
+      <br>Display and interrupt state
+    </td>
+    <td align="center">
+      <img src="assets/debug2.png" width="290">
+      <br>Background layers
+    </td>
+    <td align="center">
+      <img src="assets/debug3.png" width="290">
+      <br>Sprites (OAM)
+    </td>
+  </tr>
+</table>
+
 **Lua scripting** (`F8` or Tools menu)
-- Breakpoints and read/write watchpoints (byte, halfword, word) with callbacks
-- Per-frame callbacks
+- Breakpoints and read/write watchpoints with width, target/compare, change, and accessor filters
+- Per-frame, breakpoint, and watchpoint callbacks
 - Read and write memory by domain and CPU registers by name
 - Set controller inputs and pause after a number of cycles
-- Built-in editor with console output
+- Scripts can pause, step, reset, and wait for the emulator mid-script, since scripts run as Lua coroutines that yield to the emulator (e.g. reset -> run to a cycle -> step -> dump registers)
+- Built-in editor with a console; scripts run against the live emulator and Lua state persists
+
+<p align="center">
+  <img src="assets/mini_vscode.png" width="800">
+  <br><sub>Logging writes to Pokemon Crystal's species byte after a previous script patched the ROM to make all Pokemon shiny</sub>
+</p>
 
 ## Usage
 ```bash
@@ -111,14 +134,14 @@ Game saves and save states are stored inside your platform's data directory (via
 - Windows: `%AppData%\Engram\`
 
 ## Settings
-Settings for are saved to `Engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
+Settings are saved to `Engram/config.toml` inside your platform's config directory (via [`dirs::config_dir`](https://docs.rs/dirs/latest/dirs/fn.config_dir.html)):
 
 - Linux: `$XDG_CONFIG_HOME/Engram` or `$HOME/.config/Engram`
 - MacOS: `$HOME/Library/Application Support/Engram`
 - Windows: `%AppData%\Engram`
 
 ## Recordings
-Screenshots and GIFs are saved inside your platform's pictures directory (via [`dirs::picture_dir`](https://docs.rs/dirs/latest/dirs/fn.picture_dir.html)), and videos to inside your platform's videos directory (via [`dirs::video_dir`](https://docs.rs/dirs/latest/dirs/fn.video_dir.html)).
+Screenshots and GIFs are saved inside your platform's pictures directory (via [`dirs::picture_dir`](https://docs.rs/dirs/latest/dirs/fn.picture_dir.html)), and videos inside your platform's videos directory (via [`dirs::video_dir`](https://docs.rs/dirs/latest/dirs/fn.video_dir.html)).
 
 - Linux: `$XDG_PICTURES_DIR` and `$XDG_VIDEOS_DIR`
 - MacOS: `$HOME/Pictures` and `$HOME/Movies`
