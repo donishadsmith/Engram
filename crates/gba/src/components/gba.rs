@@ -238,7 +238,7 @@ impl GBA {
 
         self.save()?;
 
-        // struct that I made was roundabout-ish, but the worse part was that I realized couldn't save trace
+        // note to self: since rtc is based on sysytem clock be aware that the time will automatically be updated to current time
         swap(
             &mut data.bus.watchpoint_manager,
             &mut self.bus.watchpoint_manager,

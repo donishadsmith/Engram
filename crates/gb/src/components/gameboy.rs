@@ -219,6 +219,7 @@ impl GameBoy {
 
         self.save()?;
 
+        // note to self: since rtc is based on sysytem clock be aware that the time will automatically be updated to current time
         swap(
             &mut data.cpu.bus.watchpoint_manager,
             &mut self.cpu.bus.watchpoint_manager,

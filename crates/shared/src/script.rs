@@ -569,6 +569,7 @@ pub struct ScriptEngine {
     script: Table,
     cpu: Table,
     console: Table,
+    waiting_on_frontend: bool, // prob safer to do this instead of setting step complete at the end of the frontend for loop
 }
 
 impl ScriptEngine {
@@ -654,43 +655,15 @@ impl ScriptEngine {
             end
 
             function emulator.save_state(slot)
-                emulator._save_state(slot)
-                coroutine.yield()
+                if emulator._save_state(slot) then
+                    coroutine.yield()
+                end
             end
 
             function emulator.load_state(slot)
-                emulator._load_state(slot)
-                coroutine.yield()
-            end
-
-            function emulator.delete_state(slot)
-                emulator._delete_state(slot)
-                coroutine.yield()
-            end
-
-            function emulator.pause_at_cycle(cycle)
-                emulator._pause_at_cycle(cycle)
-                coroutine.yield()
-            end
-
-            function emulator.pause_after_elapsed_cycles(elapsed_cycles)
-                emulator._pause_after_elapsed_cycles(elapsed_cycles)
-                coroutine.yield()
-            end
-
-            function emulator.close_debugger()
-                emulator._close_debugger()
-                coroutine.yield()
-            end
-
-            function emulator.fast_forward(speed)
-                emulator._fast_forward(speed)
-                coroutine.yield()
-            end
-
-            function emulator.volume(volume)
-                emulator._volume(volume)
-                coroutine.yield()
+                if emulator._load_state(slot) then
+                    coroutine.yield()
+                end
             end
         "#,
             )
@@ -714,6 +687,7 @@ impl ScriptEngine {
             script,
             cpu,
             console,
+            waiting_on_frontend: false,
         }
     }
 
@@ -730,15 +704,18 @@ impl ScriptEngine {
     }
 
     pub fn take_requests(&mut self) -> Vec<ScriptRequest> {
+        self.waiting_on_frontend = self.running.is_some();
+
         take(&mut self.requests)
     }
 
     pub fn step_completed(&mut self) {
-        self.step_done = true;
+        if take(&mut self.waiting_on_frontend) {
+            self.step_done = true;
+        }
     }
 
     pub fn stop_scripts(&mut self) {
-        self.step_completed();
         self.running = None;
         self.stop_scripts = true;
     }
@@ -789,6 +766,7 @@ impl ScriptEngine {
             script,
             cpu,
             console,
+            waiting_on_frontend: _,
         } = self;
 
         let target = RefCell::new(target);
@@ -960,7 +938,7 @@ impl ScriptEngine {
                 || ScriptRequest::StopVideo,
             )?;
             set_emulator_controls(
-                "_close_debugger",
+                "close_debugger",
                 || ScriptRequest::CloseDebugger,
             )?;
 
@@ -970,7 +948,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            emulator.set("_fast_forward", scope.create_function(|_, speed: i64| {
+            emulator.set("fast_forward", scope.create_function(|_, speed: i64| {
                 if (1..=(FAST_FORWARD as i64)).contains(&speed) {
                     requests.borrow_mut().push(ScriptRequest::FastForward(speed as u8));
                 } else {
@@ -980,7 +958,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            emulator.set("_volume", scope.create_function(|_, volume: i64| {
+            emulator.set("volume", scope.create_function(|_, volume: i64| {
                 if (0..=100).contains(&volume) {
                     requests.borrow_mut().push(ScriptRequest::Volume(volume as u8));
                 } else {
@@ -996,11 +974,13 @@ impl ScriptEngine {
                 let function = scope.create_function(move |_, slot: i64| {
                 if  !(1i64..=(SAVE_STATE_SLOTS as i64)).contains(&slot) {
                         output.borrow_mut().push(mlua::Error::runtime(format!("Only save states 1-{SAVE_STATE_SLOTS} can be used")).to_string());
-                    } else {
-                        requests.borrow_mut().push(request(slot));
-                    }
 
-                    Ok(())
+                        return Ok(false)
+                }
+
+                    requests.borrow_mut().push(request(slot));
+
+                    Ok(true)
                 })?;
 
                 emulator.set(name, function)
@@ -1008,16 +988,16 @@ impl ScriptEngine {
 
             set_emulator_save_state("_save_state", ScriptRequest::SaveState)?;
             set_emulator_save_state("_load_state", ScriptRequest::LoadState)?;
-            set_emulator_save_state("_delete_state", ScriptRequest::DeleteState)?;
+            set_emulator_save_state("delete_state", ScriptRequest::DeleteState)?;
 
-            emulator.set("_pause_at_cycle", scope
+            emulator.set("pause_at_cycle", scope
                 .create_function(|_, cycle: u64| {
                     target.borrow_mut().set_cycle_pause(cycle);
 
                     Ok(())
                 })?)?;
 
-            emulator.set("_pause_after_elapsed_cycles", scope
+            emulator.set("pause_after_elapsed_cycles", scope
                 .create_function(|_, elapsed_cycles: u64| {
                     target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles);
 
