@@ -63,7 +63,7 @@ pub enum EmulatorState {
 pub trait Emulator {
     fn save(&mut self) -> Result<(), Error>;
 
-    fn remove_breakpoint(&mut self, address: u32);
+    fn remove_breakpoint(&mut self, address: u32) -> bool;
 
     fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool;
 

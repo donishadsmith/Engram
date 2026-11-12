@@ -1056,10 +1056,13 @@ impl ScriptEngine {
                 })?)?;
 
             debugger.set("remove_breakpoint", scope.create_function(|_, address: u32| {
-                target.borrow_mut().remove_breakpoint(address);
-                output
-                    .borrow_mut()
-                    .push(format!("breakpoint at {address:08X} removed"));
+                let label = match target.borrow_mut().remove_breakpoint(address) {
+                    true => format!("breakpoint at {address:08X} removed"),
+                    false => format!("breakpoint at {address:08X} not found")
+                };
+
+                output.borrow_mut().push(label);
+
                 Ok(())
             })?)?;
 

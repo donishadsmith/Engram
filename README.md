@@ -87,7 +87,7 @@ Built with [macroquad](https://github.com/not-fl3/macroquad), [egui](https://git
 
 <p align="center">
   <img src="assets/mini_vscode.png" width="800">
-  <br><sub>Logging writes to Pokemon Crystal's species byte after a previous script patched the ROM to make all Pokemon shiny</sub>
+  <br><sub>Logging writes to Pokemon Crystal's species byte after a previous script modified RAM to make the best Pokemon (Celebi) shiny</sub>
 </p>
 
 ## Usage

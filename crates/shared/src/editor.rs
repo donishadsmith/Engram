@@ -1,4 +1,4 @@
-use crate::{script::API, structs::PendingDialog};
+use crate::{script::API, structs::PendingDialog, utils::centered_row};
 use arboard::Clipboard;
 use egui::{Context, ScrollArea, Window, text::CCursorRange};
 use egui_code_editor::{CodeEditor, ColorTheme, Completer, Syntax};
@@ -18,7 +18,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+const RADIUS: f32 = 3.0;
+const DIAMETER: f32 = 6.0;
+const ICON_SPACE: f32 = 10.0;
 const COPY_DELAY: Duration = Duration::from_millis(200);
+
 const SHORTCUT: &str = r#"
 Shift+Enter: run the current script
 Ctrl+N: new script (max of 5)
@@ -174,6 +178,8 @@ pub struct LuaEditor {
     member_completers: HashMap<&'static str, Completer>,
     last_cursor: usize,
     pub theme: EditorTheme,
+    pending_close: Option<u64>,
+    pending_drop: Option<u64>,
 }
 
 impl LuaEditor {
@@ -227,13 +233,15 @@ impl LuaEditor {
             help_tab: HelpTab::Api,
             file_dialog: None,
             current_tab: 0,
-            regex: Regex::new(r"^Untitled-\d{1,2}$").unwrap(),
+            regex: Regex::new(r"^Untitled-\d{1,2}$").unwrap(), // keeping to incase i find a way to have more than 5 tabs and have it still look decent
             next_tab_id: 2,
             syntax,
             completer,
             member_completers,
             last_cursor: 0,
             theme,
+            pending_close: None,
+            pending_drop: None,
         }
     }
 
@@ -247,6 +255,7 @@ impl LuaEditor {
 
         let mut select_tab: Option<usize> = None;
         let mut close_tab: Option<usize> = None;
+        let mut pending_close: Option<u64> = None;
         let mut add_tab = false;
 
         let (bg_color, text_color) = match self.theme {
@@ -269,11 +278,11 @@ impl LuaEditor {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.menu_button("File", |ui| {
-                            if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() && self.file_dialog.is_none() {
+                            if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() && self.file_dialog.is_none() && self.pending_close.is_none() {
                                 self.load_lua_script();
                             }
 
-                            if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() && self.file_dialog.is_none() {
+                            if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() && self.file_dialog.is_none() && self.pending_close.is_none() {
                                 self.save_lua_script();
                             }
                         });
@@ -309,12 +318,6 @@ impl LuaEditor {
                             });
 
                             ui.menu_button("Session", |ui| {
-                                if ui.button(format!("{}  Clear Console", icons::BROOM)).on_hover_text(
-                                    "Clears output in console"
-                                ).clicked() {
-                                    self.output.clear();
-                                }
-
                                 if ui.button(format!("{}  Stop Scripts", icons::STOP_CIRCLE)).on_hover_text(
                                     "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints"
                                     ).clicked() {
@@ -359,7 +362,11 @@ impl LuaEditor {
                         });
                     });
 
-                    let current_id = self.tabs[self.current_tab].id;
+                    let current_id = self.get_current_tab_ref().id;
+                    let current_pending_close = self.pending_close.is_some();
+                    let file_dialog_active = self.file_dialog.is_some();
+
+                    // primarily fudged numbers until it came out somewhat ok, a lot of magic numbers
                     ui.horizontal(|ui| {
                         ui.add_space(40.0);
                         let can_add_tab = !self.max_tabs_reached();
@@ -381,21 +388,8 @@ impl LuaEditor {
                                         ui.separator();
                                     }
 
-                                    if can_close_tab
-                                        && ui.add(egui::Button::new(icons::X).small().frame(false)).clicked()
-                                    {
-                                        close_tab = Some(state.index);
-                                    }
-
-                                    handle.ui(ui, |ui| {
-                                        const DOT_RADIUS: f32 = 3.0;
-                                        const DOT_GAP: f32 = 5.0;
-
-                                        let dot_space = if tab.progress_unsaved {
-                                            DOT_RADIUS * 2.0 + DOT_GAP
-                                        } else {
-                                            0.0
-                                        };
+                                    handle.show_drag_cursor_on_hover(false).ui(ui, |ui| {
+                                        let response = ui.allocate_response(egui::vec2(DIAMETER, DIAMETER), egui::Sense::click());
 
                                         let text = if tab.id == current_id {
                                             egui::RichText::new(&tab.name).strong().underline()
@@ -408,31 +402,67 @@ impl LuaEditor {
                                             egui::Sense::click(),
                                         );
 
+                                        // possibly a better way to do this but had to break down the conditional like and think it through
+                                        // since trying to replicate this vscode behavior was a kinda tricky for me
+                                        let hovered = name_response.contains_pointer() || response.contains_pointer();
+                                        let reponse_hover = response.hovered();
+                                        let show_close = ((tab.id == current_id) || hovered) && !file_dialog_active;
+                                        if can_close_tab && show_close && (hovered || !tab.progress_unsaved) && !current_pending_close {
+                                            if response.contains_pointer() {
+                                                ui.painter().text(response.rect.left_center(), egui::Align2::CENTER_CENTER, icons::RECTANGLE_DASHED, egui::FontId::proportional(17.0), text_color);
+                                            }
+
+                                            ui.painter().text(response.rect.left_center(), egui::Align2::CENTER_CENTER, icons::X, egui::FontId::proportional(12.0), text_color);
+
+                                            if response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                                if tab.progress_unsaved {
+                                                    pending_close = Some(tab.id)
+                                                } else {
+                                                    close_tab = Some(state.index);
+                                                }
+                                            }
+                                        } else if tab.progress_unsaved {
+                                            ui.painter().circle_filled(response.rect.center(), RADIUS, text_color);
+                                        }
+
                                         let galley = egui::WidgetText::from(text.clone()).into_galley(
                                             ui,
                                             Some(egui::TextWrapMode::Truncate),
-                                            rect.width() - dot_space,
+                                            rect.width() - (DIAMETER + 3.0) - ICON_SPACE,
                                             egui::TextStyle::Body,
                                         );
 
+                                        let left = rect.center().x - (ICON_SPACE + galley.size().x) / 2.0;
                                         let text_color = ui.visuals().text_color();
-                                        let left = rect.center().x - (dot_space + galley.size().x) / 2.0;
 
-                                        if tab.progress_unsaved {
-                                            ui.painter().circle_filled(
-                                                egui::pos2(left + DOT_RADIUS, rect.center().y),
-                                                DOT_RADIUS,
-                                                text_color,
+                                        ui.painter().text(egui::Pos2::new(left, rect.center().y), egui::Align2::CENTER_CENTER, if tab.path.is_some() {icons::FILE_TEXT} else {icons::TEXT_ALIGN_LEFT}, egui::FontId::proportional(12.0), text_color);
+
+                                        if (tab.id == current_id || name_response.hovered() || reponse_hover) && can_close_tab {
+                                            let rectangle_position_shift = if !can_add_tab {18.0} else {21.0};
+                                            let rectangle = egui::Rect::from_min_max(egui::Pos2::new(rect.left(),rect.top()), egui::Pos2::new(rect.right() + rectangle_position_shift, rect.bottom()));
+
+                                            let color = if tab.id == current_id {
+                                                text_color
+                                            } else {
+                                                text_color.gamma_multiply(0.5)
+                                            };
+
+                                            let stroke = egui::Stroke::new(1.0, color);
+                                            ui.painter().rect_stroke(
+                                                rectangle,
+                                                1.0,
+                                                stroke,
+                                                egui::StrokeKind::Outside,
                                             );
                                         }
 
                                         ui.painter().galley(
-                                            egui::pos2(left + dot_space, rect.center().y - galley.size().y / 2.0),
+                                            egui::pos2(left + ICON_SPACE, rect.center().y - galley.size().y / 2.0),
                                             galley,
                                             text_color,
                                         );
 
-                                        if name_response.on_hover_text(text).clicked() {
+                                        if name_response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(text).clicked() && !(file_dialog_active || current_pending_close) {
                                             select_tab = Some(state.index);
                                         }
                                     });
@@ -440,7 +470,7 @@ impl LuaEditor {
                             );
                         });
 
-                        if can_add_tab && ui.button(icons::PLUS).on_hover_text("New script").clicked() {
+                        if can_add_tab && ui.button(icons::PLUS).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("New script").clicked() {
                             add_tab = true;
                         }
                     });
@@ -450,8 +480,14 @@ impl LuaEditor {
 
                 if let Some(index) = close_tab {
                     self.drop_tab(index);
-                } else if let Some(index) = select_tab {
+                }
+
+                if let Some(index) = select_tab {
                     self.current_tab = index;
+                }
+
+                if let Some(pending_close) = pending_close {
+                    self.pending_close = Some(pending_close);
                 }
 
                 if add_tab {
@@ -467,7 +503,7 @@ impl LuaEditor {
                         .filter(|component| !matches!(component.as_os_str().to_str(), Some("\\") | Some("/")))
                         .map(|component| component.as_os_str().to_string_lossy())
                         .collect::<Vec<_>>()
-                        .join(" > ");
+                        .join(icons::CARET_RIGHT);
 
                         ui.add(egui::Label::new(steal_vs_code_breadcrumb_design).wrap_mode(egui::TextWrapMode::Truncate));
                     });
@@ -491,7 +527,7 @@ impl LuaEditor {
                         let previous_code = self.tabs[self.current_tab].code.clone();
                         let (editor, _) = CodeEditor::default()
                             .id_source("Lua Editpr")
-                            .with_rows(16)
+                            .with_rows(20)
                             .with_fontsize(14.0)
                             .with_theme(self.theme.to_theme())
                             .with_numlines(true)
@@ -513,7 +549,18 @@ impl LuaEditor {
 
                 ui.add_space(3.0);
                 ui.separator();
-                ui.monospace(egui::RichText::new(format!("{} Console", icons::TERMINAL_WINDOW)).color(text_color));
+
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(format!("{} Console", icons::TERMINAL_WINDOW)).color(text_color));
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let trash = egui::Button::new(egui::RichText::new(icons::BROOM).color(text_color)).frame(false);
+                        if ui.add(trash).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Clear console").clicked() {
+                            self.output.clear();
+                        }
+                    });
+                });
+
                 ui.separator();
 
                 ScrollArea::vertical()
@@ -544,6 +591,15 @@ impl LuaEditor {
                     }
                 }
             });
+
+        self.pending_close_dialog(egui_ctx, text_color);
+
+        if self.file_dialog.is_none()
+            && let Some(pending_drop) = self.pending_drop.take()
+        {
+            let index = self.get_tab_from_id(pending_drop);
+            self.drop_tab(index);
+        }
 
         self.opened = opened;
         self.focused = focused;
@@ -819,6 +875,82 @@ impl LuaEditor {
                 .output
                 .push(format!("Failed to copy to clipboard: {err}")),
             None => self.output.push("Clipboard unavailable".to_string()),
+        }
+    }
+
+    fn pending_close_dialog(&mut self, egui_ctx: &Context, text_color: egui::Color32) {
+        let Some(tab_id) = self.pending_close else {
+            return;
+        };
+
+        let tab_position = self.get_tab_from_id(tab_id);
+        let tab = self.get_tab_ref(tab_position);
+        let mut open = true;
+        let mut save: Option<bool> = None;
+        let mut pending_drop: Option<u64> = None;
+
+        egui::Window::new(
+            egui::RichText::new("Lua Editor Dialog")
+                .strong()
+                .color(egui::Color32::WHITE),
+        )
+        .collapsible(false)
+        .resizable(false)
+        .open(&mut open)
+        .show(egui_ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new(icons::WARNING)
+                            .color(egui::Color32::YELLOW)
+                            .size(20.0),
+                    );
+
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!(
+                                "Changes will be lost if you don't save {}",
+                                tab.name
+                            ))
+                            .color(text_color)
+                            .size(15.0),
+                        )
+                        .wrap(),
+                    );
+                });
+            });
+
+            ui.add_space(10.0);
+            centered_row(ui, "close_options", |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        save = Some(true);
+                    }
+
+                    ui.add_space(50.0);
+                    if ui.button("Don't Save").clicked() {
+                        save = Some(false);
+                    }
+                });
+            });
+        });
+
+        if let Some(choice) = save {
+            open = false;
+            pending_drop = Some(tab_id);
+
+            if choice {
+                match tab.path.is_some() {
+                    true => self.quick_save(&tab.path.clone().unwrap()),
+                    false => self.save_lua_script(),
+                }
+            }
+        }
+
+        self.pending_drop = pending_drop;
+
+        if !open {
+            self.pending_close.take();
         }
     }
 }

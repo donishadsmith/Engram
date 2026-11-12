@@ -334,8 +334,8 @@ impl Emulator for GBA {
         self.cpu.breakpoint_manager.set(address, pause)
     }
 
-    fn remove_breakpoint(&mut self, address: u32) {
-        self.cpu.breakpoint_manager.remove(address);
+    fn remove_breakpoint(&mut self, address: u32) -> bool {
+        self.cpu.breakpoint_manager.remove(address)
     }
 
     fn take_breakpoint_hit(&mut self) -> Option<u32> {

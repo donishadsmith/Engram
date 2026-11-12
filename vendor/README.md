@@ -1,0 +1,1 @@
+Temporary vendors of [egui-macroquad](https://github.com/optozorax/egui-macroquad) & [egui-miniquad](https://github.com/not-fl3/egui-miniquad) to be able to use features in egui-related crates that require egui v0.36.

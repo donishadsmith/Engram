@@ -166,10 +166,12 @@ impl BreakpointManager {
         self.queue.insert(address, action).is_none()
     }
 
-    pub fn remove(&mut self, address: u32) {
-        self.queue.remove(&address);
+    pub fn remove(&mut self, address: u32) -> bool {
+        let evicted = self.queue.remove(&address);
         let keys = self.queue.keys().copied();
         self.range = keys.clone().min().zip(keys.max());
+
+        evicted.is_some()
     }
 }
 

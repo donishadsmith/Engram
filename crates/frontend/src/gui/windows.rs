@@ -1,7 +1,10 @@
 use egui::Context;
 use shared::{
-    EmulatorState, input::enums::InputType, script::ScriptRequest, structs::PendingDialog,
-    utils::screenshot,
+    EmulatorState,
+    input::enums::InputType,
+    script::ScriptRequest,
+    structs::PendingDialog,
+    utils::{centered_row, screenshot},
 };
 
 use crate::{
@@ -527,63 +530,48 @@ pub fn show_destructive_action_popup(
         egui::Window::new(
             egui::RichText::new(format!("{}  Destructive Action", icons::WARNING))
                 .strong()
-                .color(egui::Color32::RED),
+                .color(egui::Color32::YELLOW),
         )
         .collapsible(false)
         .resizable(false)
         .show(egui_ctx, |ui| {
-            ui.horizontal(|ui| {
-                match action {
-                    DestructiveAction::Overwrite(slot) => {
-                        ui.add_space(31.0);
-                        ui.label(
-                            egui::RichText::new(format!("Overwrite save slot {slot}?")).strong(),
-                        );
-                    }
-                    DestructiveAction::Delete(slot) => {
-                        ui.add_space(39.0);
-                        ui.label(egui::RichText::new(format!("Delete save slot {slot}?")).strong());
-                    }
-                    DestructiveAction::DeleteAll => {
-                        ui.add_space(30.0);
-                        ui.label(egui::RichText::new("Delete all save states?").strong());
-                    }
-                    DestructiveAction::Reset => {
-                        ui.add_space(44.0);
-                        ui.label(egui::RichText::new(format!("Hard reset game?")).strong());
-                    }
-                };
-            });
+            let message = match action {
+                DestructiveAction::Overwrite(slot) => format!("Overwrite save slot {slot}?"),
+                DestructiveAction::Delete(slot) => format!("Delete save slot {slot}?"),
+                DestructiveAction::DeleteAll => "Delete all save states?".to_string(),
+                DestructiveAction::Reset => "Hard reset game?".to_string(),
+            };
 
+            ui.vertical_centered(|ui| ui.label(egui::RichText::new(message).strong()));
             ui.add_space(10.0);
 
-            ui.horizontal(|ui| {
-                ui.add_space(50.0);
+            centered_row(ui, "destructive_options", |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button(egui::RichText::new("Yes").strong()).clicked() {
+                        match action {
+                            DestructiveAction::Overwrite(slot) => {
+                                save_slots_with_toast(emulator, &mut session.toasts, slot)
+                            }
+                            DestructiveAction::Delete(slot) => {
+                                delete_slots_with_toast(emulator, &mut session.toasts, slot)
+                            }
+                            DestructiveAction::DeleteAll => {
+                                delete_all_slots_with_toast(emulator, &mut session.toasts)
+                            }
+                            DestructiveAction::Reset => {
+                                add_transient_state = true;
+                            }
+                        };
 
-                if ui.button(egui::RichText::new("Yes").strong()).clicked() {
-                    match action {
-                        DestructiveAction::Overwrite(slot) => {
-                            save_slots_with_toast(emulator, &mut session.toasts, slot)
-                        }
-                        DestructiveAction::Delete(slot) => {
-                            delete_slots_with_toast(emulator, &mut session.toasts, slot)
-                        }
-                        DestructiveAction::DeleteAll => {
-                            delete_all_slots_with_toast(emulator, &mut session.toasts)
-                        }
-                        DestructiveAction::Reset => {
-                            add_transient_state = true;
-                        }
-                    };
+                        ui_state.destructive_action = None;
+                    }
 
-                    ui_state.destructive_action = None;
-                }
+                    ui.add_space(20.0);
 
-                ui.add_space(20.0);
-
-                if ui.button(egui::RichText::new("No").strong()).clicked() {
-                    ui_state.destructive_action = None;
-                }
+                    if ui.button(egui::RichText::new("No").strong()).clicked() {
+                        ui_state.destructive_action = None;
+                    }
+                });
             });
         });
 

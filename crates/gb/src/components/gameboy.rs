@@ -302,8 +302,8 @@ impl Emulator for GameBoy {
         Ok(())
     }
 
-    fn remove_breakpoint(&mut self, address: u32) {
-        self.cpu.breakpoint_manager.remove(address);
+    fn remove_breakpoint(&mut self, address: u32) -> bool {
+        self.cpu.breakpoint_manager.remove(address)
     }
 
     fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
