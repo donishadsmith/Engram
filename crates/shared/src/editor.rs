@@ -1,6 +1,10 @@
 use crate::{script::API, structs::PendingDialog, utils::centered_row};
 use arboard::Clipboard;
-use egui::{Context, ScrollArea, Window, text::CCursorRange};
+use egui::{
+    Context, ScrollArea, Window,
+    text::{CCursor, CCursorRange},
+    text_edit::TextEditOutput,
+};
 use egui_code_editor::{CodeEditor, ColorTheme, Completer, Syntax};
 use egui_phosphor::regular as icons;
 use macroquad::input::{
@@ -27,13 +31,19 @@ const SHORTCUT: &str = r#"
 Shift+Enter: run the current script
 Ctrl+N: new script (max of 5)
 Ctrl+S: save the current script
-Ctrl+C: copy the selected text
+Ctrl+C: copy the selected text (internal implementation due to clipboard copy issue,
+so "Failed to open clipboard" from a dependency will appear in terminal for Windows)
+Ctrl+RightBracket: indent the selected lines (or the current line)
+Ctrl+LeftBracket: dedent the selected lines (or the current line)
 
 F8: open or close the Lua editor
 
 Notes:
     - Cmd button can replace Ctrl
-    - Other shortcuts such as Ctrl+Z, Ctrl+V, Ctrl+A, also usable
+    - Other shortcuts that egui itself offers are also usable, such as:
+        Ctrl+Z, Ctrl+V, Ctrl+A, Shift+UpArrow (select text up), Shift+DownArrow (select text down),
+        Tab (insert a tab), Shift+Tab (dedent the current line)
+    - Tab and Shift+Tab replace selected text, so use the bracket shortcuts on a selection
 "#;
 
 const MAX_TABS: usize = 5;
@@ -48,6 +58,12 @@ enum HelpTab {
 enum EditorDialog {
     Open,
     Save,
+}
+
+#[derive(Clone, Copy)]
+enum TabIndent {
+    Left,
+    Right,
 }
 
 pub fn super_key_down() -> bool {
@@ -525,7 +541,7 @@ impl LuaEditor {
                         };
 
                         let previous_code = self.tabs[self.current_tab].code.clone();
-                        let (editor, _) = CodeEditor::default()
+                        let (mut editor, _) = CodeEditor::default()
                             .id_source("Lua Editpr")
                             .with_rows(20)
                             .with_fontsize(14.0)
@@ -545,6 +561,7 @@ impl LuaEditor {
                         }
 
                         self.bootleg_copy_shortcut(editor.cursor_range);
+                        self.bootleg_multi_indent_shortcut(egui_ctx, &mut editor);
                     });
 
                 ui.add_space(3.0);
@@ -828,30 +845,123 @@ impl LuaEditor {
         self.get_tab_mut(tab_id).path = Some(path);
     }
 
+    fn get_cursor_range(&mut self, cursor_range: Option<CCursorRange>) -> Option<(usize, usize)> {
+        let Some(range) = cursor_range else {
+            return None;
+        };
+
+        let primary: usize = range.primary.index.into();
+        let secondary: usize = range.secondary.index.into();
+
+        Some((primary.min(secondary), primary.max(secondary)))
+    }
+
+    fn get_selected_text(&self, start: usize, end: usize) -> String {
+        self.get_current_tab_ref()
+            .code
+            .chars()
+            .skip(start)
+            .take(end - start)
+            .collect()
+    }
+
     // found that only way to get copy to clipboard is work is by delaying setting it to clipboard
     // else it just fails/gets wiped: https://github.com/not-fl3/miniquad/blob/master/src/native/windows/clipboard.rs
     fn bootleg_copy_shortcut(&mut self, cursor_range: Option<CCursorRange>) {
-        let Some(range) = cursor_range else { return };
-
         if !(super_key_down() && is_key_pressed(KeyCode::C)) {
             return;
         }
 
-        let primary: usize = range.primary.index.into();
-        let secondary: usize = range.secondary.index.into();
-        let (start_index, end_index) = (primary.min(secondary), primary.max(secondary));
+        let Some((start, end)) = self.get_cursor_range(cursor_range) else {
+            return;
+        };
 
-        if start_index != end_index {
-            let selected_text = self
-                .get_current_tab_ref()
-                .code
-                .chars()
-                .skip(start_index)
-                .take(end_index - start_index)
-                .collect();
+        if start != end {
+            let selected_text = self.get_selected_text(start, end);
 
             self.pending_copy = Some((selected_text, Instant::now() + COPY_DELAY));
         }
+    }
+
+    // another bootleg shortcuts
+    // couldnt find egui shortcut for this and i cannot live without multiline indenting and dedenting code in an editor
+    fn bootleg_multi_indent_shortcut(&mut self, egui_ctx: &Context, editor: &mut TextEditOutput) {
+        let direction = if super_key_down() && is_key_pressed(KeyCode::RightBracket) {
+            Some(TabIndent::Right)
+        } else if super_key_down() && is_key_pressed(KeyCode::LeftBracket) {
+            Some(TabIndent::Left)
+        } else {
+            return;
+        };
+
+        let Some(direction) = direction else { return };
+
+        let Some((start, end)) = self.get_cursor_range(editor.cursor_range) else {
+            return;
+        };
+
+        // gotta break this down to and write in a way that doesnt cause confusing bugs this time
+        // but i need to walk back for the latest newline before the selection in cases where selection
+        // is in the middle or something
+        let actual_start = match start {
+            0 => start,
+            _ => {
+                let char_indices: Vec<usize> = self
+                    .get_current_tab_ref()
+                    .code
+                    .chars()
+                    .take(start)
+                    .enumerate()
+                    .filter_map(|(index, char)| (char == '\n').then_some(index))
+                    .collect();
+
+                if let Some(max) = char_indices.iter().max().as_deref() {
+                    max + 1
+                } else {
+                    0
+                }
+            }
+        };
+
+        let before_selection: String = self
+            .get_current_tab_ref()
+            .code
+            .chars()
+            .take(actual_start)
+            .collect();
+
+        let selected_text = self.get_selected_text(actual_start, end);
+
+        let after_selection: String = self.get_current_tab_ref().code.chars().skip(end).collect();
+
+        // not splut by lines and either add a tab or remove tab or spaces < 4
+        let modified_text = selected_text
+            .split("\n")
+            .map(|line| match direction {
+                TabIndent::Right => format!("\t{line}"),
+                TabIndent::Left => dedent(line).to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if modified_text != selected_text {
+            self.get_current_tab_mut().progress_unsaved = true;
+        }
+
+        // since i can update the cursor range, i know that start index is gonna be the same, the
+        // end index needs to be the start index + the length of the new text before after index
+        // so selection widens or shortens
+        let mut code = String::new();
+        let new_end = actual_start + modified_text.chars().count();
+        code.extend([before_selection, modified_text, after_selection]);
+        self.get_current_tab_mut().code = code;
+
+        let range = CCursorRange::two(CCursor::new(actual_start), CCursor::new(new_end));
+
+        editor.state.cursor.set_char_range(Some(range));
+        editor.state.clone().store(egui_ctx, editor.response.id);
+
+        // YES! WORKS! FINALLY
     }
 
     fn flush_pending_copy(&mut self) {
@@ -953,4 +1063,14 @@ impl LuaEditor {
             self.pending_close.take();
         }
     }
+}
+
+fn dedent(line: &str) -> &str {
+    if let Some(remainder) = line.strip_prefix("\t") {
+        return remainder;
+    }
+
+    let spaces = line.chars().take(4).take_while(|x| *x == ' ').count();
+
+    &line[spaces..]
 }
