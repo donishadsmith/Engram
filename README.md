@@ -101,7 +101,7 @@ cargo run --release
 **Note**: Video recording requires [ffmpeg](https://ffmpeg.org/download.html) in your `PATH`.
 
 ### Linux dependencies
-Additional dependencies for audio (cpal), rednering/windowing (macroquad) and controllers (gilrs) are required:
+Additional dependencies for audio (cpal), rendering/windowing (macroquad) and controllers (gilrs) are required:
 
 ```bash
 # debian and ubuntu
