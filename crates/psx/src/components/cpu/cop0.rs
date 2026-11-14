@@ -133,6 +133,9 @@ impl Cop0 {
         }
     }
 
+    // TODO: start with this, next seems straightforward enough
+    pub fn return_from_exception() {}
+
     pub fn move_to(&mut self, register: Cop0Registers, value: u32) {
         match register {
             Cop0Registers::Bada => self.bada = value,
