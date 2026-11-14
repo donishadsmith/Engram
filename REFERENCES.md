@@ -18,6 +18,7 @@ Emulators, documentation, and guides that Engram relied on during development.
 - [jitboy](https://github.com/sysprog21/jitboy)
 - [gb](https://github.com/krocki/gb)
 - [emu-gameboy](https://github.com/geaz/emu-gameboy)
+- [BizHawk](https://github.com/tasemulators/bizhawk)
 
 ## Boot ROMs & BIOS
 
