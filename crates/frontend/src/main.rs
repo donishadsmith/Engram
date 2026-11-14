@@ -15,8 +15,7 @@ use crate::{
         },
         windows::{
             set_data_directories, show_controller_bindings, show_debugger_pages,
-            show_destructive_action_popup, show_gif_settings, show_hotkey_bindings,
-            show_lua_editor,
+            show_destructive_action_popup, show_gif_settings, show_hotkey_bindings, show_lua_lab,
         },
     },
     session::Session,
@@ -115,29 +114,40 @@ async fn main() -> Result<(), Error> {
                                 .map(|e| e.to_ascii_lowercase())
                                 .unwrap_or_default();
 
-                            match ext.as_str() {
-                                "gb" | "gbc" => {
-                                    session.set_emulator(gb::GameBoySession::new_session(
-                                        rom_path.clone(),
-                                    )?);
-                                }
-                                "gba" => {
-                                    session.set_emulator(gba::GBASession::new_session(
-                                        rom_path.clone(),
-                                    )?);
-                                    session.set_solar_sensor();
-                                }
-                                _ => {}
-                            }
+                            let return_state = session.take_return_state().unwrap();
+                            match return_state {
+                                EmulatorState::SwapDisc => {}
+                                _ => {
+                                    match ext.as_str() {
+                                        "gb" | "gbc" => {
+                                            session.set_emulator(gb::GameBoySession::new_session(
+                                                rom_path.clone(),
+                                            )?);
+                                        }
+                                        "gba" => {
+                                            session.set_emulator(gba::GBASession::new_session(
+                                                rom_path.clone(),
+                                            )?);
+                                            session.set_solar_sensor();
+                                        }
+                                        _ => {}
+                                    }
 
-                            session.rom_path = Some(rom_path);
+                                    session.rom_path = Some(rom_path);
 
-                            if let Some(state) = session.take_return_state()
-                                && state == EmulatorState::Paused
-                            {
-                                session.state = state;
-                            } else {
-                                session.set_running();
+                                    if take(&mut session.pause_on_launch)
+                                        || return_state == EmulatorState::Paused
+                                    {
+                                        session.state = EmulatorState::Paused
+                                    } else if matches!(
+                                        return_state,
+                                        EmulatorState::Running | EmulatorState::Launch
+                                    ) {
+                                        session.set_running();
+                                    } else {
+                                        session.state = return_state;
+                                    }
+                                }
                             }
                         }
                         _ => session.state = session.take_return_state().unwrap(),
@@ -202,7 +212,9 @@ async fn main() -> Result<(), Error> {
             EmulatorState::BiosSelection => {
                 // TODO: update for future emu
             }
-            EmulatorState::SwapDisc => {}
+            EmulatorState::SwapDisc => {
+                // Should also be running, something like swapping in disc content
+            }
         }
 
         egui_macroquad::ui(|root_ui| {
@@ -257,7 +269,7 @@ async fn main() -> Result<(), Error> {
             set_data_directories(&egui_ctx, &mut session, &mut ui_state);
             show_destructive_action_popup(&egui_ctx, &mut session, &mut ui_state);
             show_gif_settings(&egui_ctx, &mut session, &mut ui_state);
-            show_lua_editor(&egui_ctx, &mut session, &mut ui_state);
+            show_lua_lab(&egui_ctx, &mut session, &mut ui_state);
             show_debugger_pages(&egui_ctx, &mut session, &mut ui_state);
 
             if let Some(emulator) = session.emulator.as_mut() {

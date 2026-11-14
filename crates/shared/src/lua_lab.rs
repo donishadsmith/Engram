@@ -29,14 +29,14 @@ const COPY_DELAY: Duration = Duration::from_millis(200);
 
 const SHORTCUT: &str = r#"
 Shift+Enter: run the current script
-Ctrl+N: new script (max of 5)
+Ctrl+N: new script (max of 6)
 Ctrl+S: save the current script
 Ctrl+C: copy the selected text (internal implementation due to clipboard copy issue,
 so "Failed to open clipboard" from a dependency will appear in terminal for Windows)
 Ctrl+RightBracket: indent the selected lines (or the current line)
 Ctrl+LeftBracket: dedent the selected lines (or the current line)
 
-F8: open or close the Lua editor
+F8: open or close the Lua Lab
 
 Notes:
     - Cmd button can replace Ctrl
@@ -46,7 +46,7 @@ Notes:
     - Tab and Shift+Tab replace selected text, so use the bracket shortcuts on a selection
 "#;
 
-const MAX_TABS: usize = 5;
+const MAX_TABS: usize = 6;
 
 #[derive(PartialEq)]
 enum HelpTab {
@@ -175,7 +175,8 @@ impl EditorTheme {
     }
 }
 
-pub struct LuaEditor {
+// committing to the science naming bit
+pub struct LuaLab {
     tabs: Vec<ScriptTab>,
     current_tab: usize,
     pub opened: bool,
@@ -198,7 +199,7 @@ pub struct LuaEditor {
     pending_drop: Option<u64>,
 }
 
-impl LuaEditor {
+impl LuaLab {
     pub fn new(theme: EditorTheme) -> Self {
         let mut tabs = Vec::with_capacity(MAX_TABS);
         let script = ScriptTab {
@@ -280,7 +281,8 @@ impl LuaEditor {
             _ => (egui::Color32::from_gray(27), egui::Color32::WHITE),
         };
 
-        Window::new("Lua Editor")
+        Window::new("Lua Lab")
+            .id("Lua Lab Main".into())
             .min_height(300.0)
             .min_width(400.0)
             .default_height(700.0)
@@ -400,9 +402,7 @@ impl LuaEditor {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    if state.index + 1 < tab_count as usize || can_add_tab {
-                                        ui.separator();
-                                    }
+                                    ui.separator();
 
                                     handle.show_drag_cursor_on_hover(false).ui(ui, |ui| {
                                         let response = ui.allocate_response(egui::vec2(DIAMETER, DIAMETER), egui::Sense::click());
@@ -454,8 +454,7 @@ impl LuaEditor {
                                         ui.painter().text(egui::Pos2::new(left, rect.center().y), egui::Align2::CENTER_CENTER, if tab.path.is_some() {icons::FILE_TEXT} else {icons::TEXT_ALIGN_LEFT}, egui::FontId::proportional(12.0), text_color);
 
                                         if (tab.id == current_id || name_response.hovered() || reponse_hover) && can_close_tab {
-                                            let rectangle_position_shift = if !can_add_tab {18.0} else {21.0};
-                                            let rectangle = egui::Rect::from_min_max(egui::Pos2::new(rect.left(),rect.top()), egui::Pos2::new(rect.right() + rectangle_position_shift, rect.bottom()));
+                                            let rectangle = egui::Rect::from_min_max(egui::Pos2::new(rect.left() - DIAMETER,rect.top()), egui::Pos2::new(rect.right() + 18.0, rect.bottom()));
 
                                             let color = if tab.id == current_id {
                                                 text_color
@@ -1000,10 +999,11 @@ impl LuaEditor {
         let mut pending_drop: Option<u64> = None;
 
         egui::Window::new(
-            egui::RichText::new("Lua Editor Dialog")
+            egui::RichText::new("Lua Lab")
                 .strong()
                 .color(egui::Color32::WHITE),
         )
+        .id("Lua Lab Dialog".into())
         .collapsible(false)
         .resizable(false)
         .open(&mut open)

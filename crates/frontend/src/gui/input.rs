@@ -3,8 +3,8 @@ use std::time::Instant;
 use gilrs::{Button, Gamepad, GamepadId, Gilrs};
 use macroquad::input::{KeyCode, get_last_key_pressed, is_key_down, is_key_pressed};
 use shared::{
-    editor::super_key_down,
     input::enums::{Hotkeys, Input, InputType, KeyId},
+    lua_lab::super_key_down,
     utils::screenshot,
 };
 
@@ -96,7 +96,7 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
                 && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua))
             {
-                session.lua_editor.opened = !session.lua_editor.opened;
+                session.lua_lab.opened = !session.lua_lab.opened;
             }
 
             let hotkey_triggered = display_controller_hotkeys(

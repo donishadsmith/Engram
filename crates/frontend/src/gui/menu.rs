@@ -35,8 +35,10 @@ pub fn show_file_menu(ui: &mut Ui, session: &mut Session) {
             ui.close();
         }
 
+        ui.separator();
+
         if ui.button(format!("{} Quit", icons::SIGN_OUT)).clicked() {
-            session.state = EmulatorState::Quit;
+            request_quit();
             ui.close();
         }
     });
@@ -207,10 +209,10 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
             |ui| {
                 let keycode = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Lua));
 
-                let text = if session.lua_editor.opened {
-                    format!("Close Lua Editor ({})", keycode)
+                let text = if session.lua_lab.opened {
+                    format!("Close Lua Lab ({})", keycode)
                 } else {
-                    format!("Open Lua Editor ({})", keycode)
+                    format!("Open Lua Lab ({})", keycode)
                 };
 
                 if ui
@@ -220,7 +222,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                     )
                     .clicked()
                 {
-                    session.lua_editor.opened = !session.lua_editor.opened;
+                    session.lua_lab.opened = !session.lua_lab.opened;
                     ui.close();
                 }
 
@@ -270,11 +272,8 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
             .clicked()
         {
             if session.gif.is_recording() {
-                if session.emulator.is_some() {
-                    let _ = session.gif.stop();
-                    // maybe make this more accurate instead of assuming
-                    session.toasts.success("GIF saved");
-                }
+                let _ = session.gif.stop();
+                session.toasts.success("GIF saved");
             } else {
                 ui_state.open_gif_settings = true;
             }
@@ -365,37 +364,16 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
             ui.close();
         }
 
-        let hotkey = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen));
-        ui.menu_button(format!("{}  Resize Window", icons::FRAME_CORNERS), |ui| {
-            let fullscreen_text = if session.display.fullscreen {
-                "Close Fullscreen"
-            } else {
-                "Fullscreen"
-            };
-
-            if ui
-                .add(
-                    egui::Button::new(format!("{} ({})", fullscreen_text, hotkey))
-                        .wrap_mode(egui::TextWrapMode::Extend),
-                )
-                .clicked()
-            {
-                session.toggle_fullscreen();
-            }
-
-            if ui
-                .add(
-                    egui::Button::new("Restore Default Size").wrap_mode(egui::TextWrapMode::Extend),
-                )
-                .clicked()
-            {
+        if ui
+            .add(egui::Button::new(format!("{}  Restore Default Window Size", icons::FRAME_CORNERS))
+            .wrap_mode(egui::TextWrapMode::Extend))
+            .clicked() {
                 set_fullscreen(false);
                 let screen_width = 1600.0 / screen_dpi_scale();
                 let screen_height = 1200.0 / screen_dpi_scale();
                 request_new_screen_size(screen_width, screen_height);
                 session.display.fullscreen = false;
             }
-        });
 
         ui.horizontal(|ui| {
             ui.add_space(3.0);
@@ -414,7 +392,6 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
         ui.horizontal(|ui| {
             ui.add_space(2.0);
 
-            // no dialog box icon :(
             ui.label(
                 egui::RichText::new(format!("{}  Destructive Action Pop-up", icons::WARNING))
                     .color(ui.visuals().widgets.inactive.fg_stroke.color),
@@ -543,10 +520,26 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 request_quit();
             };
 
-            if session.emulator.is_some() {
-                ui.label(egui::RichText::new("| ").strong());
-            }
+            ui.label(egui::RichText::new("| ").strong());
         }
+
+        let hotkey = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen));
+        let (resize_icon, resize_text) = if session.display.fullscreen {
+            (icons::ARROWS_IN, format!("Close Fullscreen ({})", hotkey))
+        } else {
+            (icons::ARROWS_OUT, format!("Fullscreen ({})", hotkey))
+        };
+
+        if ui
+            .scope(|ui| ui.add(egui::Button::new(egui::RichText::new(resize_icon).strong())))
+            .inner
+            .on_hover_text(resize_text)
+            .clicked()
+        {
+            session.toggle_fullscreen();
+        }
+
+        ui.label(egui::RichText::new("| ").strong());
 
         if let Some(emulator) = &mut session.emulator
             && let Some(debugger) = emulator.debugger_ref()
@@ -563,10 +556,8 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
 
             let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
             let title = ui.add(
-                egui::Label::new(
-                    egui::RichText::new(format!("| {}  Debug Mode:", icons::BUG)).strong(),
-                )
-                .sense(egui::Sense::click()),
+                egui::Label::new(egui::RichText::new(format!("{}  Debug:", icons::BUG)).strong())
+                    .sense(egui::Sense::click()),
             );
 
             if title
@@ -577,10 +568,10 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             {
                 ui_state.debug_toggled = true;
             }
+
+            ui.label(egui::RichText::new("| ").strong());
         }
 
-        let mut take_snapshot = false;
-        let mut stop_all_recordings = false;
         let rom_name = session
             .emulator
             .as_ref()
@@ -596,49 +587,6 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             0.0
         };
 
-        if session.emulator.is_some() {
-            let (text, hover) = if session.is_paused()
-                || session
-                    .return_state
-                    .is_some_and(|state| state == EmulatorState::Paused)
-            {
-                (
-                    egui::RichText::new(icons::PAUSE).color(egui::Color32::YELLOW),
-                    "Click to resume emulator",
-                )
-            } else {
-                (
-                    egui::RichText::new(icons::PLAY).weak(),
-                    "Click to pause emulator",
-                )
-            };
-
-            let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
-            let title = ui.add(
-                egui::Label::new(
-                    egui::RichText::new(format!("| {}  Emulator Status:", icons::MONITOR)).strong(),
-                )
-                .sense(egui::Sense::click()),
-            );
-
-            if title
-                .union(state)
-                .on_hover_text(hover)
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .clicked()
-                && session.rom_dialog.is_none()
-            {
-                session.toggle_emulator_status();
-
-                if session.is_paused() {
-                    take_snapshot = true;
-                    session.toasts.warning("Emulator is paused");
-                } else {
-                    session.toasts.success("Emulator is running");
-                }
-            }
-        }
-
         let volume_icon = match session.master_volume {
             0 => icons::SPEAKER_X,
             1..=50 => icons::SPEAKER_LOW,
@@ -646,16 +594,18 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         };
 
         ui.menu_button(
-            egui::RichText::new(format!("|   {volume_icon}")).strong(),
+            egui::RichText::new(format!("{volume_icon}")).strong(),
             |ui| {
                 ui.add(egui::Slider::new(&mut session.master_volume, 0..=100).text("Volume"));
             },
         );
 
+        ui.label(egui::RichText::new("| ").strong());
+
         let mut layout_job = egui::text::LayoutJob::default();
         let font = egui::TextStyle::Body.resolve(ui.style());
         layout_job.append(
-            &format!("| {}  Speed: ", icons::FAST_FORWARD),
+            &format!("{}  Speed: ", icons::FAST_FORWARD),
             0.0,
             egui::TextFormat::simple(font.clone(), ui.visuals().strong_text_color()),
         );
@@ -680,11 +630,84 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             session.toasts.warning(message);
         }
 
+        ui.label(egui::RichText::new("| ").strong());
+
+        let (text, hover) = if session.is_paused()
+            || session
+                .return_state
+                .is_some_and(|state| state == EmulatorState::Paused)
+            || session.pause_on_launch
+        {
+            (
+                egui::RichText::new(icons::PAUSE).color(egui::Color32::YELLOW),
+                "Click to resume emulator",
+            )
+        } else {
+            (
+                egui::RichText::new(icons::PLAY).color(egui::Color32::WHITE),
+                "Click to pause emulator",
+            )
+        };
+
+        if ui
+            .add(egui::Label::new(text).sense(egui::Sense::click()))
+            .on_hover_text(hover)
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .clicked()
+        {
+            let mut alt_message = false;
+            match (session.state, session.return_state) {
+                (EmulatorState::Launch, _)
+                | (_, Some(EmulatorState::Launch))
+                | (EmulatorState::RomSelection, Some(EmulatorState::SwapDisc))
+                | (EmulatorState::SwapDisc, _) => {
+                    session.pause_on_launch = !session.pause_on_launch;
+                    alt_message = true;
+                }
+                // a transient state (e.g. the ROM dialog) is active over a loaded game:
+                // flip the state we return to and leave the transient state alone
+                (_, Some(EmulatorState::Paused)) => {
+                    session.swap_return_state(EmulatorState::Running)
+                }
+                (_, Some(EmulatorState::Running)) => {
+                    session.swap_return_state(EmulatorState::Paused)
+                }
+                _ => session.toggle_emulator_status(),
+            }
+
+            let (emulator_pause_message, emulator_run_message) = if alt_message {
+                (
+                    "Next ROM will pause after loading",
+                    "Next ROM will start after loading",
+                )
+            } else {
+                ("Emulator is paused", "Emulator is running")
+            };
+
+            let paused = session.is_paused()
+                || session.return_state == Some(EmulatorState::Paused)
+                || session.pause_on_launch;
+
+            if paused {
+                session
+                    .emulator
+                    .as_mut()
+                    .and_then(|emulator| Some(emulator.take_debugger_snapshot()));
+                session.toasts.warning(emulator_pause_message);
+            } else {
+                session.toasts.success(emulator_run_message);
+            }
+        }
+
+        ui.label(egui::RichText::new("| ").strong());
+
         if session.emulator.is_some() {
             if session.show_fps {
                 ui.label(
-                    egui::RichText::new(format!("| {}  FPS: {:.1}", icons::GAUGE, fps)).strong(),
+                    egui::RichText::new(format!("{}  FPS: {:.1}", icons::GAUGE, fps)).strong(),
                 );
+
+                ui.label(egui::RichText::new("| ").strong());
             }
 
             if recording {
@@ -696,7 +719,12 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .clicked()
                 {
-                    stop_all_recordings = true;
+                    session.gif.stop();
+                    session
+                        .emulator
+                        .as_mut()
+                        .map(|emulator| emulator.stop_video());
+                    session.toasts.success("All recordings stopped");
                 }
             }
 
@@ -704,22 +732,6 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 [ui.available_width(), ui.available_height()],
                 egui::Label::new(&rom_name).wrap_mode(egui::TextWrapMode::Truncate),
             );
-        }
-
-        if stop_all_recordings {
-            session.gif.stop();
-            session
-                .emulator
-                .as_mut()
-                .map(|emulator| emulator.stop_video());
-            session.toasts.success("All recordings stopped");
-        }
-
-        if take_snapshot {
-            session
-                .emulator
-                .as_mut()
-                .and_then(|emulator| Some(emulator.take_debugger_snapshot()));
         }
     });
 }

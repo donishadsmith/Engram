@@ -1243,6 +1243,7 @@ impl ScriptEngine {
                     if let Err(err) = hook.call::<()>(table) {
                         output.borrow_mut().push(format!("{err}"));
                         let _ = debugger.set("on_watchpoint", Value::Nil);
+
                         break;
                     }
                 }

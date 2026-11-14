@@ -193,16 +193,16 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
     }
 }
 
-pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
-    if session.lua_editor.opened {
+pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
+    if session.lua_lab.opened {
         if let Some(emulator) = &mut session.emulator
             && let Some(script_engine) = emulator.script_engine()
         {
-            if let Some(code) = session.lua_editor.show_ui(egui_ctx) {
+            if let Some(code) = session.lua_lab.show_ui(egui_ctx) {
                 script_engine.load(code);
             }
 
-            if session.lua_editor.take_termination_request() {
+            if session.lua_lab.take_termination_request() {
                 script_engine.stop_scripts();
             }
         }
@@ -214,12 +214,12 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
         && let Some(script_engine) = emulator.script_engine()
     {
         if script_engine.take_clear_request() {
-            session.lua_editor.output.clear();
+            session.lua_lab.output.clear();
         }
 
         let lines = script_engine.take_output();
         if !lines.is_empty() {
-            session.lua_editor.push_output(lines);
+            session.lua_lab.push_output(lines);
         }
 
         for request in script_engine.take_requests() {
@@ -229,18 +229,18 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                     emulator.take_debugger_snapshot();
                     session.state = EmulatorState::Paused;
                     session
-                        .lua_editor
+                        .lua_lab
                         .push_output(vec!["emulator is paused".to_string()]);
                 }
                 ScriptRequest::Screenshot => match session.data_dirs.get_image_path() {
                     Ok(path) => {
                         screenshot(path);
                         session
-                            .lua_editor
+                            .lua_lab
                             .push_output(vec!["screenshot saved".to_string()]);
                     }
                     Err(err) => session
-                        .lua_editor
+                        .lua_lab
                         .push_output(vec![mlua::Error::RuntimeError(err).to_string()]),
                 },
                 ScriptRequest::StartGif => {
@@ -250,9 +250,9 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                                 Ok(path) => {
                                     match session.gif.start(emulator.frontend_ref(), path) {
                                         Ok(_) => session
-                                            .lua_editor
+                                            .lua_lab
                                             .push_output(vec!["gif recording started".to_string()]),
-                                        Err(_) => session.lua_editor.push_output(vec![
+                                        Err(_) => session.lua_lab.push_output(vec![
                                             mlua::Error::RuntimeError(
                                                 "gif failed to start".to_string(),
                                             )
@@ -260,12 +260,12 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                                         ]),
                                     };
                                 }
-                                Err(err) => session.lua_editor.push_output(vec![
+                                Err(err) => session.lua_lab.push_output(vec![
                                     mlua::Error::RuntimeError(err.to_string()).to_string(),
                                 ]),
                             }
                         } else {
-                            session.lua_editor.push_output(vec![
+                            session.lua_lab.push_output(vec![
                                 mlua::Error::RuntimeError(
                                     "frame not ready; gif recording could not start".to_string(),
                                 )
@@ -277,9 +277,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                 ScriptRequest::StopGif => {
                     if session.gif.is_recording() {
                         session.gif.stop();
-                        session
-                            .lua_editor
-                            .push_output(vec!["gif saved".to_string()]);
+                        session.lua_lab.push_output(vec!["gif saved".to_string()]);
                     }
                 }
                 // not gonna lie, right now frontend logic for video is literally copied from the gif logic
@@ -290,10 +288,10 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                             match session.data_dirs.get_video_path() {
                                 Ok(path) => {
                                     match emulator.start_video(path) {
-                                        Ok(_) => session.lua_editor.push_output(vec![
+                                        Ok(_) => session.lua_lab.push_output(vec![
                                             "video recording started".to_string(),
                                         ]),
-                                        Err(_) => session.lua_editor.push_output(vec![
+                                        Err(_) => session.lua_lab.push_output(vec![
                                             mlua::Error::RuntimeError(
                                                 "video failed to start".to_string(),
                                             )
@@ -301,12 +299,12 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                                         ]),
                                     };
                                 }
-                                Err(err) => session.lua_editor.push_output(vec![
+                                Err(err) => session.lua_lab.push_output(vec![
                                     mlua::Error::RuntimeError(err.to_string()).to_string(),
                                 ]),
                             }
                         } else {
-                            session.lua_editor.push_output(vec![
+                            session.lua_lab.push_output(vec![
                                 mlua::Error::RuntimeError(
                                     "frame not ready; video recording could not start".to_string(),
                                 )
@@ -318,17 +316,15 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                 ScriptRequest::StopVideo => {
                     if emulator.is_video_recording() {
                         match emulator.stop_video() {
-                            Ok(_) => session
-                                .lua_editor
-                                .push_output(vec!["mp4 saved".to_string()]),
-                            Err(err) => session.lua_editor.push_output(vec![err.to_string()]),
+                            Ok(_) => session.lua_lab.push_output(vec!["mp4 saved".to_string()]),
+                            Err(err) => session.lua_lab.push_output(vec![err.to_string()]),
                         };
                     }
                 }
                 ScriptRequest::Reset => {
                     reset_request = true;
                     session
-                        .lua_editor
+                        .lua_lab
                         .push_output(vec!["emulator reset".to_string()]);
                     session.skip_toast = true;
                 }
@@ -339,7 +335,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                     session.state = EmulatorState::Running;
                     apply_run_updates = true;
                     session
-                        .lua_editor
+                        .lua_lab
                         .push_output(vec!["emulator is running".to_string()]);
                     session.skip_toast = true;
                 }
@@ -349,7 +345,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                         message = mlua::Error::RuntimeError(message).to_string();
                     }
 
-                    session.lua_editor.push_output(vec![message]);
+                    session.lua_lab.push_output(vec![message]);
                 }
                 ScriptRequest::LoadState(slot) => {
                     let (mut message, success) = load_slots_lua(emulator, slot as usize, true);
@@ -357,7 +353,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                         message = mlua::Error::RuntimeError(message).to_string();
                     }
 
-                    session.lua_editor.push_output(vec![message]);
+                    session.lua_lab.push_output(vec![message]);
                 }
                 ScriptRequest::DeleteState(slot) => {
                     let (mut message, success) = delete_slots_lua(emulator, slot as usize, true);
@@ -365,7 +361,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                         message = mlua::Error::RuntimeError(message).to_string();
                     }
 
-                    session.lua_editor.push_output(vec![message]);
+                    session.lua_lab.push_output(vec![message]);
                 }
                 ScriptRequest::CloseDebugger => {
                     let emulator_id = emulator.id();
@@ -394,14 +390,14 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
                                 .iter()
                                 .map(|page| format!("'{}'", page.to_simple_str()))
                                 .collect();
-                            session.lua_editor.push_output(vec![format!(
+                            session.lua_lab.push_output(vec![format!(
                                 "only the following pages are available: {}",
                                 available_pages.join(", ")
                             )])
                         }
                     } else {
                         session
-                            .lua_editor
+                            .lua_lab
                             .push_output(vec!["no debuggers available".to_string()]);
                     }
                 }
@@ -411,7 +407,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
 
                     if old_speed != session.speed {
                         session
-                            .lua_editor
+                            .lua_lab
                             .push_output(vec![format!("emulator set to {speed} speed")]);
                     }
                 }
@@ -426,7 +422,7 @@ pub fn show_lua_editor(egui_ctx: &Context, session: &mut Session, ui_state: &mut
         if let Some(request) = session.pending_steps.pop_front() {
             if session.state != EmulatorState::Paused {
                 session.pending_steps.clear();
-                session.lua_editor.push_output(vec![
+                session.lua_lab.push_output(vec![
                     mlua::Error::RuntimeError("emulator must be paused to step".to_string())
                         .to_string(),
                 ])
@@ -587,6 +583,7 @@ pub fn show_debugger_pages(egui_ctx: &Context, session: &mut Session, ui_state: 
         && debugger.active()
     {
         egui::Window::new("Debuggers")
+            .default_width(150.0)
             .collapsible(true)
             .show(egui_ctx, |ui| {
                 ui.vertical(|ui| {

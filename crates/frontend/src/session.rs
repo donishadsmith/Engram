@@ -7,17 +7,18 @@ use macroquad::{
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
 use shared::config::DataDirs;
-use shared::editor::EditorTheme;
+use shared::constants::FAST_FORWARD;
+use shared::lua_lab::EditorTheme;
 use shared::structs::PendingDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
     config::{AnalogToDpad, Config, Display, RumbleEffect, load_config, save_config},
     debug::DebugPage,
-    editor::LuaEditor,
     gif::GifRecorder,
     input::{
         AnalogStick, AnalogSticks, KeyBindings, enums::Input, utils::get_relevant_key_presses,
     },
+    lua_lab::LuaLab,
     script::ScriptRequest,
 };
 
@@ -136,7 +137,7 @@ pub struct Session {
     pub master_volume: u8,
     pub solar_level: u8,
     pub last_debug_page: HashMap<EmulatorId, DebugPage>,
-    pub lua_editor: LuaEditor,
+    pub lua_lab: LuaLab,
     pub return_state: Option<EmulatorState>,
     pub pending_steps: VecDeque<ScriptRequest>,
     pub gilrs: Option<Gilrs>,
@@ -161,6 +162,7 @@ pub struct Session {
     pub controller_hotkey_fired: bool,
     pub rom_dialog: Option<PendingDialog>,
     pub speed: u8,
+    pub pause_on_launch: bool,
 }
 
 impl Session {
@@ -203,9 +205,9 @@ impl Session {
             data_dir: PathBuf::from(&config.data_dirs.data_dir.as_ref().unwrap()),
         };
 
-        let lua_editor_theme = EditorTheme::from_name(
+        let lua_lab_theme = EditorTheme::from_name(
             config
-                .lua_editor_theme
+                .lua_lab_theme
                 .as_ref()
                 .unwrap_or(&"Github Dark".to_string())
                 .to_string(),
@@ -223,7 +225,7 @@ impl Session {
             master_volume,
             solar_level,
             last_debug_page: initialize_debug_hashmap(),
-            lua_editor: LuaEditor::new(lua_editor_theme),
+            lua_lab: LuaLab::new(lua_lab_theme),
             return_state: None,
             pending_steps: VecDeque::new(),
             gilrs,
@@ -251,7 +253,8 @@ impl Session {
             rumble_strength: config.rumble_strength.unwrap_or(1.0),
             controller_hotkey_fired: false,
             rom_dialog: None,
-            speed: config.speed.unwrap_or(1).clamp(1, 5),
+            speed: config.speed.unwrap_or(1).clamp(1, FAST_FORWARD),
+            pause_on_launch: false,
         }
     }
 
@@ -323,7 +326,7 @@ impl Session {
 
         let input_blocked = self.show_key_bindings
             || self.show_hotkeys
-            || self.lua_editor.occupied()
+            || self.lua_lab.occupied()
             || clear_inputs
             || self.controller_hotkey_fired;
 
@@ -391,7 +394,7 @@ impl Session {
             rumble_effect_on: self.rumble_effect_on,
             rumble_strength: Some(self.rumble_strength),
             speed: Some(self.speed),
-            lua_editor_theme: Some(self.lua_editor.theme.to_name()),
+            lua_lab_theme: Some(self.lua_lab.theme.to_name()),
         };
 
         save_config(&config)
@@ -424,6 +427,10 @@ impl Session {
 
     pub fn take_return_state(&mut self) -> Option<EmulatorState> {
         self.return_state.take()
+    }
+
+    pub fn swap_return_state(&mut self, new_return_state: EmulatorState) {
+        self.return_state = Some(new_return_state);
     }
 
     // super extra just to get text for toast and still some annoying edge cases
@@ -590,7 +597,7 @@ impl Session {
 
         let input_blocked = self.show_key_bindings
             || self.show_hotkeys
-            || self.lua_editor.occupied()
+            || self.lua_lab.occupied()
             || self.controller_hotkey_fired;
 
         let use_analog =
@@ -700,7 +707,7 @@ impl Session {
     ) -> bool {
         let mut input_source_changed = false;
 
-        if is_key_rebinding | self.lua_editor.occupied() {
+        if is_key_rebinding | self.lua_lab.occupied() {
             return input_source_changed;
         }
 

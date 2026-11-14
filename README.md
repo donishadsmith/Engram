@@ -86,7 +86,7 @@ Built with [macroquad](https://github.com/not-fl3/macroquad), [egui](https://git
 - Built-in editor with a console; scripts run against the live emulator and Lua state persists
 
 <p align="center">
-  <img src="assets/mini_vscode.png" width="800">
+  <img src="assets/lab.png" width="800">
   <br><sub>Logging writes to Pokemon Crystal's species byte after a previous script modified RAM to make the best Pokemon (Celebi) shiny</sub>
 </p>
 
