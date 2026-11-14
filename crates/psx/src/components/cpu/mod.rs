@@ -35,12 +35,16 @@ https://psx-spx.consoledev.net/cpuspecifications/#cpu-alu-opcodes
 */
 
 pub mod cop0;
+pub mod dissasembler;
 
 use crate::components::{
     bus::Bus,
-    cpu::cop0::{
-        Cop0, Cop0Registers,
-        ExceptionCode::{self, StoreAddressError},
+    cpu::{
+        cop0::{
+            Cop0, Cop0Registers,
+            ExceptionCode::{self, StoreAddressError},
+        },
+        dissasembler::Dissasembler,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -167,7 +171,6 @@ pub enum RegisterAlias {
 #[derive(Serialize, Deserialize)]
 pub struct Registers {
     pub r: [u32; 32],
-    pub shadow_r: [u32; 32],
     pub current_pc: u32,
     pub pc: u32,
     pub next_pc: u32,
@@ -175,15 +178,14 @@ pub struct Registers {
     pub lo: u32,
     pub pending_branch: bool,
     pub in_delay_slot: bool,
-    pub load_delay_1: Option<(usize, u32)>,
-    pub load_delay_2: Option<(usize, u32)>,
+    pub load_delay_1: Option<(usize, u32)>, // expose to lua
+    pub load_delay_2: Option<(usize, u32)>, // expose to lua
 }
 
 impl Registers {
     fn new() -> Self {
         Self {
             r: [0; 32],
-            shadow_r: [0; 32],
             current_pc: 0xBFC00000,
             pc: 0xBFC00000,
             next_pc: 0xBFC00004,
@@ -205,15 +207,6 @@ impl Registers {
         }
     }
 
-    pub fn lua_read_shadow_register(&self, alias: RegisterAlias) -> u32 {
-        match alias {
-            RegisterAlias::Pc | RegisterAlias::Hi | RegisterAlias::Lo => {
-                panic!("register not shadowed: {:?}", alias)
-            }
-            _ => self.shadow_r[alias as usize],
-        }
-    }
-
     pub fn lua_write_cpu_register(&mut self, alias: RegisterAlias, value: u32) {
         match alias {
             RegisterAlias::Pc => {
@@ -226,15 +219,6 @@ impl Registers {
                 self.cancel_load(alias as usize);
                 self.r[alias as usize] = value
             }
-        }
-    }
-
-    pub fn lua_write_shadow_register(&mut self, alias: RegisterAlias, value: u32) {
-        match alias {
-            RegisterAlias::Pc | RegisterAlias::Hi | RegisterAlias::Lo => {
-                panic!("register not shadowed: {:?}", alias)
-            }
-            _ => self.shadow_r[alias as usize] = value,
         }
     }
 
@@ -305,6 +289,8 @@ pub struct R3000a {
     pub cop0: Cop0,
     #[serde(skip)]
     pub breakpoint_manager: BreakpointManager,
+    #[serde(skip)]
+    pub dissasembler: Dissasembler,
 }
 
 impl R3000a {
@@ -313,6 +299,7 @@ impl R3000a {
             registers: Registers::new(),
             cop0: Cop0::new(),
             breakpoint_manager: BreakpointManager::default(),
+            dissasembler: Dissasembler::default(),
         }
     }
 
@@ -351,10 +338,10 @@ impl R3000a {
             return;
         };
 
-        self.execute_instruction(
-            MipsInstruction(bus.read::<u32>(executing_address, MemoryAccessor::Cpu)),
-            bus,
-        );
+        let instruction = MipsInstruction(bus.read::<u32>(executing_address, MemoryAccessor::Cpu));
+        self.dissasembler = Dissasembler(instruction);
+
+        self.execute_instruction(instruction, bus);
     }
 
     // 3.3.2 in See mips run (TODO; make sure to cross reference the rustation guide + ppsx-spx):
@@ -1026,5 +1013,3 @@ impl R3000a {
         );
     }
 }
-
-pub fn dissasemble() {}
