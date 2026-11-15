@@ -53,7 +53,9 @@ pub struct GBA {
     #[serde(skip)]
     cycle_pause: bool,
     #[serde(skip)]
-    pub force_buffer_change: bool,
+    pub force_buffer_change: bool, // for debugger
+    #[serde(skip)]
+    pub force_screen_update: bool,
 }
 
 impl GBA {
@@ -75,6 +77,7 @@ impl GBA {
             pause_at_cycle: None,
             cycle_pause: false,
             force_buffer_change: false,
+            force_screen_update: false,
         }
     }
 
@@ -267,6 +270,11 @@ impl GBA {
         data.bus.ppu.transparant_background = self.bus.ppu.transparant_background;
         data.bus.ppu.transparant_sprite_background = self.bus.ppu.transparant_sprite_background;
         data.bus.ppu.debugger_active = self.bus.ppu.debugger_active;
+        data.force_buffer_change = true;
+
+        data.force_screen_update = true;
+        data.frontend_mut().buffer_changed = true;
+
         data.bus.ppu.debugger_snapshot();
 
         data.bus.apu.psg_mute = self.bus.apu.psg_mute;
@@ -281,7 +289,6 @@ impl GBA {
             &mut self.elapsed_cycles_pause,
         );
         swap(&mut data.pause_at_cycle, &mut self.pause_at_cycle);
-        data.force_buffer_change = true;
 
         *self = data;
 
@@ -405,6 +412,10 @@ impl Emulator for GBA {
             starting_cycle: self.elapsed_cycles(),
             target_elapsed_cycles: elapsed_cycle,
         });
+    }
+
+    fn rewind_state(&mut self) -> bool {
+        todo!()
     }
 }
 
@@ -608,5 +619,13 @@ impl ScriptTarget for GBA {
         }
 
         vec
+    }
+
+    fn restore(&mut self, buffer: Vec<u8>) -> Result<(), Error> {
+        self.load_state(&buffer)
+    }
+
+    fn snapshot(&self) -> Result<Vec<u8>, Error> {
+        self.save_state(STATE_MAGIC_NAME)
     }
 }

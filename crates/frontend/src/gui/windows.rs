@@ -415,6 +415,16 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                 ScriptRequest::Volume(volume) => {
                     session.master_volume = volume;
                 }
+                ScriptRequest::Rewind => {
+                    if !emulator.rewind() {
+                        session.lua_lab.push_output(vec![
+                            mlua::Error::RuntimeError(
+                                "no snapshots exists to rewind to".to_string(),
+                            )
+                            .to_string(),
+                        ]);
+                    }
+                }
             }
         }
 

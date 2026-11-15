@@ -87,13 +87,10 @@ pub trait Emulator {
 
     fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)>;
 
-    fn save_state(&mut self, state_magic_name: &[u8]) -> Result<Vec<u8>, Error>
+    fn save_state(&self, state_magic_name: &[u8]) -> Result<Vec<u8>, Error>
     where
         Self: Serialize + Deserialize<'static>,
     {
-        let frontend = self.frontend_mut();
-        frontend.buffer_changed = true;
-
         let serialized_data = postcard::to_allocvec(self)
             .map_err(|err| error_message(format!("Failed to create save state: {err}")))?;
         let compressed_data = lz4_flex::compress_prepend_size(&serialized_data);
@@ -110,6 +107,8 @@ pub trait Emulator {
     fn set_cycle_pause(&mut self, cycle: u64);
 
     fn set_elapsed_cycles_pause(&mut self, elapsed_cycle: u64);
+
+    fn rewind_state(&mut self) -> bool;
 }
 
 pub trait DebugInterface {
@@ -168,7 +167,7 @@ pub trait EmulatorSession {
 
     fn load_state(&mut self, slot: usize) -> Result<(), Error>;
 
-    fn save_state(&mut self, slot: usize) -> Result<(), Error>;
+    fn save_state(&self, slot: usize) -> Result<(), Error>;
 
     fn current_save_states(&self) -> Vec<Option<PathBuf>>;
 
@@ -201,6 +200,8 @@ pub trait EmulatorSession {
     fn draw(&mut self) {}
 
     fn set_speed(&mut self, _speed: u8) {}
+
+    fn rewind(&mut self) -> bool;
 }
 
 pub trait ScriptTarget: Emulator {
@@ -242,4 +243,8 @@ pub trait ScriptTarget: Emulator {
     fn elapsed_cycles(&self) -> u64;
 
     fn cycle_paused_text(&mut self) -> Vec<String>;
+
+    fn snapshot(&self) -> Result<Vec<u8>, Error>;
+
+    fn restore(&mut self, buffer: Vec<u8>) -> Result<(), Error>;
 }

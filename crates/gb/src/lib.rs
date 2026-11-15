@@ -273,8 +273,7 @@ impl EmulatorSession for GameBoySession {
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, false);
 
-        self.screen
-            .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
+        self.draw();
     }
 
     fn save_game(&mut self) -> Result<(), Error> {
@@ -351,7 +350,7 @@ impl EmulatorSession for GameBoySession {
         );
     }
 
-    fn save_state(&mut self, slot: usize) -> Result<(), Error> {
+    fn save_state(&self, slot: usize) -> Result<(), Error> {
         let state_path = self.state_path(slot)?;
         let tmp_path = state_path.with_extension(format!("ss{slot}.tmp"));
 
@@ -439,11 +438,19 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn draw(&mut self) {
+        if take(&mut self.gameboy.force_screen_update) {
+            self.screen.update(&mut self.gameboy.cpu.bus.ppu.frontend)
+        }
+
         self.screen
             .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
     }
 
     fn set_speed(&mut self, speed: u8) {
         self.speed = speed
+    }
+
+    fn rewind(&mut self) -> bool {
+        self.gameboy.rewind_state()
     }
 }

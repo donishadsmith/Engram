@@ -47,14 +47,18 @@ color.to_rgb_hex(value)
 Controller:
 controller.names(): table of input buttons
 controller.set({a = true, up = true}): buttons held until released, keyboard/gamepad is ignored;
-  controller.set({}), controller.set(nil), or controller.set() to return control to keyboard/gamepad
+    - controller.set({}), controller.set(nil), or controller.set() to return control to keyboard/gamepad
 controller.check(): prints buttons currently held
 
 Emulator:
 emulator.pause()  emulator.resume()  emulator.step_instruction()  emulator.step_frame()  emulator.reset()
 emulator.screenshot()  emulator.start_gif()  emulator.stop_gif()  emulator.start_video()  emulator.stop_video()
 emulator.save_state(slot)  emulator.load_state(slot)  emulator.delete_state(slot)
-  - slot is an integer value from 1 to 12
+    - slot is an integer value from 1 to 12
+    - performs IO operation
+emulator.snapshot() emulator.restore(buffer): Accepts a snapshot of the emulator state
+    - returns/accepts a compressed state of the emulator an an array of bytes
+    - does not perform IO operation
 emulator.elapsed_cycles(): GB/GBC reports t-cycles
 emulator.pause_at_cycle(cycle)
 emulator.pause_after_elapsed_cycles(elapsed_cycles)
@@ -74,14 +78,14 @@ debugger.check_breakpoints()
 
 Watchpoints (bus accesses):
 debugger.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all", compare="=="})
-  - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
-  - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
+    - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
+    - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
     a watchpoint only fires for the specified access width
-  - target: on writes it is the incoming value being written; on reads it is the current value
+    - target: on writes it is the incoming value being written; on reads it is the current value
     at the address being accessed; the watchpoint only fires for the specified target
-  - compare: the comparison for target, valid options are "<", "<=", ">", ">=", "==", "!=".
-  - end_address: if included the watchpoint becomes an inclusive range (start_address..=end_address)
-  - accessor: "all", "cpu", "dma"; restricts hits to the hardware accessing memory
+    - compare: the comparison for target, valid options are "<", "<=", ">", ">=", "==", "!=".
+    - end_address: if included the watchpoint becomes an inclusive range (start_address..=end_address)
+    - accessor: "all", "cpu", "dma"; restricts hits to the hardware accessing memory
 debugger.remove_watchpoint(address, {end_address}): end_address is required to remove a range
 debugger.clear_all_watchpoints()
 debugger.check_watchpoints()
@@ -125,6 +129,7 @@ pub enum ScriptRequest {
     CloseDebugger,
     FastForward(u8),
     Volume(u8),
+    Rewind,
 }
 
 // is it incredibly lazy to create a new enum to compare strings with another nearly duplicate enum with a one variant difference
@@ -665,6 +670,11 @@ impl ScriptEngine {
                     coroutine.yield()
                 end
             end
+
+            function emulator.rewind()
+                emulator._rewind()
+                coroutine.yield()
+            end
         "#,
             )
             .exec()
@@ -941,6 +951,27 @@ impl ScriptEngine {
                 "close_debugger",
                 || ScriptRequest::CloseDebugger,
             )?;
+            set_emulator_controls(
+                "rewind",
+                || ScriptRequest::Rewind,
+            )?;
+
+            emulator.set("snapshot", scope.create_function(|_, (): ()|{
+                let snapshot = target.borrow_mut().snapshot();
+                match snapshot {
+                    Ok(snapshot) => Ok(snapshot),
+                    Err(err) => Err(mlua::Error::runtime(err.to_string()))
+                }
+            })?)?;
+
+            emulator.set("restore", scope.create_function(|_, buffer: Vec<u8>|{
+                match target.borrow_mut().restore(buffer) {
+                    Ok(_) => output.borrow_mut().push("state restored".to_string()),
+                    Err(err) => output.borrow_mut().push(mlua::Error::runtime(err).to_string()),
+                }
+
+                Ok(())
+            })?)?;
 
             emulator.set("open_debugger", scope.create_function(|_, page: String| {
                 requests.borrow_mut().push(ScriptRequest::OpenDebugger(DebugPage::to_debug_page(page)));

@@ -43,6 +43,8 @@ pub struct GameBoy {
     elapsed_cycles_pause: Option<ElapsedCycles>,
     #[serde(skip)]
     cycle_pause: bool,
+    #[serde(skip)]
+    pub force_screen_update: bool,
 }
 
 impl GameBoy {
@@ -61,6 +63,7 @@ impl GameBoy {
             elapsed_cycles_pause: None,
             pause_at_cycle: None,
             cycle_pause: false,
+            force_screen_update: false,
         }
     }
 
@@ -231,6 +234,8 @@ impl GameBoy {
         );
 
         data.apu_sample_period = self.apu_sample_period;
+        data.force_screen_update = true;
+        data.frontend_mut().buffer_changed = true;
 
         data.cpu
             .bus
@@ -381,6 +386,10 @@ impl Emulator for GameBoy {
             starting_cycle: self.elapsed_cycles(),
             target_elapsed_cycles: elapsed_cycle,
         });
+    }
+
+    fn rewind_state(&mut self) -> bool {
+        todo!()
     }
 }
 
@@ -636,5 +645,13 @@ impl ScriptTarget for GameBoy {
         }
 
         vec
+    }
+
+    fn restore(&mut self, buffer: Vec<u8>) -> Result<(), Error> {
+        self.load_state(&buffer)
+    }
+
+    fn snapshot(&self) -> Result<Vec<u8>, Error> {
+        self.save_state(STATE_MAGIC_NAME)
     }
 }

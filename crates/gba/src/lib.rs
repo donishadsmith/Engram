@@ -280,10 +280,7 @@ impl EmulatorSession for GBASession {
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, false);
 
-        if self.active_debug.is_none() {
-            self.screen
-                .draw(&self.gba.bus.ppu.frontend, self.menu_height);
-        }
+        self.draw();
     }
 
     fn save_game(&mut self) -> Result<(), Error> {
@@ -377,7 +374,7 @@ impl EmulatorSession for GBASession {
         self.gba.cpu.breakpoint_manager.resume_from = Some(self.gba.cpu.next_executing_address());
     }
 
-    fn save_state(&mut self, slot: usize) -> Result<(), Error> {
+    fn save_state(&self, slot: usize) -> Result<(), Error> {
         let state_path = self.state_path(slot)?;
         let tmp_path = state_path.with_extension(format!("ss{slot}.tmp"));
 
@@ -388,10 +385,6 @@ impl EmulatorSession for GBASession {
     fn load_state(&mut self, slot: usize) -> Result<(), Error> {
         let bytes = read(self.state_path(slot)?)?;
         let result = self.gba.load_state(&bytes);
-
-        if result.is_ok() {
-            self.screen.update(&mut self.gba.bus.ppu.frontend);
-        }
 
         result
     }
@@ -462,6 +455,10 @@ impl EmulatorSession for GBASession {
     }
 
     fn draw(&mut self) {
+        if take(&mut self.gba.force_screen_update) {
+            self.screen.update(&mut self.gba.bus.ppu.frontend)
+        }
+
         if self.active_debug.is_none() {
             self.screen
                 .draw(&self.gba.bus.ppu.frontend, self.menu_height);
@@ -473,6 +470,10 @@ impl EmulatorSession for GBASession {
     // the hashmap key check (before adding range check), refine later since it works now with very minimal changes anyway
     fn set_speed(&mut self, speed: u8) {
         self.speed = speed;
+    }
+
+    fn rewind(&mut self) -> bool {
+        self.gba.rewind_state()
     }
 }
 
