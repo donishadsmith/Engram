@@ -145,7 +145,7 @@ pub const BINDABLE_BUTTONS: [Button; 18] = [
     Button::Z,
 ];
 
-pub const DEFAULT_HOT_KEYS: [Bindings; 7] = [
+pub const DEFAULT_HOT_KEYS: [Bindings; 8] = [
     Bindings {
         label: "Lua",
         key: KeyCode::F8,
@@ -179,6 +179,11 @@ pub const DEFAULT_HOT_KEYS: [Bindings; 7] = [
     Bindings {
         label: "Debugger",
         key: KeyCode::F11,
+        button: None,
+    },
+    Bindings {
+        label: "Rewind",
+        key: KeyCode::Backspace,
         button: None,
     },
 ];

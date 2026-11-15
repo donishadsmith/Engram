@@ -127,10 +127,10 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             if !(dialog_open
                 || shift_key_down()
                 || super_key_down()
-                || is_key_down(KeyCode::Delete))
-                || is_input_blocked
-                    && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
-                        || hotkey_triggered)
+                || is_key_down(KeyCode::Delete)
+                || is_input_blocked)
+                && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
+                    || hotkey_triggered)
             {
                 match session.data_dirs.get_image_path() {
                     Ok(path) => {
@@ -270,7 +270,8 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                 .last_save_state_time
                 .max(ui_state.last_load_state_time)
                 .max(ui_state.last_screenshot_time)
-                .max(ui_state.last_gif_time);
+                .max(ui_state.last_gif_time)
+                .max(ui_state.last_video_time);
             if latest_time.elapsed() >= ui_state.controller_hotkey_delay {
                 session.controller_hotkey_fired = false
             }

@@ -204,6 +204,7 @@ impl KeyBindings {
             Hotkeys::Fullscreen => "Fullscreen",
             Hotkeys::Video => "Video",
             Hotkeys::EmulatorStatus => "Emulator_Status",
+            Hotkeys::Rewind => "Rewind",
         };
 
         self.hotkeys

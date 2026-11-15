@@ -59,6 +59,31 @@ impl Default for RumbleEffect {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(default)]
+pub struct SystemRewind {
+    pub gameboy: bool,
+    pub gba: bool,
+}
+
+impl SystemRewind {
+    pub fn get(self, emulator_id: EmulatorId) -> bool {
+        match emulator_id {
+            EmulatorId::Gb => self.gameboy,
+            EmulatorId::Gba => self.gba,
+        }
+    }
+}
+
+impl Default for SystemRewind {
+    fn default() -> Self {
+        SystemRewind {
+            gameboy: false,
+            gba: false,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Default)]
 pub struct DataDirs {
     pub image_dir: Option<String>,
@@ -87,6 +112,7 @@ pub struct Config {
     pub rumble_strength: Option<f32>,
     pub speed: Option<u8>,
     pub lua_lab_theme: Option<String>,
+    pub system_rewind: SystemRewind,
 }
 
 fn get_config_path() -> PathBuf {

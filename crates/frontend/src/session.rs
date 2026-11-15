@@ -6,7 +6,7 @@ use macroquad::{
     miniquad::window::set_fullscreen,
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
-use shared::config::DataDirs;
+use shared::config::{DataDirs, SystemRewind};
 use shared::constants::FAST_FORWARD;
 use shared::lua_lab::EditorTheme;
 use shared::structs::PendingDialog;
@@ -163,6 +163,7 @@ pub struct Session {
     pub rom_dialog: Option<PendingDialog>,
     pub speed: u8,
     pub pause_on_launch: bool,
+    pub rewind_enabled: SystemRewind,
 }
 
 impl Session {
@@ -255,6 +256,7 @@ impl Session {
             rom_dialog: None,
             speed: config.speed.unwrap_or(1).clamp(1, FAST_FORWARD),
             pause_on_launch: false,
+            rewind_enabled: config.system_rewind,
         }
     }
 
@@ -428,6 +430,7 @@ impl Session {
             rumble_strength: Some(self.rumble_strength),
             speed: Some(self.speed),
             lua_lab_theme: Some(self.lua_lab.theme.to_name()),
+            system_rewind: self.rewind_enabled,
         };
 
         save_config(&config)

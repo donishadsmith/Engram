@@ -29,6 +29,7 @@ pub enum Hotkeys {
     Fullscreen,
     Video,
     EmulatorStatus,
+    Rewind,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

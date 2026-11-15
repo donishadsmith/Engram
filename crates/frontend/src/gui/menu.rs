@@ -364,6 +364,20 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
             ui.close();
         }
 
+        ui.menu_button(
+            format!("{}  Enable Rewind", icons::REWIND),
+            |ui| {
+                ui.checkbox(
+                    &mut session.rewind_enabled.gameboy,
+                    "Game Boy",
+                );
+                ui.checkbox(
+                    &mut session.rewind_enabled.gba,
+                    "Game Boy Advance",
+                );
+            },
+        );
+
         if ui
             .add(egui::Button::new(format!("{}  Restore Default Window Size", icons::FRAME_CORNERS))
             .wrap_mode(egui::TextWrapMode::Extend))

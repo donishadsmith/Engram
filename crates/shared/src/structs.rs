@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::PathBuf,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread::spawn,
@@ -317,4 +317,8 @@ impl Default for WatchpointManager {
             pause: false,
         }
     }
+}
+
+pub struct RewindManager {
+    buffer: VecDeque<Vec<u8>>,
 }
