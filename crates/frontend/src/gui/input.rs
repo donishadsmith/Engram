@@ -78,22 +78,41 @@ fn display_controller_hotkeys(
 
 pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
     let dialog_open = session.rom_dialog.is_some();
+    let is_input_blocked = session.is_input_blocked();
 
     if !session.show_hotkeys {
-        if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
+        if !(shift_key_down()
+            || super_key_down()
+            || is_key_down(KeyCode::Delete)
+            || is_input_blocked)
             && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen))
         {
             session.toggle_fullscreen()
         }
 
-        if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
+        if is_key_pressed(
+            session
+                .key_bindings
+                .get_hotkey_bind(Hotkeys::EmulatorStatus),
+        ) && !is_input_blocked
+        {
+            session.toggle_emulator_status()
+        }
+
+        if !(shift_key_down()
+            || super_key_down()
+            || is_key_down(KeyCode::Delete)
+            || is_input_blocked)
             && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Debugger))
         {
             ui_state.debug_toggled = true;
         }
 
         if let Some(emulator) = &mut session.emulator {
-            if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
+            if !(shift_key_down()
+                || super_key_down()
+                || is_key_down(KeyCode::Delete)
+                || is_input_blocked)
                 && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua))
             {
                 session.lua_lab.opened = !session.lua_lab.opened;
@@ -109,8 +128,9 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                 || shift_key_down()
                 || super_key_down()
                 || is_key_down(KeyCode::Delete))
-                && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
-                    || hotkey_triggered)
+                || is_input_blocked
+                    && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot))
+                        || hotkey_triggered)
             {
                 match session.data_dirs.get_image_path() {
                     Ok(path) => {
@@ -134,7 +154,10 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                 ShortcutType::Gif,
             ) && ui_state.last_gif_time.elapsed()
                 >= ui_state.controller_hotkey_delay;
-            if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
+            if !(shift_key_down()
+                || super_key_down()
+                || is_key_down(KeyCode::Delete)
+                || is_input_blocked)
                 && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif))
                     || hotkey_triggered)
             {
@@ -166,7 +189,10 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                 ShortcutType::Video,
             ) && ui_state.last_video_time.elapsed()
                 >= ui_state.controller_hotkey_delay;
-            if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete))
+            if !(shift_key_down()
+                || super_key_down()
+                || is_key_down(KeyCode::Delete)
+                || is_input_blocked)
                 && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Video))
                     || hotkey_triggered)
             {
@@ -195,18 +221,21 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
 
             if shift_key_down()
                 && let Some(slot) = detect_state_key()
+                && !is_input_blocked
             {
                 save_slots_with_toast(emulator, &mut session.toasts, slot);
             }
 
             if super_key_down()
                 && let Some(slot) = detect_state_key()
+                && !is_input_blocked
             {
                 load_slots_with_toast(emulator, &mut session.toasts, slot);
             }
 
             if is_key_down(KeyCode::Delete)
                 && let Some(slot) = detect_state_key()
+                && !is_input_blocked
             {
                 if session.destructive_action_popup && state_exists(emulator, slot) {
                     ui_state.destructive_action = Some(DestructiveAction::Delete(slot));
@@ -217,6 +246,7 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
 
             if let Some(latest_gamepad_id) = session.latest_gamepad_id
                 && let Some(gilrs) = &session.gilrs
+                && !is_input_blocked
                 && ui_state.last_save_state_time.elapsed() >= ui_state.controller_hotkey_delay
                 && let Some(slot) = get_save_slot(gilrs.gamepad(latest_gamepad_id), true)
             {
@@ -227,6 +257,7 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
 
             if let Some(latest_gamepad_id) = session.latest_gamepad_id
                 && let Some(gilrs) = &session.gilrs
+                && !is_input_blocked
                 && ui_state.last_load_state_time.elapsed() >= ui_state.controller_hotkey_delay
                 && let Some(slot) = get_save_slot(gilrs.gamepad(latest_gamepad_id), false)
             {

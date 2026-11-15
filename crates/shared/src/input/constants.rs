@@ -145,7 +145,7 @@ pub const BINDABLE_BUTTONS: [Button; 18] = [
     Button::Z,
 ];
 
-pub const DEFAULT_HOT_KEYS: [Bindings; 6] = [
+pub const DEFAULT_HOT_KEYS: [Bindings; 7] = [
     Bindings {
         label: "Lua",
         key: KeyCode::F8,
@@ -154,6 +154,11 @@ pub const DEFAULT_HOT_KEYS: [Bindings; 6] = [
     Bindings {
         label: "Fullscreen",
         key: KeyCode::F6,
+        button: None,
+    },
+    Bindings {
+        label: "Emulator_Status",
+        key: KeyCode::Space,
         button: None,
     },
     Bindings {

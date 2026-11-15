@@ -138,7 +138,12 @@ pub fn bindings_grid(
             })
             .enumerate()
         {
-            ui.label(&label.to_string().replace("State", " State"));
+            ui.label(
+                &label
+                    .to_string()
+                    .replace("_", " ")
+                    .replace("State", " State"),
+            );
 
             let text = if *key_rebinding == Some(index) {
                 match input {

@@ -655,48 +655,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .clicked()
         {
-            let mut alt_message = false;
-            match (session.state, session.return_state) {
-                (EmulatorState::Launch, _)
-                | (_, Some(EmulatorState::Launch))
-                | (EmulatorState::RomSelection, Some(EmulatorState::SwapDisc))
-                | (EmulatorState::SwapDisc, _) => {
-                    session.pause_on_launch = !session.pause_on_launch;
-                    alt_message = true;
-                }
-                // a transient state (e.g. the ROM dialog) is active over a loaded game:
-                // flip the state we return to and leave the transient state alone
-                (_, Some(EmulatorState::Paused)) => {
-                    session.swap_return_state(EmulatorState::Running)
-                }
-                (_, Some(EmulatorState::Running)) => {
-                    session.swap_return_state(EmulatorState::Paused)
-                }
-                _ => session.toggle_emulator_status(),
-            }
-
-            let (emulator_pause_message, emulator_run_message) = if alt_message {
-                (
-                    "Next ROM will pause after loading",
-                    "Next ROM will start after loading",
-                )
-            } else {
-                ("Emulator is paused", "Emulator is running")
-            };
-
-            let paused = session.is_paused()
-                || session.return_state == Some(EmulatorState::Paused)
-                || session.pause_on_launch;
-
-            if paused {
-                session
-                    .emulator
-                    .as_mut()
-                    .and_then(|emulator| Some(emulator.take_debugger_snapshot()));
-                session.toasts.warning(emulator_pause_message);
-            } else {
-                session.toasts.success(emulator_run_message);
-            }
+            session.toggle_emulator_status();
         }
 
         ui.label(egui::RichText::new("| ").strong());

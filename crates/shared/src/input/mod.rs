@@ -203,6 +203,7 @@ impl KeyBindings {
             Hotkeys::Lua => "Lua",
             Hotkeys::Fullscreen => "Fullscreen",
             Hotkeys::Video => "Video",
+            Hotkeys::EmulatorStatus => "Emulator_Status",
         };
 
         self.hotkeys

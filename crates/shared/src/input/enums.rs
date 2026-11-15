@@ -28,6 +28,7 @@ pub enum Hotkeys {
     Lua,
     Fullscreen,
     Video,
+    EmulatorStatus,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

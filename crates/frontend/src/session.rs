@@ -290,10 +290,48 @@ impl Session {
     }
 
     pub fn toggle_emulator_status(&mut self) {
-        self.state = if self.state == EmulatorState::Running {
-            EmulatorState::Paused
+        let mut alt_message = false;
+        match (self.state, self.return_state) {
+            (EmulatorState::Launch, _)
+            | (_, Some(EmulatorState::Launch))
+            | (EmulatorState::RomSelection, Some(EmulatorState::SwapDisc))
+            | (EmulatorState::SwapDisc, _) => {
+                self.pause_on_launch = !self.pause_on_launch;
+                alt_message = true;
+            }
+            // a transient state (e.g. the ROM dialog) is active over a loaded game:
+            // flip the state we return to and leave the transient state alone
+            (_, Some(EmulatorState::Paused)) => self.swap_return_state(EmulatorState::Running),
+            (_, Some(EmulatorState::Running)) => self.swap_return_state(EmulatorState::Paused),
+            _ => {
+                self.state = if self.state == EmulatorState::Running {
+                    EmulatorState::Paused
+                } else {
+                    EmulatorState::Running
+                }
+            }
+        }
+
+        let (emulator_pause_message, emulator_run_message) = if alt_message {
+            (
+                "Next ROM will pause after loading",
+                "Next ROM will start after loading",
+            )
         } else {
-            EmulatorState::Running
+            ("Emulator is paused", "Emulator is running")
+        };
+
+        let paused = self.is_paused()
+            || self.return_state == Some(EmulatorState::Paused)
+            || self.pause_on_launch;
+
+        if paused {
+            self.emulator
+                .as_mut()
+                .and_then(|emulator| Some(emulator.take_debugger_snapshot()));
+            self.toasts.warning(emulator_pause_message);
+        } else {
+            self.toasts.success(emulator_run_message);
         }
     }
 
@@ -306,6 +344,7 @@ impl Session {
     }
 
     pub fn run(&mut self, clear_inputs: bool) -> Result<EmulatorState, Error> {
+        let input_blocked = self.is_input_blocked() || clear_inputs;
         let emulator = self.emulator.as_mut().unwrap();
 
         let key_id = emulator.id().to_key_id().map_to_shared_key_id();
@@ -323,12 +362,6 @@ impl Session {
         } else {
             None
         };
-
-        let input_blocked = self.show_key_bindings
-            || self.show_hotkeys
-            || self.lua_lab.occupied()
-            || clear_inputs
-            || self.controller_hotkey_fired;
 
         // shocked that i managed to get gamepad working
         let keymap = if gamepad.is_some() {
@@ -595,11 +628,6 @@ impl Session {
             gamepad_update.last_pressed = Some(Button::DPadDown);
         };
 
-        let input_blocked = self.show_key_bindings
-            || self.show_hotkeys
-            || self.lua_lab.occupied()
-            || self.controller_hotkey_fired;
-
         let use_analog =
             if let Some(emulator_id) = self.emulator.as_ref().map(|emulator| emulator.id()) {
                 self.map_analog_to_dpad.get(emulator_id)
@@ -608,7 +636,7 @@ impl Session {
             };
 
         // tan(22.5) = 0.414; tan = x / y; determine if non dominant exceeds threshold
-        if !input_blocked && use_analog {
+        if !self.is_input_blocked() && use_analog {
             self.analog_to_dpad
                 .push(gamepad_update.last_pressed.unwrap());
 
@@ -651,6 +679,13 @@ impl Session {
                 screen_height as f32 / screen_dpi_scale(),
             );
         }
+    }
+
+    pub fn is_input_blocked(&self) -> bool {
+        self.show_key_bindings
+            || self.show_hotkeys
+            || self.lua_lab.occupied()
+            || self.controller_hotkey_fired
     }
 
     pub fn record_window_size(&mut self) {
