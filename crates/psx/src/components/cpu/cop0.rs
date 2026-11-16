@@ -134,7 +134,13 @@ impl Cop0 {
     }
 
     // TODO: start with this, next seems straightforward enough
-    pub fn return_from_exception() {}
+    // https://problemkaputt.de/psxspx-cop0-exception-handling.htm
+    pub fn return_from_exception(&mut self) {
+        let mode1 = self.sr.get_bit_range(2..4);
+        let mode2 = self.sr.get_bit_range(4..6);
+        self.sr.clear_bit_range(0..4);
+        self.sr |= (mode2 << 2) | mode1;
+    }
 
     pub fn move_to(&mut self, register: Cop0Registers, value: u32) {
         match register {
