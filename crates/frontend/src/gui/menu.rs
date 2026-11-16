@@ -616,7 +616,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         let mut layout_job = egui::text::LayoutJob::default();
         let font = egui::TextStyle::Body.resolve(ui.style());
         layout_job.append(
-            &format!("{}  Speed: ", icons::FAST_FORWARD),
+            "Speed: ",
             0.0,
             egui::TextFormat::simple(font.clone(), ui.visuals().strong_text_color()),
         );
@@ -692,9 +692,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
 
         if session.emulator.is_some() {
             if session.show_fps {
-                ui.label(
-                    egui::RichText::new(format!("{}  FPS: {:.1}", icons::GAUGE, fps)).strong(),
-                );
+                ui.label(egui::RichText::new(format!("FPS: {:.1}", fps)).strong());
 
                 ui.label(egui::RichText::new("| ").strong());
             }
