@@ -1,9 +1,12 @@
 // https://archive.org/details/NintendoGbaManualV1.1/page/n59/mode/1up
-use crate::components::{
-    bus::{AccessType, Bus},
-    cpu::{Arm7tdmi, HaltState},
-    dma::Trigger,
-    gamepak::GamePak,
+use crate::{
+    GBA_CLOCK_SPEED,
+    components::{
+        bus::{AccessType, Bus},
+        cpu::{Arm7tdmi, HaltState},
+        dma::Trigger,
+        gamepak::GamePak,
+    },
 };
 
 use serde::{Deserialize, Serialize};
@@ -11,7 +14,7 @@ use shared::{
     Emulator, EmulatorState, ScriptTarget,
     render::{Frame, to_rbg_single},
     script::{CpuError, DomainError, WatchpointArgs, WatchpointHit, WatchpointRange},
-    structs::ElapsedCycles,
+    structs::{ElapsedCycles, RewindManager},
     traits::BitOps,
     utils::error_message,
 };
@@ -56,6 +59,8 @@ pub struct GBA {
     pub force_buffer_change: bool, // for debugger
     #[serde(skip)]
     pub force_screen_update: bool,
+    #[serde(skip)]
+    pub rewind_manager: RewindManager,
 }
 
 impl GBA {
@@ -78,6 +83,7 @@ impl GBA {
             cycle_pause: false,
             force_buffer_change: false,
             force_screen_update: false,
+            rewind_manager: RewindManager::new(GBA_CLOCK_SPEED as u64),
         }
     }
 
@@ -290,6 +296,8 @@ impl GBA {
         );
         swap(&mut data.pause_at_cycle, &mut self.pause_at_cycle);
 
+        swap(&mut data.rewind_manager, &mut self.rewind_manager);
+
         *self = data;
 
         Ok(())
@@ -327,6 +335,15 @@ impl GBA {
         }
 
         take(&mut self.cycle_pause)
+    }
+
+    pub fn capture_rewind(&mut self) {
+        let cycles = self.elapsed_cycles();
+        if self.rewind_manager.should_capture(cycles)
+            && let Ok(state) = self.save_state(STATE_MAGIC_NAME)
+        {
+            self.rewind_manager.push(cycles, state);
+        }
     }
 }
 
@@ -414,8 +431,17 @@ impl Emulator for GBA {
         });
     }
 
-    fn rewind_state(&mut self) -> bool {
-        todo!()
+    fn rewind(&mut self, count: usize) -> Option<f64> {
+        let current = self.elapsed_cycles();
+        let (state, snapshot_cycles) = self.rewind_manager.pop_n(count)?;
+
+        self.load_state(&state).ok()?;
+
+        // a slot load or lua restore can result in newer snapshots in the buffer than the
+        // current cycle, prevent underflow
+        let rewound_cycles = current.saturating_sub(snapshot_cycles as u64);
+
+        Some(rewound_cycles as f64 / GBA_CLOCK_SPEED as f64)
     }
 }
 
@@ -627,5 +653,9 @@ impl ScriptTarget for GBA {
 
     fn snapshot(&self) -> Result<Vec<u8>, Error> {
         self.save_state(STATE_MAGIC_NAME)
+    }
+
+    fn rewind_occupancy(&self) -> (usize, usize, usize) {
+        self.rewind_manager.occupancy()
     }
 }

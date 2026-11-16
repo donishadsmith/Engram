@@ -43,6 +43,8 @@ use std::{
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
 
+// TODO: After PSX, abstract similar logic among the systems
+
 pub struct GBASession {
     audio: Option<AudioOutput>,
     audio_debugger: AudioDebugger,
@@ -104,6 +106,10 @@ impl GBASession {
         self.frame_ready = self.gba.take_frame();
         self.compute_fps(1u64);
         self.video_capture();
+
+        if self.gba.rewind_manager.is_enabled() {
+            self.gba.capture_rewind();
+        }
 
         self.script_engine
             .execute(&mut self.gba, EmulatorId::Gba, true);
@@ -472,8 +478,21 @@ impl EmulatorSession for GBASession {
         self.speed = speed;
     }
 
-    fn rewind(&mut self) -> bool {
-        self.gba.rewind_state()
+    fn set_rewind_capacity(&mut self, capacity: usize) {
+        let previously_enabled = self.gba.rewind_manager.is_enabled();
+
+        self.gba.rewind_manager.capacity = capacity;
+        if previously_enabled && !self.gba.rewind_manager.is_enabled() {
+            self.gba.rewind_manager.buffer.clear();
+        }
+    }
+
+    fn rewind(&mut self) -> Option<f64> {
+        self.gba.rewind(1)
+    }
+
+    fn can_rewind(&self) -> bool {
+        !self.gba.rewind_manager.buffer.is_empty()
     }
 }
 

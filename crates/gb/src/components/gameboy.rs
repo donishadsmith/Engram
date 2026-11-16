@@ -1,10 +1,13 @@
-use crate::components::{
-    bus::{AddressBus, Bus},
-    cpu::{
-        SharpSm83,
-        registers::{Register8Bits, Register16Bits},
+use crate::{
+    GB_CLOCK_SPEED,
+    components::{
+        bus::{AddressBus, Bus},
+        cpu::{
+            SharpSm83,
+            registers::{Register8Bits, Register16Bits},
+        },
+        gamepak::{GamePak, mbc::prelude::Mbc},
     },
-    gamepak::{GamePak, mbc::prelude::Mbc},
 };
 
 use serde::{Deserialize, Serialize};
@@ -14,7 +17,8 @@ use shared::{
     script::{
         CpuError, DomainError, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
     },
-    structs::ElapsedCycles,
+    structs::{ElapsedCycles, RewindManager},
+    traits::BitOps,
     utils::error_message,
 };
 use std::{
@@ -45,6 +49,8 @@ pub struct GameBoy {
     cycle_pause: bool,
     #[serde(skip)]
     pub force_screen_update: bool,
+    #[serde(skip)]
+    pub rewind_manager: RewindManager,
 }
 
 impl GameBoy {
@@ -64,6 +70,7 @@ impl GameBoy {
             pause_at_cycle: None,
             cycle_pause: false,
             force_screen_update: false,
+            rewind_manager: RewindManager::new(GB_CLOCK_SPEED as u64),
         }
     }
 
@@ -83,7 +90,7 @@ impl GameBoy {
             self.cpu.bus.oam_dma_step();
         }
 
-        let double_speed = self.cpu.bus.key_register & 0x80 != 0;
+        let double_speed = self.cpu.bus.key_register.is_set(7);
         let cpu_t_cycles = if double_speed { t_cycles } else { t_cycles * 2 };
         self.cpu
             .bus
@@ -261,6 +268,8 @@ impl GameBoy {
         );
         swap(&mut data.pause_at_cycle, &mut self.pause_at_cycle);
 
+        swap(&mut data.rewind_manager, &mut self.rewind_manager);
+
         *self = data;
 
         Ok(())
@@ -298,6 +307,25 @@ impl GameBoy {
         }
 
         take(&mut self.cycle_pause)
+    }
+
+    fn rewind_cycles(&self) -> u64 {
+        let double_speed = self.cpu.bus.key_register.is_set(7);
+
+        if double_speed {
+            self.cpu.bus.t_cycles / 2
+        } else {
+            self.cpu.bus.t_cycles
+        }
+    }
+
+    pub fn capture_rewind(&mut self) {
+        let cycles = self.rewind_cycles();
+        if self.rewind_manager.should_capture(cycles)
+            && let Ok(state) = self.save_state(STATE_MAGIC_NAME)
+        {
+            self.rewind_manager.push(cycles, state);
+        }
     }
 }
 
@@ -388,8 +416,17 @@ impl Emulator for GameBoy {
         });
     }
 
-    fn rewind_state(&mut self) -> bool {
-        todo!()
+    fn rewind(&mut self, count: usize) -> Option<f64> {
+        let current = self.rewind_cycles();
+        let (state, snapshot_cycles) = self.rewind_manager.pop_n(count)?;
+
+        self.load_state(&state).ok()?;
+
+        // a slot load or lua restore can result in newer snapshots in the buffer than the
+        // current cycle, prevent underflow
+        let rewound_cycles = current.saturating_sub(snapshot_cycles as u64);
+
+        Some(rewound_cycles as f64 / GB_CLOCK_SPEED)
     }
 }
 
@@ -653,5 +690,9 @@ impl ScriptTarget for GameBoy {
 
     fn snapshot(&self) -> Result<Vec<u8>, Error> {
         self.save_state(STATE_MAGIC_NAME)
+    }
+
+    fn rewind_occupancy(&self) -> (usize, usize, usize) {
+        self.rewind_manager.occupancy()
     }
 }

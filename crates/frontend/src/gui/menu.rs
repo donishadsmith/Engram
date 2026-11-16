@@ -1,6 +1,7 @@
 use egui::{Color32, Ui};
 use egui_phosphor::regular as icons;
 use macroquad::{
+    input::is_key_down,
     miniquad::window::{request_quit, set_fullscreen},
     window::{request_new_screen_size, screen_dpi_scale},
 };
@@ -364,19 +365,15 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
             ui.close();
         }
 
-        ui.menu_button(
-            format!("{}  Enable Rewind", icons::REWIND),
-            |ui| {
-                ui.checkbox(
-                    &mut session.rewind_enabled.gameboy,
-                    "Game Boy",
-                );
-                ui.checkbox(
-                    &mut session.rewind_enabled.gba,
-                    "Game Boy Advance",
-                );
-            },
-        );
+        if ui
+            .add(
+                egui::Button::new(format!("{}  Rewind Capacity", icons::REWIND))
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            )
+            .clicked() {
+                ui_state.open_rewind_settings = true;
+                ui.close();
+            }
 
         if ui
             .add(egui::Button::new(format!("{}  Restore Default Window Size", icons::FRAME_CORNERS))
@@ -646,7 +643,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
 
         ui.label(egui::RichText::new("| ").strong());
 
-        let (text, hover) = if session.is_paused()
+        let (status_text, hover) = if session.is_paused()
             || session
                 .return_state
                 .is_some_and(|state| state == EmulatorState::Paused)
@@ -664,13 +661,32 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         };
 
         if ui
-            .add(egui::Label::new(text).sense(egui::Sense::click()))
+            .add(egui::Label::new(status_text).sense(egui::Sense::click()))
             .on_hover_text(hover)
             .on_hover_cursor(egui::CursorIcon::PointingHand)
             .clicked()
         {
             session.toggle_emulator_status();
         }
+
+        ui.label(egui::RichText::new("| ").strong());
+
+        // gotta add te hotkey here
+        let rewind_text = if session.rewind_in_action {
+            egui::RichText::new(icons::REWIND).color(egui::Color32::YELLOW)
+        } else {
+            egui::RichText::new(icons::REWIND).strong()
+        };
+
+        let rewind = ui
+            .add(egui::Label::new(rewind_text).sense(egui::Sense::click()))
+            .on_hover_text("Hold to rewind")
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
+
+        let key_held = is_key_down(session.key_bindings.get_hotkey_bind(Hotkeys::Rewind))
+            && !session.is_input_blocked();
+
+        session.perform_rewind(rewind.is_pointer_button_down_on() || key_held, ui_state);
 
         ui.label(egui::RichText::new("| ").strong());
 

@@ -8,7 +8,7 @@ use std::{
 };
 use toml::{from_str, to_string_pretty};
 
-use crate::EmulatorId;
+use crate::{EmulatorId, constants::ALLOWED_REWIND_CAPACITY};
 
 #[derive(Default, Serialize, Deserialize, Clone, Copy)]
 #[serde(default)]
@@ -61,26 +61,34 @@ impl Default for RumbleEffect {
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
 #[serde(default)]
-pub struct SystemRewind {
-    pub gameboy: bool,
-    pub gba: bool,
+pub struct SystemRewindCapacity {
+    pub gameboy: usize,
+    pub gba: usize,
 }
 
-impl SystemRewind {
-    pub fn get(self, emulator_id: EmulatorId) -> bool {
+impl SystemRewindCapacity {
+    pub fn get(self, emulator_id: EmulatorId) -> usize {
         match emulator_id {
             EmulatorId::Gb => self.gameboy,
             EmulatorId::Gba => self.gba,
         }
     }
+
+    pub fn limit(&mut self) {
+        self.gameboy = *ALLOWED_REWIND_CAPACITY
+            .iter()
+            .min_by_key(|&x| x.abs_diff(self.gameboy))
+            .unwrap_or(&0);
+        self.gba = *ALLOWED_REWIND_CAPACITY
+            .iter()
+            .min_by_key(|&x| x.abs_diff(self.gba))
+            .unwrap_or(&0);
+    }
 }
 
-impl Default for SystemRewind {
+impl Default for SystemRewindCapacity {
     fn default() -> Self {
-        SystemRewind {
-            gameboy: false,
-            gba: false,
-        }
+        Self { gameboy: 0, gba: 0 }
     }
 }
 
@@ -112,7 +120,7 @@ pub struct Config {
     pub rumble_strength: Option<f32>,
     pub speed: Option<u8>,
     pub lua_lab_theme: Option<String>,
-    pub system_rewind: SystemRewind,
+    pub system_rewind_capacity: SystemRewindCapacity,
 }
 
 fn get_config_path() -> PathBuf {

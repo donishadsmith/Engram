@@ -53,7 +53,7 @@ PlayStation 1 is extremely WIP.
 - Rebindable keyboard, hotkey and controller inputs
 - Controller rumble
 - Screenshots, GIFs, and video recordings
-- Fast forward
+- Fast forward and rewind (up to a minute, enabled per system in Settings)
 - Solar sensor slider for Boktai
 - Settings saved in [`config.toml`](https://github.com/donishadsmith/Engram#file-locations)
 
@@ -83,6 +83,7 @@ PlayStation 1 is extremely WIP.
 - Per-frame, breakpoint, and watchpoint callbacks
 - Read and write memory by domain and CPU registers by name
 - Set controller inputs and pause after a number of cycles
+- Memory snapshots, restore, and rewind
 - Scripts run as coroutines, so they can pause, step, reset, and wait on the emulator mid-script
 - Built-in editor and console ("Lua Lab")
 

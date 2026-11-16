@@ -320,5 +320,64 @@ impl Default for WatchpointManager {
 }
 
 pub struct RewindManager {
-    buffer: VecDeque<Vec<u8>>,
+    pub buffer: VecDeque<(u64, Vec<u8>)>,
+    pub capacity: usize,
+    interval: u64,
+    last_cycle: u64,
+}
+
+impl RewindManager {
+    pub fn new(interval: u64) -> Self {
+        Self {
+            buffer: VecDeque::with_capacity(300),
+            capacity: 0,
+            interval,
+            last_cycle: 0,
+        }
+    }
+
+    pub fn should_capture(&self, cycles: u64) -> bool {
+        cycles < self.last_cycle || cycles >= self.last_cycle + self.interval
+    }
+
+    pub fn push(&mut self, cycles: u64, state: Vec<u8>) {
+        if self.buffer.len() == self.capacity {
+            self.buffer.pop_front();
+        }
+
+        self.buffer.push_back((cycles, state));
+        self.last_cycle = cycles;
+    }
+
+    pub fn pop_n(&mut self, count: usize) -> Option<(Vec<u8>, u64)> {
+        let mut last_state = None;
+
+        for _ in 0..count {
+            match self.buffer.pop_back() {
+                Some(pair) => last_state = Some(pair),
+                None => break,
+            }
+        }
+
+        let (cycles, state) = last_state?;
+        self.last_cycle = cycles;
+
+        Some((state, cycles))
+    }
+
+    pub fn occupancy(&self) -> (usize, usize, usize) {
+        let bytes = self.buffer.iter().map(|(_, state)| state.len()).sum();
+
+        (self.buffer.len(), self.capacity, bytes)
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.capacity != 0
+    }
+}
+
+impl Default for RewindManager {
+    fn default() -> Self {
+        RewindManager::new(u64::MAX)
+    }
 }

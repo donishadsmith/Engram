@@ -15,3 +15,5 @@ pub const FAST_FORWARD: u8 = 10;
 pub const GB_REFRESH_RATE: f64 = 59.727;
 
 pub const VALID_EXTENSIONS: [&'static str; 3] = [".gba", ".gb", ".gbc"];
+
+pub const ALLOWED_REWIND_CAPACITY: [usize; 8] = [0, 15, 30, 60, 120, 180, 240, 300];

@@ -6,7 +6,7 @@ use macroquad::{
     miniquad::window::set_fullscreen,
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
-use shared::config::{DataDirs, SystemRewind};
+use shared::config::{DataDirs, SystemRewindCapacity};
 use shared::constants::FAST_FORWARD;
 use shared::lua_lab::EditorTheme;
 use shared::structs::PendingDialog;
@@ -32,7 +32,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::utils::initialize_debug_hashmap;
+use crate::utils::{UiState, initialize_debug_hashmap};
 
 pub trait AnalogValue {
     fn apply_threshold(self, threshold: f32) -> f32;
@@ -138,7 +138,7 @@ pub struct Session {
     pub solar_level: u8,
     pub last_debug_page: HashMap<EmulatorId, DebugPage>,
     pub lua_lab: LuaLab,
-    pub return_state: Option<EmulatorState>,
+    pub return_state: Option<EmulatorState>, // TODO: Work on making this a queue
     pub pending_steps: VecDeque<ScriptRequest>,
     pub gilrs: Option<Gilrs>,
     pub latest_gamepad_id: Option<GamepadId>,
@@ -163,7 +163,9 @@ pub struct Session {
     pub rom_dialog: Option<PendingDialog>,
     pub speed: u8,
     pub pause_on_launch: bool,
-    pub rewind_enabled: SystemRewind,
+    pub system_rewind_capacity: SystemRewindCapacity,
+    pub rewind_in_action: bool,
+    rewound_seconds: f64,
 }
 
 impl Session {
@@ -214,6 +216,9 @@ impl Session {
                 .to_string(),
         );
 
+        let mut system_rewind_capacity = config.system_rewind_capacity;
+        system_rewind_capacity.limit();
+
         Self {
             state: EmulatorState::Launch,
             emulator: None,
@@ -256,7 +261,9 @@ impl Session {
             rom_dialog: None,
             speed: config.speed.unwrap_or(1).clamp(1, FAST_FORWARD),
             pause_on_launch: false,
-            rewind_enabled: config.system_rewind,
+            system_rewind_capacity,
+            rewind_in_action: false,
+            rewound_seconds: 0.0,
         }
     }
 
@@ -373,6 +380,7 @@ impl Session {
         };
 
         emulator.set_speed(self.speed);
+        emulator.set_rewind_capacity(self.system_rewind_capacity.get(emulator.id()));
 
         emulator.run(
             &get_relevant_key_presses(
@@ -430,7 +438,7 @@ impl Session {
             rumble_strength: Some(self.rumble_strength),
             speed: Some(self.speed),
             lua_lab_theme: Some(self.lua_lab.theme.to_name()),
-            system_rewind: self.rewind_enabled,
+            system_rewind_capacity: self.system_rewind_capacity,
         };
 
         save_config(&config)
@@ -823,6 +831,34 @@ impl Session {
             let _ = rumble_effect.play();
         } else {
             let _ = rumble_effect.stop();
+        }
+    }
+
+    pub fn perform_rewind(&mut self, rewind_held: bool, ui_state: &mut UiState) {
+        let Some(emulator) = self.emulator.as_mut() else {
+            return;
+        };
+
+        if rewind_held {
+            self.rewind_in_action = true;
+
+            if ui_state.last_rewind_time.elapsed() >= Duration::from_millis(120)
+                && let Some(seconds) = emulator.rewind()
+            {
+                self.rewound_seconds += seconds;
+                ui_state.last_rewind_time = Instant::now();
+            }
+        } else if take(&mut self.rewind_in_action) {
+            let seconds = take(&mut self.rewound_seconds);
+
+            if seconds > 0.0 {
+                self.toasts.info(format!("Rewound {seconds:.1} seconds"));
+            } else {
+                self.toasts.warning("Nothing to rewind");
+            }
+
+            emulator.reset_fps();
+            emulator.update_frame_deadline();
         }
     }
 }

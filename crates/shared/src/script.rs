@@ -6,7 +6,8 @@ use crate::{
     input::constants::DEFAULT_GBA_KEYS,
 };
 use mlua::{
-    Function, HookTriggers, Lua, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus,
+    Function, HookTriggers, Lua, LuaString, Table, Thread, Value, Variadic, VmState,
+    thread::ThreadStatus,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -57,7 +58,7 @@ emulator.save_state(slot)  emulator.load_state(slot)  emulator.delete_state(slot
     - slot is an integer value from 1 to 12
     - performs IO operation
 emulator.snapshot() emulator.restore(buffer): Accepts a snapshot of the emulator state
-    - returns/accepts a compressed state of the emulator an an array of bytes
+    - returns/accepts a compressed state of the emulator a string of bytes
     - does not perform IO operation
 emulator.elapsed_cycles(): GB/GBC reports t-cycles
 emulator.pause_at_cycle(cycle)
@@ -69,6 +70,12 @@ emulator.fast_forward(speed)
     - speed is an integer value from 1 to 5
 emulator.volume(volume)
     - volume is an integer value from 0 to 100
+emulator.rewind(seconds): rewinds roughly that many seconds (default 1)
+    - returns the actual seconds rewound or nil if there is no history
+    - rewind must be enabled for the system in Settings
+emulator.rewind_occupancy()
+    - returns the current rewind buffer length, the max capacity the buffer can hold,
+      and the number of bytes the buffer holds
 
 Breakpoints:
 debugger.set_breakpoint(address, {pause = true})
@@ -77,7 +84,7 @@ debugger.clear_all_breakpoints()
 debugger.check_breakpoints()
 
 Watchpoints (bus accesses):
-debugger.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all", compare="=="})
+debugger.set_watchpoint(start_address, {end_address, pause = true, on = "rw", width = "byte", target = nil, accessor = "all", compare = "=="})
     - on: "read", "write", "rw", "change" (change = write of a value different from the last write)
     - width: "byte", "halfword", "word" (gameboy: byte only; halfword/word addresses are aligned for gba)
     a watchpoint only fires for the specified access width
@@ -129,7 +136,6 @@ pub enum ScriptRequest {
     CloseDebugger,
     FastForward(u8),
     Volume(u8),
-    Rewind,
 }
 
 // is it incredibly lazy to create a new enum to compare strings with another nearly duplicate enum with a one variant difference
@@ -670,11 +676,6 @@ impl ScriptEngine {
                     coroutine.yield()
                 end
             end
-
-            function emulator.rewind()
-                emulator._rewind()
-                coroutine.yield()
-            end
         "#,
             )
             .exec()
@@ -951,26 +952,29 @@ impl ScriptEngine {
                 "close_debugger",
                 || ScriptRequest::CloseDebugger,
             )?;
-            set_emulator_controls(
-                "rewind",
-                || ScriptRequest::Rewind,
-            )?;
 
-            emulator.set("snapshot", scope.create_function(|_, (): ()|{
-                let snapshot = target.borrow_mut().snapshot();
-                match snapshot {
-                    Ok(snapshot) => Ok(snapshot),
-                    Err(err) => Err(mlua::Error::runtime(err.to_string()))
+            emulator.set("rewind", scope.create_function(|_, seconds: Option<usize>| {
+                Ok(target.borrow_mut().rewind(seconds.unwrap_or(1)))
+            })?)?;
+
+            emulator.set("snapshot", scope.create_function(|lua, (): ()| {
+                match target.borrow().snapshot() {
+                    Ok(snapshot) => lua.create_string(&snapshot),
+                    Err(err) => Err(mlua::Error::runtime(err.to_string())),
                 }
             })?)?;
 
-            emulator.set("restore", scope.create_function(|_, buffer: Vec<u8>|{
-                match target.borrow_mut().restore(buffer) {
+            emulator.set("restore", scope.create_function(|_, buffer: LuaString| {
+                match target.borrow_mut().restore(buffer.as_bytes().to_vec()) {
                     Ok(_) => output.borrow_mut().push("state restored".to_string()),
                     Err(err) => output.borrow_mut().push(mlua::Error::runtime(err).to_string()),
                 }
 
                 Ok(())
+            })?)?;
+
+            emulator.set("rewind_occupancy", scope.create_function(|_, (): ()| {
+                Ok(target.borrow().rewind_occupancy())
             })?)?;
 
             emulator.set("open_debugger", scope.create_function(|_, page: String| {

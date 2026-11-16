@@ -76,8 +76,10 @@ pub struct UiState {
     pub last_gif_time: Instant,
     pub last_screenshot_time: Instant,
     pub last_video_time: Instant,
+    pub last_rewind_time: Instant,
     pub controller_hotkey_delay: Duration,
     pub dir_dialog: Option<(DataLocation, PendingDialog)>,
+    pub open_rewind_settings: bool,
 }
 
 impl UiState {
@@ -101,6 +103,8 @@ impl UiState {
             last_video_time: Instant::now(),
             controller_hotkey_delay: Duration::from_millis(500),
             dir_dialog: None,
+            last_rewind_time: Instant::now(),
+            open_rewind_settings: false,
         }
     }
 }

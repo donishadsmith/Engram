@@ -14,8 +14,9 @@ use crate::{
             show_tools_menu,
         },
         windows::{
-            set_data_directories, show_controller_bindings, show_debugger_pages,
-            show_destructive_action_popup, show_gif_settings, show_hotkey_bindings, show_lua_lab,
+            set_data_directories, set_rewind_settings, show_controller_bindings,
+            show_debugger_pages, show_destructive_action_popup, show_gif_settings,
+            show_hotkey_bindings, show_lua_lab,
         },
     },
     session::Session,
@@ -154,6 +155,15 @@ async fn main() -> Result<(), Error> {
                     }
                 }
             }
+            EmulatorState::Running if session.rewind_in_action => {
+                session.pause();
+
+                // more fun this way
+                if let Some(emulator) = &mut session.emulator {
+                    emulator.video_capture();
+                    session.gif.capture(emulator.frontend_ref());
+                }
+            }
             EmulatorState::Running => {
                 if session.run(
                     gamepad_update.changed
@@ -267,6 +277,7 @@ async fn main() -> Result<(), Error> {
             keybinding(&mut session, &mut ui_state, &gamepad_update);
 
             set_data_directories(&egui_ctx, &mut session, &mut ui_state);
+            set_rewind_settings(&egui_ctx, &mut session, &mut ui_state);
             show_destructive_action_popup(&egui_ctx, &mut session, &mut ui_state);
             show_gif_settings(&egui_ctx, &mut session, &mut ui_state);
             show_lua_lab(&egui_ctx, &mut session, &mut ui_state);
@@ -286,7 +297,7 @@ async fn main() -> Result<(), Error> {
 
         egui_macroquad::draw();
 
-        if !session.is_running() {
+        if !session.is_running() || session.rewind_in_action {
             sleep_until(fps_limit);
         }
 

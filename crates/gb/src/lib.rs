@@ -35,6 +35,7 @@ use std::{
 
 const GB_CLOCK_SPEED: f64 = 4194304.0;
 
+// TODO: After PSX, abstract similar logic among the systems
 pub struct GameBoySession {
     audio: Option<AudioOutput>,
     gameboy: GameBoy,
@@ -99,6 +100,10 @@ impl GameBoySession {
         self.frame_ready = self.gameboy.take_frame();
         self.compute_fps(1u64);
         self.video_capture();
+
+        if self.gameboy.rewind_manager.is_enabled() {
+            self.gameboy.capture_rewind();
+        }
 
         self.script_engine
             .execute(&mut self.gameboy, EmulatorId::Gb, true);
@@ -450,7 +455,20 @@ impl EmulatorSession for GameBoySession {
         self.speed = speed
     }
 
-    fn rewind(&mut self) -> bool {
-        self.gameboy.rewind_state()
+    fn set_rewind_capacity(&mut self, capacity: usize) {
+        let previously_enabled = self.gameboy.rewind_manager.is_enabled();
+
+        self.gameboy.rewind_manager.capacity = capacity;
+        if previously_enabled && !self.gameboy.rewind_manager.is_enabled() {
+            self.gameboy.rewind_manager.buffer.clear();
+        }
+    }
+
+    fn rewind(&mut self) -> Option<f64> {
+        self.gameboy.rewind(1)
+    }
+
+    fn can_rewind(&self) -> bool {
+        !self.gameboy.rewind_manager.buffer.is_empty()
     }
 }

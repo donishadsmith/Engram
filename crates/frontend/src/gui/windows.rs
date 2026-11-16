@@ -1,6 +1,9 @@
-use egui::Context;
+use std::path::PathBuf;
+
+use egui::{Context, Ui};
 use shared::{
     EmulatorState,
+    constants::ALLOWED_REWIND_CAPACITY,
     input::enums::InputType,
     script::ScriptRequest,
     structs::PendingDialog,
@@ -83,91 +86,38 @@ pub fn show_hotkey_bindings(egui_ctx: &Context, session: &mut Session, ui_state:
 
 pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
     let mut flush_configs = false;
-    if ui_state.set_dirs {
-        egui::Window::new("Choose Data Locations")
-            .open(&mut ui_state.set_dirs)
-            .show(egui_ctx, |ui| {
-                ui.label(
-                    egui::RichText::new("Game Saves/Save States")
-                        .size(16.0)
-                        .strong(),
-                );
+    let mut set_dirs = ui_state.set_dirs;
+    egui::Window::new("Choose Data Locations")
+        .open(&mut set_dirs)
+        .show(egui_ctx, |ui| {
+            ui.label(
+                egui::RichText::new("Game Saves/Save States")
+                    .size(16.0)
+                    .strong(),
+            );
 
-                thin_separator(ui);
+            thin_separator(ui);
 
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            ui_state.dir_dialog.is_none(),
-                            egui::Button::new("Set Location"),
-                        )
-                        .clicked()
-                    {
-                        ui_state.dir_dialog = Some((
-                            DataLocation::Data,
-                            PendingDialog::select_folder(session.data_dirs.data_dir.clone()),
-                        ));
-                    }
+            folder_selection(ui, ui_state, &session.data_dirs.data_dir);
 
-                    ui.add(
-                        egui::Label::new(session.data_dirs.data_dir.display().to_string())
-                            .truncate(),
-                    );
-                });
+            ui.add_space(8.0);
 
-                ui.add_space(8.0);
+            ui.label(egui::RichText::new("Screenshots/GIFs").size(16.0).strong());
 
-                ui.label(egui::RichText::new("Screenshots/GIFs").size(16.0).strong());
+            thin_separator(ui);
 
-                thin_separator(ui);
+            folder_selection(ui, ui_state, &session.data_dirs.image_dir);
 
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            ui_state.dir_dialog.is_none(),
-                            egui::Button::new("Set Location"),
-                        )
-                        .clicked()
-                    {
-                        ui_state.dir_dialog = Some((
-                            DataLocation::Image,
-                            PendingDialog::select_folder(session.data_dirs.image_dir.clone()),
-                        ));
-                    }
+            ui.add_space(8.0);
 
-                    ui.add(
-                        egui::Label::new(session.data_dirs.image_dir.display().to_string())
-                            .truncate(),
-                    );
-                });
+            ui.label(egui::RichText::new("Videos").size(16.0).strong());
 
-                ui.add_space(8.0);
+            thin_separator(ui);
 
-                ui.label(egui::RichText::new("Videos").size(16.0).strong());
+            folder_selection(ui, ui_state, &session.data_dirs.video_dir);
+        });
 
-                thin_separator(ui);
-
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            ui_state.dir_dialog.is_none(),
-                            egui::Button::new("Set Location"),
-                        )
-                        .clicked()
-                    {
-                        ui_state.dir_dialog = Some((
-                            DataLocation::Video,
-                            PendingDialog::select_folder(session.data_dirs.video_dir.clone()),
-                        ));
-                    }
-
-                    ui.add(
-                        egui::Label::new(session.data_dirs.video_dir.display().to_string())
-                            .truncate(),
-                    );
-                });
-            });
-    }
+    ui_state.set_dirs = set_dirs || ui_state.dir_dialog.is_some();
 
     if let Some((dir_location, dialog)) = &ui_state.dir_dialog {
         let dir_location = *dir_location;
@@ -191,6 +141,25 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
     if flush_configs {
         let _ = session.save_configs();
     }
+}
+
+fn folder_selection(ui: &mut Ui, ui_state: &mut UiState, path: &PathBuf) {
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(
+                ui_state.dir_dialog.is_none(),
+                egui::Button::new("Set Location"),
+            )
+            .clicked()
+        {
+            ui_state.dir_dialog = Some((
+                DataLocation::Image,
+                PendingDialog::select_folder(path.to_path_buf()),
+            ));
+        }
+
+        ui.add(egui::Label::new(path.display().to_string()).truncate());
+    });
 }
 
 pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
@@ -415,16 +384,6 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                 ScriptRequest::Volume(volume) => {
                     session.master_volume = volume;
                 }
-                ScriptRequest::Rewind => {
-                    if !emulator.rewind() {
-                        session.lua_lab.push_output(vec![
-                            mlua::Error::RuntimeError(
-                                "no snapshots exists to rewind to".to_string(),
-                            )
-                            .to_string(),
-                        ]);
-                    }
-                }
             }
         }
 
@@ -518,6 +477,36 @@ pub fn show_gif_settings(egui_ctx: &Context, session: &mut Session, ui_state: &m
         ui_state.start_gif_recording = false;
         ui_state.open_gif_settings = false;
     }
+}
+
+pub fn set_rewind_settings(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
+    egui::Window::new("Rewind Capacity (Seconds)")
+        .open(&mut ui_state.open_rewind_settings)
+        .show(egui_ctx, |ui| {
+            ui.label(egui::RichText::new("Game Boy").size(16.0).strong());
+
+            thin_separator(ui);
+
+            select_rewind_capacity(ui, &mut session.system_rewind_capacity.gameboy);
+
+            ui.add_space(8.0);
+
+            ui.label(egui::RichText::new("Game Boy Advance").size(16.0).strong());
+
+            thin_separator(ui);
+
+            select_rewind_capacity(ui, &mut session.system_rewind_capacity.gba);
+        });
+}
+
+fn select_rewind_capacity(ui: &mut Ui, value: &mut usize) {
+    const OPTIONS: [&str; 8] = ["Off", "15", "30", "60", "120", "180", "240", "300"];
+
+    ui.horizontal(|ui| {
+        for (index, label) in ALLOWED_REWIND_CAPACITY.iter().zip(OPTIONS) {
+            ui.selectable_value(value, *index, label);
+        }
+    });
 }
 
 pub fn show_destructive_action_popup(

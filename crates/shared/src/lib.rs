@@ -108,7 +108,7 @@ pub trait Emulator {
 
     fn set_elapsed_cycles_pause(&mut self, elapsed_cycle: u64);
 
-    fn rewind_state(&mut self) -> bool;
+    fn rewind(&mut self, count: usize) -> Option<f64>;
 }
 
 pub trait DebugInterface {
@@ -201,7 +201,13 @@ pub trait EmulatorSession {
 
     fn set_speed(&mut self, _speed: u8) {}
 
-    fn rewind(&mut self) -> bool;
+    fn rewind(&mut self) -> Option<f64>;
+
+    fn set_rewind_capacity(&mut self, _capacity: usize) {}
+
+    fn can_rewind(&self) -> bool {
+        false
+    }
 }
 
 pub trait ScriptTarget: Emulator {
@@ -247,4 +253,6 @@ pub trait ScriptTarget: Emulator {
     fn snapshot(&self) -> Result<Vec<u8>, Error>;
 
     fn restore(&mut self, buffer: Vec<u8>) -> Result<(), Error>;
+
+    fn rewind_occupancy(&self) -> (usize, usize, usize);
 }
