@@ -175,11 +175,8 @@ impl Bus {
         }
     }
 
-    pub fn read<T: BusAccess>(&mut self, address: u32, accessor: MemoryAccessor) -> T {
-        self.determine_cycle_cost(address, T::ACCESS_WIDTH, accessor);
-
-        let address = translate_address(address);
-        let value = match address {
+    fn read_value<T: BusAccess>(&mut self, address: u32, accessor: MemoryAccessor) -> T {
+        match address {
             0x00000000..=0x001FFFFF => T::read_le_bytes(&self.dram, address as usize),
             0x1F800000..=0x1F8003FF => {
                 T::read_le_bytes(&self.scratchpad, (address - 0x1F800000) as usize)
@@ -190,7 +187,14 @@ impl Bus {
             }
             0xFFFE0130 => T::read(self.bcc, address),
             _ => T::read(0xFFFFFFFF, address),
-        };
+        }
+    }
+
+    pub fn read<T: BusAccess>(&mut self, address: u32, accessor: MemoryAccessor) -> T {
+        self.determine_cycle_cost(address, T::ACCESS_WIDTH, accessor);
+
+        let address = translate_address(address);
+        let value = self.read_value::<T>(address, accessor);
 
         self.watchpoint_manager.check_read(
             address,
@@ -203,7 +207,15 @@ impl Bus {
         value
     }
 
-    pub fn read_register<T: BusAccess>(&mut self, address: u32, accessor: MemoryAccessor) -> T {
+    // think on this maybe i want the bus to be passed through the dissembler?
+    pub fn peek<T: BusAccess>(&mut self, address: u32) -> T {
+        let accessor = MemoryAccessor::Lua;
+        let address = translate_address(address);
+
+        self.read_value::<T>(address, accessor)
+    }
+
+    fn read_register<T: BusAccess>(&mut self, address: u32, accessor: MemoryAccessor) -> T {
         match address {
             0x1F801070..0x1F801074 => T::read(self.istat, address),
             0x1F801074..0x1F801078 => T::read(self.imask, address),

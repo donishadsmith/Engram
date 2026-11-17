@@ -196,7 +196,7 @@ pub struct LuaLab {
     last_cursor: usize,
     pub theme: EditorTheme,
     pending_close: Option<u64>,
-    pending_drop: Option<u64>,
+    pending_drop: Option<(u64, bool)>,
 }
 
 impl LuaLab {
@@ -301,7 +301,7 @@ impl LuaLab {
                             }
 
                             if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() && self.file_dialog.is_none() && self.pending_close.is_none() {
-                                self.save_lua_script();
+                                self.save_lua_script(self.get_current_tab_ref().id);
                             }
                         });
 
@@ -599,11 +599,11 @@ impl LuaLab {
                     self.add_tab();
                 }
 
-                if save_shortcut() {
+                if save_shortcut() && self.pending_close.is_none() {
                     if let Some(path) = self.get_current_tab_ref().path.clone() && path.exists() && self.file_dialog.is_none() {
-                        self.quick_save(&path);
+                        self.quick_save(&path, self.get_current_tab_ref().id);
                     } else {
-                        self.save_lua_script();
+                        self.save_lua_script(self.get_current_tab_ref().id);
                     }
                 }
             });
@@ -611,10 +611,12 @@ impl LuaLab {
         self.pending_close_dialog(egui_ctx, text_color);
 
         if self.file_dialog.is_none()
-            && let Some(pending_drop) = self.pending_drop.take()
+            && let Some((tab_id, save)) = self.pending_drop.take()
         {
-            let index = self.get_tab_from_id(pending_drop);
-            self.drop_tab(index);
+            let index = self.get_tab_from_id(tab_id);
+            if !save || !self.tabs[index].progress_unsaved {
+                self.drop_tab(index);
+            }
         }
 
         self.opened = opened;
@@ -624,7 +626,7 @@ impl LuaLab {
     }
 
     pub fn poll_file_dialog(&mut self) {
-        let Some((kind, _, dialog)) = &self.file_dialog else {
+        let Some((kind, tab_id, dialog)) = &self.file_dialog else {
             return;
         };
 
@@ -637,7 +639,7 @@ impl LuaLab {
         if let Some(path) = result {
             match kind {
                 EditorDialog::Open => self.load_script(path),
-                EditorDialog::Save => self.quick_save(&path),
+                EditorDialog::Save => self.quick_save(&path, *tab_id),
             }
         }
 
@@ -742,37 +744,36 @@ impl LuaLab {
         }
     }
 
-    fn quick_save(&mut self, path: &PathBuf) {
-        let tab_id = if let Some((_, tab_id, _)) = self.file_dialog {
-            tab_id
-        } else {
-            self.get_current_tab_ref().id
-        };
-
+    fn quick_save(&mut self, path: &PathBuf, tab_id: u64) {
         let tab_position = self.get_tab_from_id(tab_id);
 
         match write(path, self.get_tab_ref(tab_position).code.clone()) {
             Ok(_) => {
                 self.update_script_path(path.to_path_buf(), tab_id);
-                self.output.push(format!(
-                    "current script saved to: {}",
-                    path.to_str().unwrap()
-                ));
+                self.output
+                    .push(format!("current script saved to: {}", path.display()));
+
+                self.get_tab_mut(tab_position).progress_unsaved = false;
             }
             Err(err) => {
                 self.output.push(err.to_string());
+                self.get_tab_mut(tab_position).progress_unsaved = true;
 
                 return;
             }
         }
-
-        self.get_tab_mut(tab_position).progress_unsaved = false;
     }
 
     fn load_script(&mut self, path: PathBuf) {
         // stealing more vscode behavior, with a few differences
         match read_to_string(&path) {
             Ok(text) => {
+                if let Some(tab_position) = self.check_on_load(&path) {
+                    self.current_tab = tab_position;
+
+                    return;
+                }
+
                 let tab = self.get_current_tab_ref();
                 // a specific case where a script is there, maybe contents removed with control + a but can technically
                 // return with control + z, so still put in nect tab
@@ -808,15 +809,24 @@ impl LuaLab {
         ));
     }
 
-    fn save_lua_script(&mut self) {
+    fn check_on_load(&self, path: &PathBuf) -> Option<usize> {
+        self.tabs
+            .iter()
+            .position(|tab| tab.path == Some(path.to_path_buf()))
+    }
+
+    fn save_lua_script(&mut self, tab_id: u64) {
         if self.file_dialog.is_some() {
             return;
         }
 
-        let source_path = if let Some(script_path) = self.get_current_tab_ref().path.clone() {
+        let tab_position = self.get_tab_from_id(tab_id);
+        let tab = self.get_tab_ref(tab_position);
+
+        let source_path = if let Some(script_path) = tab.path.clone() {
             script_path
         } else {
-            let mut name = self.get_current_tab_ref().name.clone();
+            let mut name = tab.name.clone();
             name.push_str(".lua");
 
             PathBuf::from(name)
@@ -824,7 +834,7 @@ impl LuaLab {
 
         self.file_dialog = Some((
             EditorDialog::Save,
-            self.get_current_tab_ref().id,
+            tab_id,
             PendingDialog::new(move || {
                 FileDialog::new()
                     .set_file_name(source_path.file_name().unwrap().to_string_lossy())
@@ -996,7 +1006,6 @@ impl LuaLab {
         let tab = self.get_tab_ref(tab_position);
         let mut open = true;
         let mut save: Option<bool> = None;
-        let mut pending_drop: Option<u64> = None;
 
         egui::Window::new(
             egui::RichText::new("Lua Lab")
@@ -1047,17 +1056,16 @@ impl LuaLab {
 
         if let Some(choice) = save {
             open = false;
-            pending_drop = Some(tab_id);
 
             if choice {
                 match tab.path.is_some() {
-                    true => self.quick_save(&tab.path.clone().unwrap()),
-                    false => self.save_lua_script(),
+                    true => self.quick_save(&tab.path.clone().unwrap(), tab_id),
+                    false => self.save_lua_script(tab_id),
                 }
             }
-        }
 
-        self.pending_drop = pending_drop;
+            self.pending_drop = Some((tab_id, choice));
+        }
 
         if !open {
             self.pending_close.take();

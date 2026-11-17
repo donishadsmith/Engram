@@ -365,7 +365,7 @@ impl R3000a {
                 0b100000 => self.add(instruction),
                 0b100001 => self.addu(instruction),
                 0b100100 => self.and(instruction),
-                0b001101 => self.breakpoint(instruction),
+                0b001101 => self.breakpoint(),
                 0b011010 => self.div(instruction, bus),
                 0b011011 => self.divu(instruction, bus),
                 0b001001 => self.jalr(instruction),
@@ -388,7 +388,7 @@ impl R3000a {
                 0b000110 => self.srlv(instruction),
                 0b100010 => self.sub(instruction),
                 0b100011 => self.subu(instruction),
-                0b001100 => self.syscall(instruction),
+                0b001100 => self.syscall(),
                 0b100110 => self.xor(instruction),
                 _ => todo!(),
             },
@@ -551,7 +551,7 @@ impl R3000a {
         );
     }
 
-    fn breakpoint(&mut self, instruction: MipsInstruction) {
+    fn breakpoint(&mut self) {
         self.exception(ExceptionCode::Break);
     }
 
@@ -559,8 +559,17 @@ impl R3000a {
         todo!()
     }
 
+    // https://psx-spx.consoledev.net/cpuspecifications/
+    // Coprocessor parameter
     fn copz(&mut self, instruction: MipsInstruction) {
-        todo!()
+        match instruction.coprocessor() {
+            0 => match instruction.cofun().get_bit_range(0..6) {
+                0x10 => self.cop0.return_from_exception(),
+                _ => self.exception(ExceptionCode::ReservedInstruction),
+            },
+            2 => todo!(),
+            _ => self.exception(ExceptionCode::CoprocessorUnusable),
+        }
     }
 
     fn ctcz(&mut self, instruction: MipsInstruction) {
@@ -995,7 +1004,7 @@ impl R3000a {
         bus.write::<u32>(address & !3, word | (value << offset), MemoryAccessor::Cpu);
     }
 
-    fn syscall(&mut self, instruction: MipsInstruction) {
+    fn syscall(&mut self) {
         self.exception(ExceptionCode::SysCall);
     }
 
