@@ -49,7 +49,7 @@ use crate::components::{
 };
 use serde::{Deserialize, Serialize};
 use shared::{script::MemoryAccessor, structs::BreakpointManager, traits::BitOps};
-use std::mem::take;
+use std::{mem::take, ptr::read};
 
 pub trait SignOps {
     fn sign_extend(self) -> u32;
@@ -408,9 +408,9 @@ impl R3000a {
             0b000101 => self.bne(instruction),
             0b010000..=0b010011 => match instruction.rs() {
                 0 => self.mfcz(instruction),
-                0b00010 => self.cfcz(instruction),
+                0b00010 => self.cfcz(instruction, bus),
                 0b00100 => self.mtcz(instruction),
-                0b00110 => self.ctcz(instruction),
+                0b00110 => self.ctcz(instruction, bus),
                 rs if (rs as u8).is_set(4) => self.copz(instruction),
                 _ => todo!(),
             },
@@ -555,8 +555,22 @@ impl R3000a {
         self.exception(ExceptionCode::Break);
     }
 
-    fn cfcz(&mut self, instruction: MipsInstruction) {
-        todo!()
+    fn cfcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        match instruction.coprocessor() {
+            0 => bus.dump(format_args!(
+                "cfcz using register 0; pc={}",
+                self.registers.current_pc
+            )),
+            2 => {
+                let rt = instruction.rt();
+                let rd = instruction.rd();
+
+                todo!();
+
+                //self.registers.write_cpu_register(rt, value);
+            }
+            _ => self.exception(ExceptionCode::CoprocessorUnusable),
+        }
     }
 
     // https://psx-spx.consoledev.net/cpuspecifications/
@@ -572,8 +586,20 @@ impl R3000a {
         }
     }
 
-    fn ctcz(&mut self, instruction: MipsInstruction) {
-        todo!()
+    fn ctcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
+        match instruction.coprocessor() {
+            0 => bus.dump(format_args!(
+                "ctcz using register 0; pc={}",
+                self.registers.current_pc
+            )),
+            2 => {
+                let rt = instruction.rt();
+                let rd = instruction.rd();
+
+                todo!();
+            }
+            _ => self.exception(ExceptionCode::CoprocessorUnusable),
+        }
     }
 
     fn div(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
