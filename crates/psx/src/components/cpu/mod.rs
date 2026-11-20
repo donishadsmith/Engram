@@ -49,7 +49,7 @@ use crate::components::{
 };
 use serde::{Deserialize, Serialize};
 use shared::{script::MemoryAccessor, structs::BreakpointManager, traits::BitOps};
-use std::{mem::take, ptr::read};
+use std::mem::take;
 
 pub trait SignOps {
     fn sign_extend(self) -> u32;
