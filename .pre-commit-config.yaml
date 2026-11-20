@@ -13,9 +13,14 @@ repos:
 
 -   repo: local
     hooks:
-      - id: fmt
+    -   id: fmt
         name: cargo fmt with nightly
         entry: cargo +nightly fmt
         language: system
         types: [rust]
         pass_filenames: false
+
+-   repo: https://github.com/JohnnyMorganz/StyLua
+    rev: v2.6.0
+    hooks:
+    -   id: stylua-system

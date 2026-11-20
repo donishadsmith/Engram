@@ -20,7 +20,7 @@ local updated_money = memory.read_u32(money_pointer) ~ encryption_key
 print("Updated Money:", updated_money)
 
 local function get_slot_address(slot_index)
-    return memory.read_u32(save_block1) + 0x650 + slot_index * 4
+	return memory.read_u32(save_block1) + 0x650 + slot_index * 4
 end
 
 local slot_address = get_slot_address(7)
