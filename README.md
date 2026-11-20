@@ -53,7 +53,9 @@ PlayStation 1 is extremely WIP.
 - Rebindable keyboard, hotkey and controller inputs
 - Controller rumble
 - Screenshots, GIFs, and video recordings
-- Fast forward and rewind (up to a minute, enabled per system in Settings)
+- Adjustable speed from 0.25x slow motion to 10x fast forward
+  - Some GBA games may not reach the highest speeds, depending on your CPU and power settings (e.g., energy saver or power efficiency mode); GBA optimizations are a work in progress
+- Rewind (up to 5 minutes, enabled per system in Settings)
 - Solar sensor slider for Boktai
 - Settings saved in [`config.toml`](https://github.com/donishadsmith/Engram#file-locations)
 

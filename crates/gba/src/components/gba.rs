@@ -127,6 +127,39 @@ impl GBA {
         }
     }
 
+    pub fn debugging_active(&self) -> bool {
+        !self.cpu.breakpoint_manager.queue.is_empty()
+            || !self.bus.watchpoint_manager.queue.is_empty()
+            || self.bus.trace.is_some()
+            || self.pause_at_cycle.is_some()
+            || self.elapsed_cycles_pause.is_some()
+    }
+
+    pub fn run_until_event(&mut self) {
+        if self.cpu.is_halted() {
+            self.bus.scheduler.skip_to_next_event();
+        } else {
+            loop {
+                self.cpu.step(&mut self.bus);
+
+                if self.bus.take_halt_request().is_some() {
+                    self.cpu.halt_state = HaltState::Halted;
+                    break;
+                }
+
+                if self.cpu.is_halted() || self.bus.scheduler.current >= self.bus.scheduler.next() {
+                    break;
+                }
+
+                self.check_interrupts();
+            }
+        }
+
+        self.handle_events();
+        self.bus.copy_interrupt_info();
+        self.check_interrupts();
+    }
+
     fn handle_events(&mut self) {
         while let Some((deadline, event)) = self.bus.scheduler.pop() {
             match event {

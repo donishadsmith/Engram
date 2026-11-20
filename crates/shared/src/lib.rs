@@ -199,11 +199,13 @@ pub trait EmulatorSession {
 
     fn draw(&mut self) {}
 
-    fn set_speed(&mut self, _speed: u8) {}
+    fn set_speed(&mut self, _speed: f32) {}
 
     fn rewind(&mut self) -> Option<f64>;
 
     fn set_rewind_capacity(&mut self, _capacity: usize) {}
+
+    fn set_frame_period(&mut self, _speed: f32) {}
 
     fn can_rewind(&self) -> bool {
         false

@@ -1026,17 +1026,25 @@ impl Ppu {
         let tiles_wide = sprite.dimension.width as usize / 8;
         let step = if sprite.bpp == Bpp::EigthBpp { 2 } else { 1 };
 
-        let tile_number = if self.dispcnt.is_set(6) {
-            sprite.tile + (tile.y * tiles_wide + tile.x) * step
+        let one_dimensional = self.dispcnt.is_set(6);
+
+        let base_tile = if sprite.bpp == Bpp::EigthBpp && !one_dimensional {
+            sprite.tile & !1
         } else {
-            sprite.tile + tile.y * 32 + tile.x * step
+            sprite.tile
+        };
+
+        let tile_number = if one_dimensional {
+            base_tile + (tile.y * tiles_wide + tile.x) * step
+        } else {
+            base_tile + tile.y * 32 + tile.x * step
         } & 0x3FF;
 
-        let tile_number = if sprite.bpp == Bpp::EigthBpp {
-            tile_number / 2
-        } else {
-            tile_number
-        };
+        if sprite.bpp == Bpp::EigthBpp {
+            let offset = tile_number * 32 + pixel_inside_tile.y * 8 + pixel_inside_tile.x;
+
+            return self.vram[0x10000 + (offset & 0x7FFF)] as usize;
+        }
 
         let palette_index = self.read_tile_pixel_palette_index(
             4,

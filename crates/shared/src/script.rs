@@ -1,6 +1,6 @@
 use crate::{
     EmulatorId, EmulatorState, ScriptTarget,
-    constants::{FAST_FORWARD, SAVE_STATE_SLOTS},
+    constants::{ALLOWED_SPEED, SAVE_STATE_SLOTS},
     debug::DebugPage,
     enums::{FetchSource, Width},
     input::constants::DEFAULT_GBA_KEYS,
@@ -66,8 +66,9 @@ emulator.pause_after_elapsed_cycles(elapsed_cycles)
 emulator.open_debugger(debug_page)
     - "video", "audio"
 emulator.close_debugger()
-emulator.fast_forward(speed)
-    - speed is an integer value from 1 to 5
+emulator.speed(speed)
+    - speed is a float value
+    - options are 0.25, 0.50, 0.75, 1.0 to 10.0
 emulator.volume(volume)
     - volume is an integer value from 0 to 100
 emulator.rewind(seconds): rewinds roughly that many seconds (default 1)
@@ -100,6 +101,9 @@ debugger.check_watchpoints()
 Scripts:
 script.stop(): stops Lua scripts, hooks, and clears all watchpoints and breakpoints
 
+Misc:
+to_binary(value): converts some signed integer to binary
+
 Hooks:
 function emulator.on_frame(): runs once per frame
 function debugger.on_breakpoint(address): runs when a breakpoint is hit
@@ -117,7 +121,7 @@ pub enum CpuError {
     ReadOnly,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum ScriptRequest {
     Pause,
     Screenshot,
@@ -134,7 +138,7 @@ pub enum ScriptRequest {
     StopVideo,
     OpenDebugger(Option<DebugPage>),
     CloseDebugger,
-    FastForward(u8),
+    Speed(f32),
     Volume(u8),
 }
 
@@ -793,6 +797,13 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
+            let to_binary = scope.create_function(|_, value: i64 | {
+                output.borrow_mut().push(format!("{:b}", value));
+
+                Ok(())
+            })?;
+            lua.globals().set("to_binary", to_binary)?;
+
             // always liked the name even though duplicate function
             let print = scope.create_function(|_, values: Variadic<Value>| {
                 let line = values
@@ -983,11 +994,12 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            emulator.set("fast_forward", scope.create_function(|_, speed: i64| {
-                if (1..=(FAST_FORWARD as i64)).contains(&speed) {
-                    requests.borrow_mut().push(ScriptRequest::FastForward(speed as u8));
+            emulator.set("fast_forward", scope.create_function(|_, speed: f32| {
+                if ALLOWED_SPEED.contains(&speed) {
+                    requests.borrow_mut().push(ScriptRequest::Speed(speed));
                 } else {
-                    output.borrow_mut().push(format!("speed must be an integer value from 1 to {FAST_FORWARD}"));
+                    output.borrow_mut().push(format!("speed must one of the following floats: {}",
+                    ALLOWED_SPEED.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", ")));
                 }
 
                 Ok(())

@@ -44,6 +44,7 @@ use std::{
 const GBA_CLOCK_SPEED: u32 = 16777216;
 
 // TODO: After PSX, abstract similar logic among the systems
+// TODO: figure out more optimizaitons to increase fps for fastforward
 
 pub struct GBASession {
     audio: Option<AudioOutput>,
@@ -63,7 +64,7 @@ pub struct GBASession {
     state_dir: PathBuf,
     recorded_audio: Vec<u8>,
     video_recorder: VideoRecorder,
-    speed: u8,
+    speed: f32,
 }
 
 impl GBASession {
@@ -98,7 +99,7 @@ impl GBASession {
             state_dir,
             recorded_audio: Vec::new(),
             video_recorder: VideoRecorder::new(),
-            speed: 1,
+            speed: 1.0,
         })
     }
 
@@ -163,8 +164,12 @@ impl GBASession {
         let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
             / (AUDIO_TARGET_OCCUPANCY as f64))
             .clamp(-1.0, 1.0);
-        let ideal_sample_period = GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64
-            * (self.get_fps() / GB_REFRESH_RATE).clamp(1.0, self.speed as f64);
+        let ratio = if self.speed < 1.0 {
+            self.speed as f64
+        } else {
+            (self.get_fps() / GB_REFRESH_RATE).clamp(1.0, self.speed as f64)
+        };
+        let ideal_sample_period = GBA_CLOCK_SPEED as f64 / audio.sample_rate as f64 * ratio;
         self.gba.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
         self.gba
@@ -197,7 +202,12 @@ impl GBASession {
 
     fn run_frame(&mut self, volume: u8) -> bool {
         loop {
-            self.tick(volume);
+            if self.gba.debugging_active() {
+                self.tick(volume);
+            } else {
+                self.gba.run_until_event();
+                self.drain_audio(volume);
+            }
 
             if self.gba.cpu.breakpoint_manager.hit.is_some()
                 || self.gba.bus.watchpoint_manager.pause
@@ -237,8 +247,8 @@ impl EmulatorSession for GBASession {
 
         self.dynamic_rate_control();
 
-        let mut frames = 1;
-        if self.speed == 1 {
+        if self.speed <= 1.0 {
+            let mut frames = 1;
             if self.run_frame(volume) {
                 while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
                     self.frame_deadline += self.frame_period;
@@ -247,10 +257,18 @@ impl EmulatorSession for GBASession {
             }
         } else {
             let start = Instant::now();
-            for _ in 0..self.speed {
+            for _ in 0..(self.speed as u8) {
                 if !self.run_frame(volume) || start.elapsed() >= self.frame_period {
                     break;
                 }
+            }
+
+            let mut frames = 0;
+            while frames < MAX_FRAMES_PER_CALL - 1
+                && self.audio_level() < AUDIO_TARGET_OCCUPANCY / 2
+                && self.run_frame(volume)
+            {
+                frames += 1;
             }
         }
 
@@ -304,7 +322,7 @@ impl EmulatorSession for GBASession {
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
         self.audio = AudioOutput::new();
         let gamepak = GamePak::load(rom_path)?;
-        let sample_rate = self.audio.as_ref().map_or(44100, |audio| audio.sample_rate);
+        let sample_rate = self.audio.as_ref().map_or(48000, |audio| audio.sample_rate);
         let apu_sample_period = GBA_CLOCK_SPEED as f64 / sample_rate as f64;
         self.gba = GBA::boot(gamepak, apu_sample_period);
         self.screen = Screen::new(self.gba.bus.ppu.frame.width, self.gba.bus.ppu.frame.height);
@@ -474,8 +492,15 @@ impl EmulatorSession for GBASession {
     // of course emerald maxes at 220 :/, hamtaro maxes at 340 ish so speed limit will be
     // set to 5 even though gb technically can go faser, breakpoint just docks 20 fps due to
     // the hashmap key check (before adding range check), refine later since it works now with very minimal changes anyway
-    fn set_speed(&mut self, speed: u8) {
+    fn set_speed(&mut self, speed: f32) {
         self.speed = speed;
+
+        let base = 280896.0 / GBA_CLOCK_SPEED as f64;
+        self.frame_period = Duration::from_secs_f64(if speed < 1.0 {
+            base / speed as f64
+        } else {
+            base
+        });
     }
 
     fn set_rewind_capacity(&mut self, capacity: usize) {

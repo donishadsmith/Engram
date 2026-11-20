@@ -118,7 +118,7 @@ pub struct Config {
     pub map_analog_to_dpad: AnalogToDpad,
     pub rumble_effect_on: RumbleEffect,
     pub rumble_strength: Option<f32>,
-    pub speed: Option<u8>,
+    pub speed: Option<f32>,
     pub lua_lab_theme: Option<String>,
     pub system_rewind_capacity: SystemRewindCapacity,
 }

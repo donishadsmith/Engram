@@ -7,7 +7,7 @@ use macroquad::{
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
 use shared::config::{DataDirs, SystemRewindCapacity};
-use shared::constants::FAST_FORWARD;
+use shared::constants::ALLOWED_SPEED;
 use shared::lua_lab::EditorTheme;
 use shared::structs::PendingDialog;
 use shared::{
@@ -161,7 +161,7 @@ pub struct Session {
     pub rumble_strength: f32,
     pub controller_hotkey_fired: bool,
     pub rom_dialog: Option<PendingDialog>,
-    pub speed: u8,
+    pub speed: f32,
     pub pause_on_launch: bool,
     pub system_rewind_capacity: SystemRewindCapacity,
     pub rewind_in_action: bool,
@@ -219,6 +219,13 @@ impl Session {
         let mut system_rewind_capacity = config.system_rewind_capacity;
         system_rewind_capacity.limit();
 
+        let target = config.speed.unwrap_or(1.0);
+
+        let speed = *ALLOWED_SPEED
+            .iter()
+            .min_by(|&a, &b| (a - target).abs().total_cmp(&(b - target).abs()))
+            .unwrap_or(&1.0);
+
         Self {
             state: EmulatorState::Launch,
             emulator: None,
@@ -259,7 +266,7 @@ impl Session {
             rumble_strength: config.rumble_strength.unwrap_or(1.0),
             controller_hotkey_fired: false,
             rom_dialog: None,
-            speed: config.speed.unwrap_or(1).clamp(1, FAST_FORWARD),
+            speed,
             pause_on_launch: false,
             system_rewind_capacity,
             rewind_in_action: false,

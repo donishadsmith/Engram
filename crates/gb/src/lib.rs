@@ -51,7 +51,7 @@ pub struct GameBoySession {
     state_dir: PathBuf,
     recorded_audio: Vec<u8>,
     video_recorder: VideoRecorder,
-    speed: u8,
+    speed: f32,
 }
 
 impl GameBoySession {
@@ -84,7 +84,7 @@ impl GameBoySession {
             state_dir,
             recorded_audio: Vec::new(),
             video_recorder: VideoRecorder::new(),
-            speed: 1,
+            speed: 1.0,
         })
     }
 
@@ -155,8 +155,12 @@ impl GameBoySession {
         let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
             / (AUDIO_TARGET_OCCUPANCY as f64))
             .clamp(-1.0, 1.0);
-        let ideal_sample_period = GB_CLOCK_SPEED / audio.sample_rate as f64
-            * (self.get_fps() / GB_REFRESH_RATE).clamp(1.0, self.speed as f64);
+        let ratio = if self.speed < 1.0 {
+            self.speed as f64
+        } else {
+            (self.get_fps() / GB_REFRESH_RATE).clamp(1.0, self.speed as f64)
+        };
+        let ideal_sample_period = GB_CLOCK_SPEED / audio.sample_rate as f64 * ratio;
         self.gameboy.apu_sample_period =
             ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
         self.gameboy
@@ -228,7 +232,7 @@ impl EmulatorSession for GameBoySession {
         self.dynamic_rate_control();
 
         let mut frames = 1;
-        if self.speed == 1 {
+        if self.speed <= 1.0 {
             if self.run_frame(volume) {
                 while frames < MAX_FRAMES_PER_CALL && self.catch_up() && self.run_frame(volume) {
                     self.frame_deadline += self.frame_period;
@@ -237,10 +241,18 @@ impl EmulatorSession for GameBoySession {
             }
         } else {
             let start = Instant::now();
-            for _ in 0..self.speed {
+            for _ in 0..(self.speed as u8).max(1) {
                 if !self.run_frame(volume) || start.elapsed() >= self.frame_period {
                     break;
                 }
+            }
+
+            let mut frames = 0;
+            while frames < MAX_FRAMES_PER_CALL - 1
+                && self.audio_level() < AUDIO_TARGET_OCCUPANCY / 2
+                && self.run_frame(volume)
+            {
+                frames += 1;
             }
         }
 
@@ -451,8 +463,15 @@ impl EmulatorSession for GameBoySession {
             .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
     }
 
-    fn set_speed(&mut self, speed: u8) {
-        self.speed = speed
+    fn set_speed(&mut self, speed: f32) {
+        self.speed = speed;
+
+        let base = 70224.0 / GB_CLOCK_SPEED;
+        self.frame_period = Duration::from_secs_f64(if speed < 1.0 {
+            base / speed as f64
+        } else {
+            base
+        });
     }
 
     fn set_rewind_capacity(&mut self, capacity: usize) {

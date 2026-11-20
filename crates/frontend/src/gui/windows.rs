@@ -370,7 +370,7 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                             .push_output(vec!["no debuggers available".to_string()]);
                     }
                 }
-                ScriptRequest::FastForward(speed) => {
+                ScriptRequest::Speed(speed) => {
                     let old_speed = session.speed;
                     session.speed = speed;
 

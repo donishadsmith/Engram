@@ -7,13 +7,15 @@ pub const MAX_FRAMES_PER_CALL: u32 = 4;
 
 pub const SAVE_STATE_SLOTS: usize = 12;
 
-// TODO: Optimize gba ppu, dying a little inside that my gba ppu does a lot of work per pixel and kneecaped the gba fps to
-// be anywhere from 240 fos to 450 for my cpu, but still increasing since gameboy can technically reach 1000-1200 max but still capping
-// to 500 fps
-pub const FAST_FORWARD: u8 = 10;
-
 pub const GB_REFRESH_RATE: f64 = 59.727;
 
 pub const VALID_EXTENSIONS: [&'static str; 3] = [".gba", ".gb", ".gbc"];
+
+// TODO: Optimize gba ppu, dying a little inside that my gba ppu does a lot of work per pixel and kneecaped the gba fps to
+// be anywhere from 240 fos to 450 for my cpu, but still increasing since gameboy can technically reach 1000-1200 max but still capping
+// to 500 fps
+pub const ALLOWED_SPEED: [f32; 13] = [
+    0.25, 0.50, 0.75, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0,
+];
 
 pub const ALLOWED_REWIND_CAPACITY: [usize; 8] = [0, 15, 30, 60, 120, 180, 240, 300];

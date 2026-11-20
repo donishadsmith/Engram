@@ -7,7 +7,7 @@ use macroquad::{
 };
 use shared::{
     EmulatorId, EmulatorState,
-    constants::{FAST_FORWARD, SAVE_STATE_SLOTS},
+    constants::{ALLOWED_SPEED, SAVE_STATE_SLOTS},
     input::{
         enums::{Hotkeys, KeyId},
         utils::keycode_to_string,
@@ -631,7 +631,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         egui::ComboBox::from_id_salt("Speed")
             .selected_text(layout_job)
             .show_ui(ui, |ui| {
-                for speed in 1..=FAST_FORWARD {
+                for speed in ALLOWED_SPEED {
                     ui.selectable_value(&mut session.speed, speed, format!("{speed}x"));
                 }
             });
