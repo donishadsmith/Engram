@@ -5,6 +5,9 @@ use std::{
     thread::spawn,
 };
 
+use rfd::FileDialog;
+use serde::{Deserialize, Serialize};
+
 use crate::{
     EmulatorState,
     enums::Width,
@@ -12,8 +15,6 @@ use crate::{
     traits::UnsignedInt,
     utils::{get_halfword_shift, get_word_mask, zero_arr},
 };
-use rfd::FileDialog;
-use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 pub struct GroupedRegisters<T: UnsignedInt> {
@@ -132,7 +133,8 @@ impl PendingDialog {
     }
 }
 
-// TODO: attempt to do something similar with watchpoints to clean up code when i feel like it
+// TODO: attempt to do something similar with watchpoints to clean up code when
+// i feel like it
 pub struct BreakpointManager {
     pub range: Option<(u32, u32)>,
     pub hit: Option<u32>,
@@ -186,7 +188,8 @@ impl Default for BreakpointManager {
     }
 }
 
-// another manager to prevent the drift that occurs when i forget to update something
+// another manager to prevent the drift that occurs when i forget to update
+// something
 pub struct WatchpointManager {
     pub queue: HashMap<WatchpointRange, WatchpointArgs>,
     pub hits: Vec<WatchpointHit>,

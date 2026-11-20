@@ -11,13 +11,14 @@
 pub mod components;
 mod debug;
 
-use crate::{
-    components::{
-        gamepak::GamePak,
-        gba::{GBA, STATE_MAGIC_NAME},
-    },
-    debug::video::PpuDebugger,
+use std::{
+    fs::{read, rename, write},
+    io::Error,
+    mem::take,
+    path::PathBuf,
+    time::{Duration, Instant},
 };
+
 use debug::audio::AudioDebugger;
 use egui::Ui;
 use shared::{
@@ -33,12 +34,13 @@ use shared::{
     video::VideoRecorder,
 };
 use spin_sleep::sleep_until;
-use std::{
-    fs::{read, rename, write},
-    io::Error,
-    mem::take,
-    path::PathBuf,
-    time::{Duration, Instant},
+
+use crate::{
+    components::{
+        gamepak::GamePak,
+        gba::{GBA, STATE_MAGIC_NAME},
+    },
+    debug::video::PpuDebugger,
 };
 
 const GBA_CLOCK_SPEED: u32 = 16777216;
@@ -489,9 +491,11 @@ impl EmulatorSession for GBASession {
         }
     }
 
-    // of course emerald maxes at 220 :/, hamtaro maxes at 340 ish so speed limit will be
-    // set to 5 even though gb technically can go faser, breakpoint just docks 20 fps due to
-    // the hashmap key check (before adding range check), refine later since it works now with very minimal changes anyway
+    // of course emerald maxes at 220 :/, hamtaro maxes at 340 ish so speed
+    // limit will be set to 5 even though gb technically can go faser,
+    // breakpoint just docks 20 fps due to the hashmap key check (before adding
+    // range check), refine later since it works now with very minimal changes
+    // anyway
     fn set_speed(&mut self, speed: f32) {
         self.speed = speed;
 

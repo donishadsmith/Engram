@@ -1,7 +1,9 @@
-use crate::render::to_rgb;
+use std::{collections::BTreeMap, fs::File, io::Error, path::PathBuf};
+
 use chrono::Local;
 use gif::{Encoder, Frame, Repeat};
-use std::{collections::BTreeMap, fs::File, io::Error, path::PathBuf};
+
+use crate::render::to_rgb;
 
 pub struct GifRecorder {
     encoder: Option<Encoder<File>>,

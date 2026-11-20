@@ -14,11 +14,13 @@ MemoryMap
 - 160 bytes of oam - sprites
 */
 
+use std::mem::take;
+
+use serde::{Deserialize, Serialize};
 use shared::{
     enums::Width, script::MemoryAccessor, structs::WatchpointManager, traits::BitOps,
     utils::zero_arr,
 };
-use std::mem::take;
 
 use crate::components::{
     apu::Apu,
@@ -28,8 +30,6 @@ use crate::components::{
     ppu::Ppu,
     timer::Timer,
 };
-
-use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
 pub struct OamDmaState {
@@ -125,7 +125,8 @@ impl Bus {
             serial_output: String::new(),
             key_register: 0,
             svbk_register: 0,
-            hdma_registers: [0xFF; 5], // this should be 0xff not 0 baded on pandocs but doesnt seem to be that important
+            hdma_registers: [0xFF; 5], /* this should be 0xff not 0 baded on pandocs but doesnt
+                                        * seem to be that important */
             watchpoint_manager: WatchpointManager::default(),
         }
     }
@@ -146,7 +147,8 @@ impl Bus {
             return (adjusted_address - 0xC000) as usize;
         }
 
-        // 0xD000-0xDFFF; 4kb on monochrome; bankable on color using svbk register
+        // 0xD000-0xDFFF; 4kb on monochrome; bankable on color using svbk
+        // register
         let offset = (adjusted_address - 0xD000) as usize;
         if !self.is_cgb() {
             offset + (0xD000 - 0xC000)
@@ -248,8 +250,8 @@ impl Bus {
         }
     }
 
-    // VRAM DMA was on gameboy color, meant to transfer tile data, attributes, etc quicker
-    // https://gbdev.io/pandocs/CGB_Registers.html
+    // VRAM DMA was on gameboy color, meant to transfer tile data, attributes,
+    // etc quicker https://gbdev.io/pandocs/CGB_Registers.html
     fn general_purpose_dma_transfer(&mut self) {
         for i in 0..self.vram_dma.blocks_remaining * 16 {
             if self.vram_dma.offset + i > 0x1FFF {

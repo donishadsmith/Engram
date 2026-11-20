@@ -1,11 +1,14 @@
-use crate::EmulatorId;
-use crate::psg::{noise::NoiseChannel, pulse::PulseChannel, wave::WaveChannel};
-use crate::traits::BitOps;
 use blip_buf::BlipBuf;
 use serde::{Deserialize, Serialize};
 
-// added to shared painful refactor after lazily copying and pasting the psg channels from the gb to the gba
-// shouldve done from the start
+use crate::{
+    EmulatorId,
+    psg::{noise::NoiseChannel, pulse::PulseChannel, wave::WaveChannel},
+    traits::BitOps,
+};
+
+// added to shared painful refactor after lazily copying and pasting the psg
+// channels from the gb to the gba shouldve done from the start
 pub mod noise;
 pub mod pulse;
 pub mod sound_control;

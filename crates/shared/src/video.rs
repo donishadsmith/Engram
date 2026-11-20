@@ -1,5 +1,3 @@
-use crate::render::{Frame, fit_nearest, to_rgba};
-use chrono::Local;
 use std::{
     fs::{File, remove_file},
     io::{BufWriter, Error, Write},
@@ -8,6 +6,10 @@ use std::{
     sync::mpsc::{self, SyncSender},
     thread::{JoinHandle, spawn},
 };
+
+use chrono::Local;
+
+use crate::render::{Frame, fit_nearest, to_rgba};
 
 // https://gist.github.com/carrotflakes/d6960c62d3de5dcbcc2b44562814d5a7
 //https://github.com/NapoleonWils0n/ffmpeg-rust-scripts

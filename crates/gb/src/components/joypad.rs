@@ -1,8 +1,9 @@
 // https://gbdev.io/pandocs/Joypad_Input.html
 
-use crate::components::cpu::interrupts::InterruptMode;
 use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
+
+use crate::components::cpu::interrupts::InterruptMode;
 
 const BUTTONS: [JoypadButton; 8] = [
     JoypadButton::DPad(DPadButton::Up),

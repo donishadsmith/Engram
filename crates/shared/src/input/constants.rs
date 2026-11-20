@@ -1,9 +1,10 @@
-use crate::input::Bindings;
 use gilrs::Button;
 use macroquad::input::KeyCode;
 
-// taken straight from miniquad and used regex because no way could i type this all out
-// https://github.com/not-fl3/miniquad/blob/master/src/native/wasm/keycodes.rs
+use crate::input::Bindings;
+
+// taken straight from miniquad and used regex because no way could i type this
+// all out https://github.com/not-fl3/miniquad/blob/master/src/native/wasm/keycodes.rs
 pub const BINDABLE_KEYS: [KeyCode; 117] = [
     KeyCode::Space,
     KeyCode::Apostrophe,
@@ -241,7 +242,8 @@ pub const DEFAULT_GBA_KEYS: [Bindings; 10] = [
     },
 ];
 
-// some of these keyboard bindings are kind of awful think more default about mapping
+// some of these keyboard bindings are kind of awful think more default about
+// mapping
 pub const _DEFAULT_PSX_KEYS: [Bindings; 14] = [
     Bindings {
         label: "Up",

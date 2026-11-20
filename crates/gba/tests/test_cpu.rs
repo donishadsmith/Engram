@@ -1,5 +1,6 @@
-use gba::components::{cpu::HaltState, gamepak::GamePak, gba::GBA};
 use std::path::PathBuf;
+
+use gba::components::{cpu::HaltState, gamepak::GamePak, gba::GBA};
 
 fn get_custom_rom_path(filename: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

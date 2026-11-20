@@ -16,16 +16,18 @@ use std::{
     path::PathBuf,
 };
 
-use crate::components::gamepak::mbc::prelude::*;
 use serde::{Deserialize, Serialize};
 use shared::{
     config::system_dir,
     utils::{error_message, zero_arr},
 };
 
+use crate::components::gamepak::mbc::prelude::*;
+
 // "RTC1" in ASCII
 const MAGIC_NUMBERS: [u8; 4] = [0x52, 0x54, 0x43, 0x31];
-// 4 magic numebers for Mbc3 with timer enabled + 18 RTC states = 22 bytes before the RAM save data
+// 4 magic numebers for Mbc3 with timer enabled + 18 RTC states = 22 bytes
+// before the RAM save data
 const SAV_HEADER_SIZE: usize = MAGIC_NUMBERS.len() + RtcSaveState::BYTE_SIZE;
 
 macro_rules! trait_functions {

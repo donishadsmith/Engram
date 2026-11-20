@@ -1,7 +1,10 @@
 // https://www.chciken.com/tlmboy/2025/03/24/gameboy-apu-noise.html
-use crate::psg::sound_control::{Envelope, Length};
-use crate::traits::BitOps;
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    psg::sound_control::{Envelope, Length},
+    traits::BitOps,
+};
 
 const DIVISORS: [u16; 8] = [8, 16, 32, 48, 64, 80, 96, 112];
 

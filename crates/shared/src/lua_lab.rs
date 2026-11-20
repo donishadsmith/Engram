@@ -1,4 +1,12 @@
-use crate::{script::API, structs::PendingDialog, utils::centered_row};
+use std::{
+    collections::{HashMap, HashSet},
+    fs::{read_to_string, write},
+    hash::Hash,
+    mem::take,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
 use arboard::Clipboard;
 use egui::{
     Context, ScrollArea, Window,
@@ -13,14 +21,8 @@ use macroquad::input::{
 };
 use regex::Regex;
 use rfd::FileDialog;
-use std::{
-    collections::{HashMap, HashSet},
-    fs::{read_to_string, write},
-    hash::Hash,
-    mem::take,
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+
+use crate::{script::API, structs::PendingDialog, utils::centered_row};
 
 const RADIUS: f32 = 3.0;
 const DIAMETER: f32 = 6.0;
@@ -250,7 +252,9 @@ impl LuaLab {
             help_tab: HelpTab::Api,
             file_dialog: None,
             current_tab: 0,
-            regex: Regex::new(r"^Untitled-\d{1,2}$").unwrap(), // keeping to incase i find a way to have more than 5 tabs and have it still look decent
+            regex: Regex::new(r"^Untitled-\d{1,2}$").unwrap(), /* keeping to incase i find a way
+                                                                * to have more than 5 tabs and
+                                                                * have it still look decent */
             next_tab_id: 2,
             syntax,
             completer,
@@ -775,8 +779,9 @@ impl LuaLab {
                 }
 
                 let tab = self.get_current_tab_ref();
-                // a specific case where a script is there, maybe contents removed with control + a but can technically
-                // return with control + z, so still put in nect tab
+                // a specific case where a script is there, maybe contents
+                // removed with control + a but can technically return with
+                // control + z, so still put in nect tab
                 if !tab.progress_unsaved && tab.code.is_empty() {
                     self.get_current_tab_mut().code = text;
                     self.update_script_path(path, self.get_current_tab_ref().id);
@@ -874,8 +879,8 @@ impl LuaLab {
             .collect()
     }
 
-    // found that only way to get copy to clipboard is work is by delaying setting it to clipboard
-    // else it just fails/gets wiped: https://github.com/not-fl3/miniquad/blob/master/src/native/windows/clipboard.rs
+    // found that only way to get copy to clipboard is work is by delaying
+    // setting it to clipboard else it just fails/gets wiped: https://github.com/not-fl3/miniquad/blob/master/src/native/windows/clipboard.rs
     fn bootleg_copy_shortcut(&mut self, cursor_range: Option<CCursorRange>) {
         if !(super_key_down() && is_key_pressed(KeyCode::C)) {
             return;
@@ -893,7 +898,8 @@ impl LuaLab {
     }
 
     // another bootleg shortcuts
-    // couldnt find egui shortcut for this and i cannot live without multiline indenting and dedenting code in an editor
+    // couldnt find egui shortcut for this and i cannot live without multiline
+    // indenting and dedenting code in an editor
     fn bootleg_multi_indent_shortcut(&mut self, egui_ctx: &Context, editor: &mut TextEditOutput) {
         let direction = if super_key_down() && is_key_pressed(KeyCode::RightBracket) {
             Some(TabIndent::Right)
@@ -909,8 +915,9 @@ impl LuaLab {
             return;
         };
 
-        // gotta break this down to and write in a way that doesnt cause confusing bugs this time
-        // but i need to walk back for the latest newline before the selection in cases where selection
+        // gotta break this down to and write in a way that doesnt cause
+        // confusing bugs this time but i need to walk back for the latest
+        // newline before the selection in cases where selection
         // is in the middle or something
         let actual_start = match start {
             0 => start,
@@ -957,9 +964,9 @@ impl LuaLab {
             self.get_current_tab_mut().progress_unsaved = true;
         }
 
-        // since i can update the cursor range, i know that start index is gonna be the same, the
-        // end index needs to be the start index + the length of the new text before after index
-        // so selection widens or shortens
+        // since i can update the cursor range, i know that start index is gonna
+        // be the same, the end index needs to be the start index + the length
+        // of the new text before after index so selection widens or shortens
         let mut code = String::new();
         let new_end = actual_start + modified_text.chars().count();
         code.extend([before_selection, modified_text, after_selection]);

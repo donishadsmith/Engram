@@ -1,10 +1,10 @@
 // https://www.datasheet.live/pdfviewer?url=https%3A%2F%2Fpdf.datasheet.live%2Fd3941c26%2Fsii.co.jp%2FS-3511AEFS-TB.pdf
 // page 5
 
-use crate::components::gamepak::{rtc::Rtc, solar::SolarSensor};
-
 use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
+
+use crate::components::gamepak::{rtc::Rtc, solar::SolarSensor};
 
 #[derive(Deserialize, Serialize)]
 pub struct Gpio {

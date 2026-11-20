@@ -1,9 +1,10 @@
+use gilrs::{Button, Gamepad};
+use macroquad::input::{KeyCode, get_keys_down};
+
 use crate::input::{
     constants::{BINDABLE_BUTTONS, BINDABLE_KEYS},
     enums::Input,
 };
-use gilrs::{Button, Gamepad};
-use macroquad::input::{KeyCode, get_keys_down};
 
 pub fn get_relevant_key_presses(
     keymap: &[Input],

@@ -1,20 +1,22 @@
+use std::{
+    cell::{Cell, RefCell},
+    collections::{HashMap, VecDeque},
+    mem::take,
+    time::{Duration, Instant},
+};
+
+use mlua::{
+    Function, HookTriggers, Lua, LuaString, Table, Thread, Value, Variadic, VmState,
+    thread::ThreadStatus,
+};
+use serde::{Deserialize, Serialize};
+
 use crate::{
     EmulatorId, EmulatorState, ScriptTarget,
     constants::{ALLOWED_SPEED, SAVE_STATE_SLOTS},
     debug::DebugPage,
     enums::{FetchSource, Width},
     input::constants::DEFAULT_GBA_KEYS,
-};
-use mlua::{
-    Function, HookTriggers, Lua, LuaString, Table, Thread, Value, Variadic, VmState,
-    thread::ThreadStatus,
-};
-use serde::{Deserialize, Serialize};
-use std::{
-    cell::{Cell, RefCell},
-    collections::{HashMap, VecDeque},
-    mem::take,
-    time::{Duration, Instant},
 };
 
 // cool api's used for inspo:
@@ -142,8 +144,10 @@ pub enum ScriptRequest {
     Volume(u8),
 }
 
-// is it incredibly lazy to create a new enum to compare strings with another nearly duplicate enum with a one variant difference
-// in order to avoid a refactor? yes. but does it work and was it incredibly easy to do? also yes. will i refactor this later? nope
+// is it incredibly lazy to create a new enum to compare strings with another
+// nearly duplicate enum with a one variant difference in order to avoid a
+// refactor? yes. but does it work and was it incredibly easy to do? also yes.
+// will i refactor this later? nope
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Accessor {
     Cpu,
@@ -584,7 +588,8 @@ pub struct ScriptEngine {
     script: Table,
     cpu: Table,
     console: Table,
-    waiting_on_frontend: bool, // prob safer to do this instead of setting step complete at the end of the frontend for loop
+    waiting_on_frontend: bool, /* prob safer to do this instead of setting step complete at the
+                                * end of the frontend for loop */
 }
 
 impl ScriptEngine {

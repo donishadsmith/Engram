@@ -1,9 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::components::{
     cpu::{FlagDelta, ProgramCounter, StatusFlag},
     gamepak::CgbFlag,
     utils::{ByteOps16, MergeByteOps},
 };
-use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub enum Register8Bits {

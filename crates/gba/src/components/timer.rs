@@ -1,6 +1,7 @@
-use crate::components::gba::Event;
 use serde::{Deserialize, Serialize};
 use shared::{scheduler::EventScheduler, traits::BitOps};
+
+use crate::components::gba::Event;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum IncrementTimerMode {
@@ -209,7 +210,8 @@ mod tests {
         bus::AccessType, gamepak::BackupType, gba::Event::TimerOverflow, utils::create_bus,
     };
 
-    // counter=200; prescaler=256; first tick is 256 and deadline = 256+(0x10000 - 200 - 1)*256 = 256 + 65335* 256 = 16726016
+    // counter=200; prescaler=256; first tick is 256 and deadline = 256+(0x10000
+    // - 200 - 1)*256 = 256 + 65335* 256 = 16726016
     const FIRST_DEADLINE: u64 = 16726016;
 
     fn setup_timer1(bus: &mut crate::components::bus::Bus) {

@@ -1,35 +1,37 @@
+use std::{
+    collections::{HashMap, VecDeque},
+    fs::create_dir_all,
+    io::{Error, ErrorKind},
+    mem::take,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
 use egui_notify::{Anchor, Toasts};
-use gilrs::ff::{BaseEffect, BaseEffectType, EffectBuilder, Repeat, Replay, Ticks};
-use gilrs::{Axis, Button, EventType, GamepadId, Gilrs, ff::Effect};
+use gilrs::{
+    Axis, Button, EventType, GamepadId, Gilrs,
+    ff::{BaseEffect, BaseEffectType, Effect, EffectBuilder, Repeat, Replay, Ticks},
+};
 use macroquad::{
     input::{get_keys_pressed, prevent_quit},
     miniquad::window::set_fullscreen,
     window::{request_new_screen_size, screen_dpi_scale, screen_height, screen_width},
 };
-use shared::config::{DataDirs, SystemRewindCapacity};
-use shared::constants::ALLOWED_SPEED;
-use shared::lua_lab::EditorTheme;
-use shared::structs::PendingDialog;
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
-    config::{AnalogToDpad, Config, Display, RumbleEffect, load_config, save_config},
+    config::{
+        AnalogToDpad, Config, DataDirs, Display, RumbleEffect, SystemRewindCapacity, load_config,
+        save_config,
+    },
+    constants::ALLOWED_SPEED,
     debug::DebugPage,
     gif::GifRecorder,
     input::{
         AnalogStick, AnalogSticks, KeyBindings, enums::Input, utils::get_relevant_key_presses,
     },
-    lua_lab::LuaLab,
+    lua_lab::{EditorTheme, LuaLab},
     script::ScriptRequest,
-};
-
-use std::io::ErrorKind;
-use std::mem::take;
-use std::{
-    collections::{HashMap, VecDeque},
-    fs::create_dir_all,
-    io::Error,
-    path::PathBuf,
-    time::{Duration, Instant},
+    structs::PendingDialog,
 };
 
 use crate::utils::{UiState, initialize_debug_hashmap};
@@ -143,7 +145,8 @@ pub struct Session {
     pub gilrs: Option<Gilrs>,
     pub latest_gamepad_id: Option<GamepadId>,
     pub active_gamepad_changed: bool,
-    pub toasts: Toasts, // worth the extra dependency, far more visually appealing than my ugly queue solution
+    pub toasts: Toasts, /* worth the extra dependency, far more visually appealing than my ugly
+                         * queue solution */
     pub display: Display,
     pub input_source: Option<InputSource>,
     pub startup_deadline: Option<Instant>,
@@ -251,12 +254,13 @@ impl Session {
             paused_due_to_minimize: false,
             show_fps: config.show_fps.unwrap_or(true),
             show_notifications: config.show_notifications.unwrap_or(true),
-            // realizing that my poor and impulsive cotrol over a mouse requires this
+            // realizing that my poor and impulsive cotrol over a mouse requires
+            // this
             destructive_action_popup: config.destructive_action_popup.unwrap_or(false),
             skip_toast: false,
             analog_to_dpad: Vec::with_capacity(2),
             map_analog_to_dpad: config.map_analog_to_dpad,
-            analog_deadzone_radius: config.analog_deadzone_radius.unwrap_or(0.25), // some controllers are awful and require higher thresholds
+            analog_deadzone_radius: config.analog_deadzone_radius.unwrap_or(0.25), /* some controllers are awful and require higher thresholds */
             analog_controls: AnalogSticks {
                 left: AnalogStick { x: 0.0, y: 0.0 },
                 right: AnalogStick { x: 0.0, y: 0.0 },
@@ -315,8 +319,9 @@ impl Session {
                 self.pause_on_launch = !self.pause_on_launch;
                 alt_message = true;
             }
-            // a transient state (e.g. the ROM dialog) is active over a loaded game:
-            // flip the state we return to and leave the transient state alone
+            // a transient state (e.g. the ROM dialog) is active over a loaded
+            // game: flip the state we return to and leave the transient state
+            // alone
             (_, Some(EmulatorState::Paused)) => self.swap_return_state(EmulatorState::Running),
             (_, Some(EmulatorState::Running)) => self.swap_return_state(EmulatorState::Paused),
             _ => {
@@ -653,7 +658,8 @@ impl Session {
                 false
             };
 
-        // tan(22.5) = 0.414; tan = x / y; determine if non dominant exceeds threshold
+        // tan(22.5) = 0.414; tan = x / y; determine if non dominant exceeds
+        // threshold
         if !self.is_input_blocked() && use_analog {
             self.analog_to_dpad
                 .push(gamepad_update.last_pressed.unwrap());
@@ -684,8 +690,9 @@ impl Session {
         }
 
         self.display.fullscreen = !self.display.fullscreen;
-        // unfortunate windows task bar issue with fullscreen when taskbar is not on autohide so can partially obstruct screen
-        // not an issue on the pi since the bar is on the top by default for pi os
+        // unfortunate windows task bar issue with fullscreen when taskbar is
+        // not on autohide so can partially obstruct screen not an issue on the
+        // pi since the bar is on the top by default for pi os
         set_fullscreen(self.display.fullscreen);
 
         if !self.display.fullscreen
@@ -719,7 +726,8 @@ impl Session {
     }
 
     pub fn pause_on_minimize(&mut self) {
-        // awful audio crackle specifically on gba, best easiest solution is just to pause when minimized
+        // awful audio crackle specifically on gba, best easiest solution is
+        // just to pause when minimized
         if screen_width() < 1.0 && self.is_running() {
             self.add_transient_state(EmulatorState::Paused);
             self.paused_due_to_minimize = true;

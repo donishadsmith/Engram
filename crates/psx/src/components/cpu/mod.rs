@@ -37,6 +37,11 @@ https://psx-spx.consoledev.net/cpuspecifications/#cpu-alu-opcodes
 pub mod cop0;
 pub mod dissasembler;
 
+use std::mem::take;
+
+use serde::{Deserialize, Serialize};
+use shared::{script::MemoryAccessor, structs::BreakpointManager, traits::BitOps};
+
 use crate::components::{
     bus::Bus,
     cpu::{
@@ -47,9 +52,6 @@ use crate::components::{
         dissasembler::Dissasembler,
     },
 };
-use serde::{Deserialize, Serialize};
-use shared::{script::MemoryAccessor, structs::BreakpointManager, traits::BitOps};
-use std::mem::take;
 
 pub trait SignOps {
     fn sign_extend(self) -> u32;
@@ -324,10 +326,11 @@ impl R3000a {
         self.registers.pc = self.registers.next_pc;
         self.registers.next_pc = self.registers.next_pc.wrapping_add(4);
 
-        // instruction fetch stuff with ``executing_address``, error stuff, blah blah
-        // need instruction catching stuff, should use peek if in cache to charge scheduler
-        // less, read stuff when cache miss occurs, can do cache stuff later for accuracy
-        // cache probably should be [CacheLine; 256]
+        // instruction fetch stuff with ``executing_address``, error stuff, blah
+        // blah need instruction catching stuff, should use peek if in cache to
+        // charge scheduler less, read stuff when cache miss occurs, can do
+        // cache stuff later for accuracy cache probably should be [CacheLine;
+        // 256]
 
         self.registers.take_pending_load();
 
@@ -344,9 +347,10 @@ impl R3000a {
         self.execute_instruction(instruction, bus);
     }
 
-    // 3.3.2 in See mips run (TODO; make sure to cross reference the rustation guide + ppsx-spx):
-    // cop0 appears to have exception restart address register (epc), normally points to the
-    // exception "victim" instruction, but when the instruction exception occurs on is delay slot before branch,
+    // 3.3.2 in See mips run (TODO; make sure to cross reference the rustation
+    // guide + ppsx-spx): cop0 appears to have exception restart address
+    // register (epc), normally points to the exception "victim" instruction,
+    // but when the instruction exception occurs on is delay slot before branch,
     // epc points to the branch and cause bit (31) should be set
     fn exception(&mut self, code: ExceptionCode) {
         let handler_address = self.cop0.process_exception(
@@ -620,8 +624,8 @@ impl R3000a {
     }
 
     fn divu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
-        // manual says undefined here, rustation and psx-spx use these undefined values
-        // https://psx-spx.consoledev.net/cpuspecifications/#cpu-alu-opcodes
+        // manual says undefined here, rustation and psx-spx use these undefined
+        // values https://psx-spx.consoledev.net/cpuspecifications/#cpu-alu-opcodes
         let divisor = self.registers.r[instruction.rt()];
         if divisor == 0 {
             self.registers.hi = self.registers.r[instruction.rs()];

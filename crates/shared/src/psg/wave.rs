@@ -1,7 +1,6 @@
-use crate::EmulatorId;
-use crate::psg::sound_control::Length;
-use crate::traits::BitOps;
 use serde::{Deserialize, Serialize};
+
+use crate::{EmulatorId, psg::sound_control::Length, traits::BitOps};
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[repr(u8)]

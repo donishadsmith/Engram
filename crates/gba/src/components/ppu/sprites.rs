@@ -1,5 +1,6 @@
-use crate::components::ppu::{AffineMatrix, Bpp};
 use shared::traits::BitOps;
+
+use crate::components::ppu::{AffineMatrix, Bpp};
 
 const SPRITE_DIMENSIONS: [[(usize, usize); 4]; 3] = [
     [(8, 8), (16, 16), (32, 32), (64, 64)],

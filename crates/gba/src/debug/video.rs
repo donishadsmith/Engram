@@ -1,8 +1,13 @@
-// updates make to reduce amount of texture updating by gating with a flag, but there
-// are minimal improvements during the sprite viewer for the pi. perhaps the issue
-// is the fact that 128 independent textures - confirmed this was the issue
+// updates make to reduce amount of texture updating by gating with a flag, but
+// there are minimal improvements during the sprite viewer for the pi. perhaps
+// the issue is the fact that 128 independent textures - confirmed this was the
+// issue
 
-use crate::components::{gba::GBA, ppu::BgDebugInfo};
+use std::{
+    array::from_fn,
+    mem::{swap, take},
+};
+
 use egui::{Color32, RichText, Sense, TextureHandle, Ui, Window, vec2};
 use shared::{
     debug::{compute_size, create_game_screen, get_texture_id},
@@ -10,10 +15,8 @@ use shared::{
     traits::BitOps,
     utils::zero_arr,
 };
-use std::{
-    array::from_fn,
-    mem::{swap, take},
-};
+
+use crate::components::{gba::GBA, ppu::BgDebugInfo};
 
 const GRID_COLUMNS: f32 = 16.0;
 const GRID_SPACING: f32 = 2.0;

@@ -79,9 +79,9 @@ impl Keypad {
 
 #[cfg(test)]
 mod tests {
-    use crate::components::{bus::AccessType, gamepak::BackupType, utils::create_bus};
-
     use shared::traits::BitOps;
+
+    use crate::components::{bus::AccessType, gamepak::BackupType, utils::create_bus};
 
     const BOOL_ARR1: [bool; 10] = [
         true, false, true, false, false, false, false, false, false, false,

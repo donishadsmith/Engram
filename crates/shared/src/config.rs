@@ -1,11 +1,12 @@
-use dirs::{config_dir, data_dir, picture_dir, video_dir};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     fs::{create_dir_all, read_to_string, write},
     io::Error,
     path::PathBuf,
 };
+
+use dirs::{config_dir, data_dir, picture_dir, video_dir};
+use serde::{Deserialize, Serialize};
 use toml::{from_str, to_string_pretty};
 
 use crate::{EmulatorId, constants::ALLOWED_REWIND_CAPACITY};

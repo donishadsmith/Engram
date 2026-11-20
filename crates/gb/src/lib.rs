@@ -9,10 +9,14 @@
 
 pub mod components;
 
-use crate::components::{
-    gameboy::{GameBoy, STATE_MAGIC_NAME, T_CYCLES_PER_FRAME_DOUBLE},
-    gamepak::GamePak,
+use std::{
+    fs::{read, rename, write},
+    io::Error,
+    mem::take,
+    path::PathBuf,
+    time::{Duration, Instant},
 };
+
 use shared::{
     Emulator, EmulatorId, EmulatorSession, EmulatorState,
     audio::{AUDIO_BUFFER_CAPACITY, AUDIO_TARGET_OCCUPANCY, AudioOutput},
@@ -25,12 +29,10 @@ use shared::{
     video::VideoRecorder,
 };
 use spin_sleep::sleep_until;
-use std::{
-    fs::{read, rename, write},
-    io::Error,
-    mem::take,
-    path::PathBuf,
-    time::{Duration, Instant},
+
+use crate::components::{
+    gameboy::{GameBoy, STATE_MAGIC_NAME, T_CYCLES_PER_FRAME_DOUBLE},
+    gamepak::GamePak,
 };
 
 const GB_CLOCK_SPEED: f64 = 4194304.0;

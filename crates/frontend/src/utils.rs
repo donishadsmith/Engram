@@ -1,3 +1,11 @@
+use std::{
+    collections::HashMap,
+    fs::{metadata, remove_file},
+    io::Error,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
 use chrono::{DateTime, Local};
 use egui::FontDefinitions;
 use egui_notify::Toasts;
@@ -12,13 +20,6 @@ use shared::{
         utils::{button_to_string, keycode_to_string},
     },
     structs::PendingDialog,
-};
-use std::{
-    collections::HashMap,
-    fs::{metadata, remove_file},
-    io::Error,
-    path::PathBuf,
-    time::{Duration, Instant},
 };
 
 // increasing from 5 to 12 because why not

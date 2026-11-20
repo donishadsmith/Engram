@@ -1,10 +1,12 @@
-use crate::render::{Frame, to_rgba};
-use egui::{CentralPanel, TextureHandle, TextureId, TextureOptions, Vec2};
 use std::{
     fmt::Arguments,
     fs::File,
     io::{BufWriter, Write},
 };
+
+use egui::{CentralPanel, TextureHandle, TextureId, TextureOptions, Vec2};
+
+use crate::render::{Frame, to_rgba};
 
 pub struct Trace {
     pub file: BufWriter<File>,

@@ -4,12 +4,14 @@
 
 // https://github.com/camthesaxman/gba_bios/blob/master/asm/bios.s
 
+use std::f32::consts::PI;
+
+use shared::{enums::Width, traits::BitOps};
+
 use crate::components::{
     bus::{AccessType, Bus},
     cpu::{Arm7tdmi, HaltState, Registers},
 };
-use shared::{enums::Width, traits::BitOps};
-use std::f32::consts::PI;
 
 const ARCTAN_COEFFICIENTS: [i32; 7] = [0x390, 0x91C, 0xFB6, 0x16AA, 0x2081, 0x3651, 0xA2F9];
 
@@ -161,8 +163,9 @@ fn register_ram_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
 fn intr_wait(cpu: &mut Arm7tdmi, bus: &mut Bus, clear_interrupt_flag: bool, target_flags: u16) {
     bus.write_u16(0x4000208, 1, AccessType::Nonsequential);
 
-    // Since the cpu rewinds the program counter to execute the swi until wait is satisfied
-    // cant keep clearing the IF flag and need the re-execution to check if the flag is cleared
+    // Since the cpu rewinds the program counter to execute the swi until wait
+    // is satisfied cant keep clearing the IF flag and need the re-execution to
+    // check if the flag is cleared
     let bios_flags = bus.read_u16(0x03007FF8, AccessType::Nonsequential);
 
     if clear_interrupt_flag {
@@ -448,9 +451,10 @@ fn arctan2(registers: &mut Registers) -> u64 {
 }
 
 // Took comment from mgba
-// [ sx   0  0 ]   [ cos(theta)  -sin(theta)  0 ]   [ 1  0  cx - ox ]   [ A B rx ]
-// [  0  sy  0 ] * [ sin(theta)   cos(theta)  0 ] * [ 0  1  cy - oy ] = [ C D ry ]
-// [  0   0  1 ]   [     0            0       1 ]   [ 0  0     1    ]   [ 0 0  1 ]
+// [ sx   0  0 ]   [ cos(theta)  -sin(theta)  0 ]   [ 1  0  cx - ox ]   [ A B rx
+// ] [  0  sy  0 ] * [ sin(theta)   cos(theta)  0 ] * [ 0  1  cy - oy ] = [ C D
+// ry ] [  0   0  1 ]   [     0            0       1 ]   [ 0  0     1    ]   [ 0
+// 0  1 ]
 fn bg_affine_set(registers: &Registers, bus: &mut Bus) {
     let mut source_address = registers.r[0];
     let mut destination_address = registers.r[1];
@@ -862,7 +866,8 @@ fn rl_uncomp(registers: &Registers, bus: &mut Bus, write_width: Width) {
     packer.flush_unpaired_byte(bus, destination_address);
 }
 
-// Additional cycles added based on mgba implementation, but should check compatibility with my implementations later
+// Additional cycles added based on mgba implementation, but should check
+// compatibility with my implementations later
 fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: Width) {
     bus.idle(20);
     let mut source_address = registers.r[0];
@@ -1043,7 +1048,9 @@ mod tests {
     #[test]
     fn test_sqrt() {
         // Re-implementation took forever to do, used C playground to compare with mgba implentation - https://programiz.pro/ide/c
-        // Values pass but sadly estimated cycles underestimate or overshoot mgba's cycles, tested values are equal to or lower than a 20 cycle difference
+        // Values pass but sadly estimated cycles underestimate or overshoot
+        // mgba's cycles, tested values are equal to or lower than a 20 cycle
+        // difference
         let mut registers = Registers::new();
         for (input, expected, mgba_cycles) in [
             (0u32, 0u32, 53),
@@ -1346,7 +1353,8 @@ mod tests {
         registers.r[0] = 0x03000000;
         registers.r[1] = 0x02000000;
 
-        // literal A, literal B, then copy 3 from displacement 1 (2 back) -> ABABA
+        // literal A, literal B, then copy 3 from displacement 1 (2 back) ->
+        // ABABA
         let header = 5 << 8;
         write_diff_source(
             &mut bus,
@@ -1422,7 +1430,8 @@ mod tests {
         cpu.registers.r[1] = 0x02000000;
 
         let source_address = Bus::iwram_index(cpu.registers.r[0]);
-        // first 4 - header, 5 - tree size byte, 6-8 is root "f", 9 = "u", 10 = "H", padding + bitstream word 0xB0000000
+        // first 4 - header, 5 - tree size byte, 6-8 is root "f", 9 = "u", 10 =
+        // "H", padding + bitstream word 0xB0000000
         bus.iwram[source_address..source_address + 16].copy_from_slice(&[
             0x28, 0x04, 0, 0, 0x03, 0x80, 0x66, 0xC0, 0x48, 0x75, 0, 0, 0, 0, 0, 0xB0,
         ]);

@@ -25,8 +25,8 @@
 */
 
 // https://github.com/mvdnes/rboy/blob/main/src/cpu.rs
-// conditional jr/jp/call/ret hold their TAKEN cost; subtract 1/1/3/3 when not taken
-// https://gist.github.com/bberak/ca001281bb8431d2706afd31401e802b
+// conditional jr/jp/call/ret hold their TAKEN cost; subtract 1/1/3/3 when not
+// taken https://gist.github.com/bberak/ca001281bb8431d2706afd31401e802b
 
 // M-cycles; https://github.com/krocki/gb/blob/master/gameboy.c table divided by 4
 #[rustfmt::skip]

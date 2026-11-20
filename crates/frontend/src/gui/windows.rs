@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use egui::{Context, Ui};
+use egui_phosphor::regular as icons;
 use shared::{
     EmulatorState,
     constants::ALLOWED_REWIND_CAPACITY,
@@ -18,7 +19,6 @@ use crate::{
         save_slots_lua, save_slots_with_toast, thin_separator,
     },
 };
-use egui_phosphor::regular as icons;
 
 pub fn show_controller_bindings(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
     egui::Window::new("Controller Bindings")
@@ -194,7 +194,8 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
         for request in script_engine.take_requests() {
             match request {
                 ScriptRequest::Pause => {
-                    // cant reuse functions for pause and running due to a classic borrow checker no no
+                    // cant reuse functions for pause and running due to a
+                    // classic borrow checker no no
                     emulator.take_debugger_snapshot();
                     session.state = EmulatorState::Paused;
                     session
@@ -249,8 +250,9 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                         session.lua_lab.push_output(vec!["gif saved".to_string()]);
                     }
                 }
-                // not gonna lie, right now frontend logic for video is literally copied from the gif logic
-                // probably need to refine and consolidate logic later
+                // not gonna lie, right now frontend logic for video is
+                // literally copied from the gif logic probably need to refine
+                // and consolidate logic later
                 ScriptRequest::StartVideo => {
                     if !emulator.is_video_recording() {
                         if emulator.frame_ready() {
@@ -340,7 +342,8 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                         debugger.toggle(session.last_debug_page.get(&emulator_id).copied());
                     }
                 }
-                // adding debug controls just because i can and for no other practical reason
+                // adding debug controls just because i can and for no other
+                // practical reason
                 ScriptRequest::OpenDebugger(debug_page) => {
                     if let Some(debugger) = emulator.debugger_mut() {
                         if let Some(debug_page) = debug_page
@@ -514,7 +517,8 @@ pub fn show_destructive_action_popup(
     session: &mut Session,
     ui_state: &mut UiState,
 ) {
-    // i think these are mostly, kinda centered? horizontal_centered didnt work as expected, learn that later
+    // i think these are mostly, kinda centered? horizontal_centered didnt work
+    // as expected, learn that later
     if let Some(action) = ui_state.destructive_action
         && let Some(emulator) = &mut session.emulator
     {

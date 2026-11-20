@@ -3,9 +3,12 @@
 // https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // https://gbdev.gg8.se/wiki/articles/Sound_Controller#FF10_-_NR10_-_Channel_1_Sweep_register_.28R.2FW.29
 // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence?utm_source
-use crate::psg::sound_control::{Envelope, Length};
-use crate::traits::BitOps;
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    psg::sound_control::{Envelope, Length},
+    traits::BitOps,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PulseChannelId {

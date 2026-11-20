@@ -3,8 +3,9 @@
 // https://github.com/michelhe/rustboyadvance-ng/blob/master/core/src/sched.rs
 // https://github.com/elipsitz/gba-emulator/blob/main/gba_core/src/scheduler.rs
 
-use serde::{Deserialize, Serialize};
 use std::{cmp::Reverse, collections::BinaryHeap};
+
+use serde::{Deserialize, Serialize};
 
 pub trait ScheduledEvent: PartialEq + Clone + Copy + Ord {}
 
@@ -57,7 +58,8 @@ impl<T: ScheduledEvent> EventScheduler<T> {
         self.queue.retain(|Reverse((_, e))| *e != event);
     }
 
-    // lazy fix for a gba test that failed because events are initialized on bus construction
+    // lazy fix for a gba test that failed because events are initialized on bus
+    // construction
     pub fn clear_all_events(&mut self) {
         self.queue = BinaryHeap::new();
     }

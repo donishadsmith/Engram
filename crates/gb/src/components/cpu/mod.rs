@@ -4,6 +4,7 @@ pub mod instructions;
 pub mod interrupts;
 pub mod registers;
 
+use serde::{Deserialize, Serialize};
 use shared::{script::MemoryAccessor, structs::BreakpointManager};
 
 use crate::components::{
@@ -13,13 +14,13 @@ use crate::components::{
     utils::{ByteOps8, MergeByteOps},
 };
 
-use serde::{Deserialize, Serialize};
-
 #[derive(Copy, Clone, Debug)]
 pub enum StatusFlag {
     Z = 0x80, // 7 bit is 1; Zero flag - condition in which the operation resulted in 0
-    N = 0x40, // 6 bit is 1; Subtraction flag (BCD) - Most significant bit is 1, which is a negative value
-    H = 0x20, // 5 bit is 1; Half Carry flag (BCD) - a carry or borrow occured between the high and low nibble
+    N = 0x40, /* 6 bit is 1; Subtraction flag (BCD) - Most significant bit is 1, which is a
+               * negative value */
+    H = 0x20, /* 5 bit is 1; Half Carry flag (BCD) - a carry or borrow occured between the high
+               * and low nibble */
     C = 0x10, // 4 bit is 1; Carry flag - overflow or underflow occured
 }
 

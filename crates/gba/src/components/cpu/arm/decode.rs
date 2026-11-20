@@ -1,6 +1,7 @@
-use crate::components::cpu::Condition;
 use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
+
+use crate::components::cpu::Condition;
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DataOp {
@@ -810,7 +811,8 @@ mod tests {
 
     #[test]
     fn test_msr_additional() {
-        //  echo "msr cpsr_c, r1" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
+        //  echo "msr cpsr_c, r1" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o
         let instruction = decode_arm(0xe121f001);
         assert_eq!(
             instruction.instruction,

@@ -1,6 +1,7 @@
-use crate::components::dma::FifoChannel;
 use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
+
+use crate::components::dma::FifoChannel;
 
 #[derive(Clone, Copy)]
 enum Volume {

@@ -1,5 +1,6 @@
-use crate::components::ppu::{LayerId, Pixel};
 use shared::{structs::GroupedRegisters, traits::BitOps};
+
+use crate::components::ppu::{LayerId, Pixel};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SpecialEffects {
@@ -51,7 +52,8 @@ fn alpha_blending(
     )
 }
 
-// interestingly the agb manual uses 63 for g even though its only 5 bits, ref gbatek formula
+// interestingly the agb manual uses 63 for g even though its only 5 bits, ref
+// gbatek formula
 fn brightness(r: u16, g: u16, b: u16, bldy: u16, effect: SpecialEffects) -> (u16, u16, u16) {
     let evy = bldy.get_bit_range(0..5).min(16);
 

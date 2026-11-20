@@ -7,19 +7,19 @@ mod rtc;
 pub mod solar;
 mod sram;
 
-use eeprom::{EEPROM_4KBIT, Eeprom};
-use flash::Flash;
-use sram::Sram;
-
-use crate::components::gamepak::{flash::FlashSize, gpio::Gpio, rtc::Rtc, solar::SolarSensor};
 use std::{
     fs::{read, write},
     io::Error,
     path::PathBuf,
 };
 
+use eeprom::{EEPROM_4KBIT, Eeprom};
+use flash::Flash;
 use serde::{Deserialize, Serialize};
 use shared::{config::system_dir, traits::BitOps, utils::kilobytes};
+use sram::Sram;
+
+use crate::components::gamepak::{flash::FlashSize, gpio::Gpio, rtc::Rtc, solar::SolarSensor};
 
 // https://github.com/visualboyadvance-m/visualboyadvance-m/issues/1187; magic string = SIIRTC_V001; confirmed in rom dump of emerical and megaman 4.5;
 const SEIKO_RTC: &'static [u8; 11] = b"SIIRTC_V001";
@@ -47,7 +47,7 @@ impl BackupType {
             BackupType::Flash1M => {
                 BackupChip::Flash(Flash::new(vec![0xFF; kilobytes(128)], FlashSize::Flash128k))
             }
-            BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0xFF; EEPROM_4KBIT], false)), // default to the small version
+            BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0xFF; EEPROM_4KBIT], false)), /* default to the small version */
             BackupType::None => BackupChip::None,
         }
     }

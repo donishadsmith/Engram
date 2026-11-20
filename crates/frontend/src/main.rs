@@ -1,10 +1,21 @@
-// TODO: I think I can just flash firmware on the pico, wire then map buttons to the gpio pins, then connect via usb
-// https://gp2040-ce.info/web-configurator/menu-pages/gpio-pin-mapping
+// TODO: I think I can just flash firmware on the pico, wire then map buttons to
+// the gpio pins, then connect via usb https://gp2040-ce.info/web-configurator/menu-pages/gpio-pin-mapping
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 pub mod gui;
 pub mod session;
 pub mod utils;
+
+use std::{
+    io::Error,
+    mem::take,
+    time::{Duration, Instant},
+};
+
+use egui_macroquad;
+use macroquad::{miniquad::conf::Platform, prelude::*};
+use shared::{EmulatorState, config::load_config, structs::PendingDialog};
+use spin_sleep::sleep_until;
 
 use crate::{
     gui::{
@@ -21,15 +32,6 @@ use crate::{
     },
     session::Session,
     utils::UiState,
-};
-use egui_macroquad;
-use macroquad::{miniquad::conf::Platform, prelude::*};
-use shared::{EmulatorState, config::load_config, structs::PendingDialog};
-use spin_sleep::sleep_until;
-use std::{
-    io::Error,
-    mem::take,
-    time::{Duration, Instant},
 };
 
 fn conf() -> Conf {
@@ -59,7 +61,8 @@ async fn main() -> Result<(), Error> {
     egui_phosphor::add_to_fonts(&mut ui_state.fonts, egui_phosphor::Variant::Regular);
 
     loop {
-        // i swear my pc wasnt overheating this badly even with vsync off, limiting fixes that
+        // i swear my pc wasnt overheating this badly even with vsync off,
+        // limiting fixes that
         let fps_limit = Instant::now() + Duration::from_secs_f64(1.0 / 60.0);
 
         session.save()?;
@@ -208,8 +211,9 @@ async fn main() -> Result<(), Error> {
                 break;
             }
             EmulatorState::Launch => {
-                // just so file dialog doesnt occur on launch, since it blocks execution
-                // TODO: figure out what i wanna put here, leave blank, render an image for this state, or something else?
+                // just so file dialog doesnt occur on launch, since it blocks
+                // execution TODO: figure out what i wanna put here, leave
+                // blank, render an image for this state, or something else?
                 // so far open rom was the thing i came up with so far :(
             }
             EmulatorState::Paused => {
@@ -223,7 +227,8 @@ async fn main() -> Result<(), Error> {
                 // TODO: update for future emu
             }
             EmulatorState::SwapDisc => {
-                // Should also be running, something like swapping in disc content
+                // Should also be running, something like swapping in disc
+                // content
             }
         }
 
@@ -242,7 +247,8 @@ async fn main() -> Result<(), Error> {
                     show_status_section(ui, &mut session, &mut ui_state);
                 });
 
-                // dont feel like going back and conditionally adding toast messages so clearing at the end will have to do
+                // dont feel like going back and conditionally adding toast
+                // messages so clearing at the end will have to do
                 if session.show_notifications {
                     session.toasts.show(egui_ctx);
                 } else {

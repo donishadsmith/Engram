@@ -5,18 +5,18 @@
 // https://problemkaputt.de/gbatek-arm-cpu-memory-alignments.htm
 // https://github.com/jsmolka/gba-tests - **IMPLEMNT MORE TESTS**
 
+use shared::traits::BitOps;
+
 use super::decode::{
     AddressingMode, ArmInstruction, BitSize, DataOp, HalfwordOffset, MsrSource, Operand2,
     SdtOffset, ShiftAmount, ShiftType, ThumbBranchType, TransferAction, TransferKind,
 };
-
 use crate::components::{
     bios::multiply_stall,
     bus::{AccessType, Bus},
     cpu::{ProcessorMode, ProcessorState, Registers, SideEffect},
     utils::ShiftOps,
 };
-use shared::traits::BitOps;
 
 fn branch(registers: &mut Registers, link: bool, offset: i32) -> SideEffect {
     if link {
@@ -539,7 +539,9 @@ fn single_data_transfer(
                 bus.read_u8(start_address, AccessType::Nonsequential) as u32
             } else {
                 let word = bus.read_u32(start_address, AccessType::Nonsequential);
-                // Page a1-8 & A2-38, A2-40 regarding unaligned addreses on load of architecture manual, < Armv6 (arm7tdmi is armv4) rotated data
+                // Page a1-8 & A2-38, A2-40 regarding unaligned addreses on load
+                // of architecture manual, < Armv6 (arm7tdmi is armv4) rotated
+                // data
                 let misalignment_bits = (start_address.get_bit_range(0..2)) * 8;
                 word.rotate_right(misalignment_bits)
             };
@@ -1020,7 +1022,8 @@ mod tests {
 
     #[test]
     fn test_mov() {
-        // echo "movs r1, #42" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
+        // echo "movs r1, #42" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o
         let mut registers = Registers::new();
         let mut bus = create_bus(BackupType::Flash);
         let instruction: u32 = 0xe3b0102a;
@@ -1061,28 +1064,30 @@ mod tests {
 
         assert_eq!(registers.mode(), ProcessorMode::Und);
 
-        // echo "mrs r0, cpsr" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
+        // echo "mrs r0, cpsr" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o
         let instruction: u32 = 0xe10f0000;
 
         let decoded_arm = decode_arm(instruction);
         let _ = execute_arm(decoded_arm.instruction, &mut registers, &mut bus);
         assert_eq!(registers.r[0], registers.cpsr);
 
-        // echo "bic r0, r0, #0x1F" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
+        // echo "bic r0, r0, #0x1F" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o
         let instruction: u32 = 0xe3c0001f;
         let decoded_arm = decode_arm(instruction);
         _ = execute_arm(decoded_arm.instruction, &mut registers, &mut bus);
         assert_eq!(registers.r[0], 0);
 
-        // echo "orr r0, r0, #0x1F" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
-        // Sys mode
+        // echo "orr r0, r0, #0x1F" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o Sys mode
         let instruction: u32 = 0xe380001f;
         let decoded_arm = decode_arm(instruction);
         _ = execute_arm(decoded_arm.instruction, &mut registers, &mut bus);
         assert_eq!(registers.r[0], 0x1F);
 
-        // echo "msr cpsr, r0" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
-        // Sys mode
+        // echo "msr cpsr, r0" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o Sys mode
         let instruction: u32 = 0xe129f000;
         let decoded_arm = decode_arm(instruction);
         _ = execute_arm(decoded_arm.instruction, &mut registers, &mut bus);
@@ -1096,7 +1101,8 @@ mod tests {
         let mut bus = create_bus(BackupType::Flash);
         let mut registers = Registers::new();
 
-        // echo "mov r1, #101" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
+        // echo "mov r1, #101" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o
         let instruction = 0xe3a01065;
         let decoded_arm = decode_arm(instruction);
         let _ = execute_arm(decoded_arm.instruction, &mut registers, &mut bus);
@@ -1104,7 +1110,8 @@ mod tests {
         assert_eq!(registers.r[1], 101);
         assert_eq!(registers.state(), ProcessorState::Arm);
 
-        // echo "bx r1" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o && arm-none-eabi-objdump -d x.o
+        // echo "bx r1" | arm-none-eabi-as -mcpu=arm7tdmi -o x.o &&
+        // arm-none-eabi-objdump -d x.o
         let instruction: u32 = 0xe12fff11;
         let decoded_arm = decode_arm(instruction);
         let side_effect = execute_arm(decoded_arm.instruction, &mut registers, &mut bus);

@@ -1,5 +1,6 @@
-use gb::components::{gameboy::GameBoy, gamepak::GamePak};
 use std::path::PathBuf;
+
+use gb::components::{gameboy::GameBoy, gamepak::GamePak};
 
 fn blargg_cpu_path(rom: &str) -> PathBuf {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

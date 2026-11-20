@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-// struct just to toss serial registers into, zero intention to implemnt further than this unless im forced to
+// struct just to toss serial registers into, zero intention to implemnt further
+// than this unless im forced to
 #[derive(Deserialize, Serialize)]
 pub struct Serial {
     pub sio_data: [u16; 4],

@@ -16,6 +16,12 @@
 // https://problemkaputt.de/gbatek.htm#GBAUnpreduse std::{
 use std::{env::var, fmt::Arguments, fs::File, io::BufWriter};
 
+use serde::{Deserialize, Serialize};
+use shared::{
+    debug::Trace, enums::Width, psg::PsgMixerRegister, scheduler::EventScheduler,
+    script::MemoryAccessor, structs::WatchpointManager, traits::BitOps, utils::zero_arr,
+};
+
 use crate::components::{
     apu::Apu,
     dma::{DmaChannels, FifoChannel, TransferType, Trigger},
@@ -27,13 +33,6 @@ use crate::components::{
     timer::Timers,
 };
 
-use shared::{
-    debug::Trace, enums::Width, psg::PsgMixerRegister, scheduler::EventScheduler,
-    script::MemoryAccessor, structs::WatchpointManager, traits::BitOps, utils::zero_arr,
-};
-
-use serde::{Deserialize, Serialize};
-
 const WAIT_STATE_NONSEQUENTIAL: [u8; 4] = [4, 3, 2, 8];
 const WAIT_STATE0_SEQUENTIAL: [u8; 2] = [2, 1];
 const WAIT_STATE1_SEQUENTIAL: [u8; 2] = [4, 1];
@@ -41,8 +40,10 @@ const WAIT_STATE2_SEQUENTIAL: [u8; 2] = [8, 1];
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum AccessType {
-    Sequential, // Memory address related to previous address, incremented by + 2 (half word) or +4 (word)
-    Nonsequential, // Memory address is fetched and has nothing to do with the previous instruction
+    Sequential, /* Memory address related to previous address, incremented by + 2 (half word)
+                 * or +4 (word) */
+    Nonsequential, /* Memory address is fetched and has nothing to do with the previous
+                    * instruction */
     Lua,
 }
 
@@ -114,7 +115,8 @@ pub struct Bus {
     pub ewram: Box<[u8]>,
     pub iwram: Box<[u8]>,
     pub last_instruction_read: u32,
-    pub last_bios_fetch: u32, // According to medium article, MMBN6 has an email bug due to null pointer dereference in the BIOS
+    pub last_bios_fetch: u32, /* According to medium article, MMBN6 has an email bug due to null
+                               * pointer dereference in the BIOS */
     // region [00DCh+8] in bios is 0xE129F000; https://problemkaputt.de/gbatek.htm#GBAUnpredictableThings
     pub apu: Apu,
     pub ppu: Ppu,
@@ -245,8 +247,9 @@ impl Bus {
             if address.is_clear(0) {
                 self.postflg
             } else {
-                // 0x4000301 => {} // Undocumented - Power Down Control (HALTCNT), 8 bit register (write only)
-                // technically not read but just in case
+                // 0x4000301 => {} // Undocumented - Power Down Control
+                // (HALTCNT), 8 bit register (write only) technically not read
+                // but just in case
                 0
             }
         } else {

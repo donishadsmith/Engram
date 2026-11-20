@@ -1,7 +1,9 @@
-use crate::components::dma::{FifoChannel, Trigger};
+use std::collections::VecDeque;
+
 use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
-use std::collections::VecDeque;
+
+use crate::components::dma::{FifoChannel, Trigger};
 
 fn history() -> VecDeque<i8> {
     VecDeque::with_capacity(2048)

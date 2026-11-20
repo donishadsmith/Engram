@@ -15,9 +15,10 @@ pub mod traits;
 pub mod utils;
 pub mod video;
 
+use std::{io::Error, path::PathBuf};
+
 use egui::Ui;
 use serde::{Deserialize, Serialize};
-use std::{io::Error, path::PathBuf};
 
 use crate::{
     debug::DebugPage,
@@ -128,7 +129,8 @@ pub trait SolarSensor {
 }
 
 pub trait EmulatorSession {
-    // eventually allow emu to return running or paused based on internal state/conditions
+    // eventually allow emu to return running or paused based on internal
+    // state/conditions
     fn run(&mut self, input: &[bool], volume: u8) -> Result<EmulatorState, Error>;
 
     fn save_game(&mut self) -> Result<(), Error>;

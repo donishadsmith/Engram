@@ -1,6 +1,7 @@
+use std::ops::AddAssign;
+
 use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
-use std::ops::AddAssign;
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Fixed8Fractional(pub i32);

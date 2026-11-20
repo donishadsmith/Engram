@@ -2,14 +2,14 @@ pub mod arm;
 pub mod thumb;
 
 use arm::{decode::*, execute::*};
+use serde::{Deserialize, Serialize};
+use shared::{structs::BreakpointManager, traits::BitOps};
 use thumb::decode::*;
 
 use crate::components::{
     bios::handle_swi,
     bus::{AccessType, Bus},
 };
-use serde::{Deserialize, Serialize};
-use shared::{structs::BreakpointManager, traits::BitOps};
 
 /*
 The ARM University Program, ARM Architecture Fundamentals: https://www.youtube.com/watch?v=7LqPJGnBPMM
@@ -152,11 +152,16 @@ impl Condition {
 #[repr(u32)]
 enum ProcessorMode {
     Usr = 0x10, // Typical mode most tasks run on (Unprivileged)
-    Fiq = 0x11, // Entered when high priority (fast) interrupt is raised (Privileged) - Banks out r8-14, and spsr
-    Irq = 0x12, // Entered when normal priority interrupt is raised (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Svc = 0x13, // Entered on reset and when a supervisor call instruction (SVC) us executed- Banks out register 13 (sp), 14 (lr), and spsr
-    Abt = 0x17, // Handle memory access violations (Priileged) - Banks out register 13 (sp), 14 (lr), and spsr
-    Und = 0x1B, // Undefined instructions (Privileged) - Banks out register 13 (sp), 14 (lr), and spsr
+    Fiq = 0x11, /* Entered when high priority (fast) interrupt is raised (Privileged) - Banks
+                 * out r8-14, and spsr */
+    Irq = 0x12, /* Entered when normal priority interrupt is raised (Privileged) - Banks out
+                 * register 13 (sp), 14 (lr), and spsr */
+    Svc = 0x13, /* Entered on reset and when a supervisor call instruction (SVC) us executed-
+                 * Banks out register 13 (sp), 14 (lr), and spsr */
+    Abt = 0x17, /* Handle memory access violations (Priileged) - Banks out register 13 (sp), 14
+                 * (lr), and spsr */
+    Und = 0x1B, /* Undefined instructions (Privileged) - Banks out register 13 (sp), 14 (lr),
+                 * and spsr */
     Sys = 0x1F, // Mode using same registers as User mode (Privileged) - No banks just uses User
 }
 
@@ -240,8 +245,8 @@ pub struct Registers {
     pub banked_high_registers: [[u32; 5]; 2],
     pub banked_special_registers: [[u32; 2]; 6],
     pub banked_spsr: [u32; 6],
-    pub cpsr: u32, // Holds current mode, status flags; bits 31-28 (N, Z, C, V, Q), mode bits (lower 5 bits), state bits
-                   // bit 5 (T) is ARM or THUMB
+    pub cpsr: u32, /* Holds current mode, status flags; bits 31-28 (N, Z, C, V, Q), mode bits
+                    * (lower 5 bits), state bits bit 5 (T) is ARM or THUMB */
 }
 
 impl Registers {
@@ -447,9 +452,9 @@ impl Registers {
     }
 
     fn copy_pc_to_lr(&mut self) {
-        // Reminder that pc is always +2 instructions ahead of the current executing address,
-        // Need to copy the pc - 1 instruction, to return to the instruction that has not been
-        // executed yet.
+        // Reminder that pc is always +2 instructions ahead of the current
+        // executing address, Need to copy the pc - 1 instruction, to return to
+        // the instruction that has not been executed yet.
         self.r[14] = self.r[15].wrapping_sub(self.pc_offset());
     }
 }
@@ -552,7 +557,8 @@ impl Arm7tdmi {
         let decoded_instruction = self.advance_pipeline(bus);
 
         // Assumes pc is +8 (arm) or +4 (thumb) aheah, essentially used to
-        // to keep reversing the pipeline when the instruction wait bios command is called
+        // to keep reversing the pipeline when the instruction wait bios command
+        // is called
         let executing_address = self.registers.r[15].wrapping_sub(2 * self.registers.pc_offset());
 
         let side_effect = match decoded_instruction {

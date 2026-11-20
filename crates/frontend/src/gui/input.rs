@@ -16,9 +16,11 @@ use crate::{
     },
 };
 
-// i kinda suck at pressing all three at once but will have to do, this is what i get for primarily playing rpgs but much easier to execute
-// wihtout triggering actions on an 8bitdo than a ps5 controller likely due to travel
-// also using start instead of select since select and down appear to be reserved on 8bitdo and just straight up never activates the hotkey
+// i kinda suck at pressing all three at once but will have to do, this is what
+// i get for primarily playing rpgs but much easier to execute
+// wihtout triggering actions on an 8bitdo than a ps5 controller likely due to
+// travel also using start instead of select since select and down appear to be
+// reserved on 8bitdo and just straight up never activates the hotkey
 fn get_save_slot(gamepad: Gamepad<'_>, save_state: bool) -> Option<usize> {
     let hotkeys_pressed = if save_state {
         gamepad.is_pressed(Button::Start)
@@ -48,9 +50,10 @@ enum ShortcutType {
     Video,
 }
 
-// have a eeling that im going to hard regret these button combos later but keep for now
-// not all modern controllers have select or triggers, particulary modern replicas of retro controllers
-// could consider mapping to certain keybindings set in menu but maybe not
+// have a eeling that im going to hard regret these button combos later but keep
+// for now not all modern controllers have select or triggers, particulary
+// modern replicas of retro controllers could consider mapping to certain
+// keybindings set in menu but maybe not
 fn display_controller_hotkeys(
     gilrs: Option<&Gilrs>,
     latest_gamepad_id: Option<GamepadId>,

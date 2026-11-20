@@ -15,8 +15,8 @@ pub fn create_bus(backup_type: BackupType) -> Bus {
     bus
 }
 
-// Pages 4-13 of arm7tdmi data sheet, special meanings for how assembler handles 32 for lsr, ror, asr
-// Basically 0 treated as 32
+// Pages 4-13 of arm7tdmi data sheet, special meanings for how assembler handles
+// 32 for lsr, ror, asr Basically 0 treated as 32
 pub trait ShiftOps: BitOps {
     fn handle_right_shift(self, shift_amount: u8) -> Self {
         if (shift_amount as usize) >= Self::BIT_WIDTH {

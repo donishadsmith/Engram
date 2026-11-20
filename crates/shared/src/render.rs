@@ -1,6 +1,7 @@
+use std::mem::swap;
+
 use macroquad::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::mem::swap;
 
 use crate::traits::BitOps;
 

@@ -1,5 +1,6 @@
-use crate::traits::BitOps;
 use serde::{Deserialize, Serialize};
+
+use crate::traits::BitOps;
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
 #[repr(u8)]

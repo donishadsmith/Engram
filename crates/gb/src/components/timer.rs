@@ -1,8 +1,9 @@
 // Very clear instructions: https://github.com/Ashiepaws/GBEDG/blob/master/timers/index.md
 
-use crate::components::cpu::interrupts::InterruptMode;
 use serde::{Deserialize, Serialize};
 use shared::traits::BitOps;
+
+use crate::components::cpu::interrupts::InterruptMode;
 
 #[derive(Deserialize, Serialize)]
 pub struct Timer {
@@ -47,7 +48,8 @@ impl Timer {
                 let (result, overflowed) = self.tima.overflowing_add(1);
 
                 if overflowed {
-                    // When Tima overflows it is set to tma and an interrupt is requested
+                    // When Tima overflows it is set to tma and an interrupt is
+                    // requested
                     self.tima = self.tma;
                     *interrupt_flag |= InterruptMode::Timer.mask();
                 } else {

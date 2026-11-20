@@ -3,6 +3,13 @@ pub mod palette;
 pub mod sprites;
 pub mod vram;
 
+use serde::{Deserialize, Serialize};
+use shared::{
+    render::{Frame, PixelFormat, ScalingMethod},
+    traits::BitOps,
+    utils::{saturated_arr, zero_arr},
+};
+
 use crate::components::{
     cpu::interrupts::InterruptMode,
     ppu::{
@@ -12,12 +19,6 @@ use crate::components::{
         vram::Vram,
     },
     utils::ByteOps8,
-};
-use serde::{Deserialize, Serialize};
-use shared::{
-    render::{Frame, PixelFormat, ScalingMethod},
-    traits::BitOps,
-    utils::{saturated_arr, zero_arr},
 };
 /*
     https://github.com/Ashiepaws/GBEDG/blob/master/ppu/index.md
@@ -420,7 +421,8 @@ impl Ppu {
 
     fn oam_search(&self, sprite_size: u8) -> Vec<SpriteAttribute> {
         // Each scanline can have up to 10 sprites, first
-        // identify the sprites with a y coordinate overlapping with the scanline
+        // identify the sprites with a y coordinate overlapping with the
+        // scanline
         let mut sprite_attributes: Vec<SpriteAttribute> = self
             .oam
             .chunks(4)

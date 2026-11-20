@@ -2,15 +2,20 @@ pub mod constants;
 pub mod enums;
 pub mod utils;
 
-use crate::input::{
-    constants::{DEFAULT_GBA_KEYS, DEFAULT_HOT_KEYS},
-    enums::{Hotkeys, Input, InputType, KeyId},
-    utils::{button_to_string, keycode_to_string, string_to_button, string_to_keycode},
-};
-use crate::{EmulatorId, config::Config};
+use std::{collections::BTreeMap, io::Error};
+
 use gilrs::Button;
 use macroquad::input::KeyCode;
-use std::{collections::BTreeMap, io::Error};
+
+use crate::{
+    EmulatorId,
+    config::Config,
+    input::{
+        constants::{DEFAULT_GBA_KEYS, DEFAULT_HOT_KEYS},
+        enums::{Hotkeys, Input, InputType, KeyId},
+        utils::{button_to_string, keycode_to_string, string_to_button, string_to_keycode},
+    },
+};
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub struct AnalogStick {
@@ -190,7 +195,7 @@ impl KeyBindings {
 
     pub fn reserved(&self, key_id: KeyId, input: Input) -> bool {
         match key_id {
-            KeyId::Hotkeys => self.keys(KeyId::Emulator(EmulatorId::Gba)).contains(&input), /*eventually use .extend*/
+            KeyId::Hotkeys => self.keys(KeyId::Emulator(EmulatorId::Gba)).contains(&input), /* eventually use .extend */
             KeyId::Emulator(_) => self.keys(KeyId::Hotkeys).contains(&input),
         }
     }

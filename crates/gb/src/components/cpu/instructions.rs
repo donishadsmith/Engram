@@ -139,10 +139,12 @@ where
                 let (_, y, _, _, _) = opcode_decoder(opcode);
 
                 match y {
-                    0 => self.circular_rotate(7, BitDirection::Left), // Rotate left circular accumulator
-                    1 => self.circular_rotate(7, BitDirection::Right), // Rotate right circular accumulator
-                    2 => self.rotate(7, BitDirection::Left),           // Rotate left accumulator
-                    _ => self.rotate(7, BitDirection::Right),          // Rotate right accumulator
+                    0 => self.circular_rotate(7, BitDirection::Left), /* Rotate left circular */
+                    // accumulator
+                    1 => self.circular_rotate(7, BitDirection::Right), /* Rotate right circular */
+                    // accumulator
+                    2 => self.rotate(7, BitDirection::Left), // Rotate left accumulator
+                    _ => self.rotate(7, BitDirection::Right), // Rotate right accumulator
                 }
 
                 self.registers.apply_flags(FlagDelta {
@@ -720,8 +722,9 @@ where
     }
 
     fn shift_arithmetic(&mut self, z: u8, direction: BitDirection) {
-        // Shift left arithmetic - shift bit 7 out and let it become carry; let bit 0 be zero
-        // Shift right arithmetic - bit 7 is duplicated and bit zero becomes carry
+        // Shift left arithmetic - shift bit 7 out and let it become carry; let
+        // bit 0 be zero Shift right arithmetic - bit 7 is duplicated and bit
+        // zero becomes carry
         let value = self.get_value_for_cb_op(z);
 
         let (result, carry) = if direction == BitDirection::Left {
@@ -925,10 +928,10 @@ impl AddressBus for TestBus {
 
 #[cfg(test)]
 mod tests {
+    use serde::Deserialize;
+
     use super::*;
     use crate::components::cpu::registers::Registers;
-
-    use serde::Deserialize;
 
     #[derive(Deserialize)]
     struct CpuState {

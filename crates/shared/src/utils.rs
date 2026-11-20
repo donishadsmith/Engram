@@ -1,13 +1,15 @@
-use crate::traits::UnsignedInt;
-use chrono::Local;
-use egui::Ui;
-use macroquad::prelude::*;
 use std::{
     fmt::Debug,
     hash::Hash,
     io::{Error, ErrorKind},
     path::PathBuf,
 };
+
+use chrono::Local;
+use egui::Ui;
+use macroquad::prelude::*;
+
+use crate::traits::UnsignedInt;
 
 pub fn screenshot(image_dir: PathBuf) {
     let image_path = image_dir.join(format!(

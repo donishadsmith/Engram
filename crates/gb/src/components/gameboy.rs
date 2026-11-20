@@ -1,13 +1,6 @@
-use crate::{
-    GB_CLOCK_SPEED,
-    components::{
-        bus::{AddressBus, Bus},
-        cpu::{
-            SharpSm83,
-            registers::{Register8Bits, Register16Bits},
-        },
-        gamepak::{GamePak, mbc::prelude::Mbc},
-    },
+use std::{
+    io::Error,
+    mem::{swap, take},
 };
 
 use serde::{Deserialize, Serialize};
@@ -21,9 +14,17 @@ use shared::{
     traits::BitOps,
     utils::error_message,
 };
-use std::{
-    io::Error,
-    mem::{swap, take},
+
+use crate::{
+    GB_CLOCK_SPEED,
+    components::{
+        bus::{AddressBus, Bus},
+        cpu::{
+            SharpSm83,
+            registers::{Register8Bits, Register16Bits},
+        },
+        gamepak::{GamePak, mbc::prelude::Mbc},
+    },
 };
 
 pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB5";
@@ -229,7 +230,8 @@ impl GameBoy {
 
         self.save()?;
 
-        // note to self: since rtc is based on sysytem clock be aware that the time will automatically be updated to current time
+        // note to self: since rtc is based on sysytem clock be aware that the
+        // time will automatically be updated to current time
         swap(
             &mut data.cpu.bus.watchpoint_manager,
             &mut self.cpu.bus.watchpoint_manager,
@@ -422,8 +424,8 @@ impl Emulator for GameBoy {
 
         self.load_state(&state).ok()?;
 
-        // a slot load or lua restore can result in newer snapshots in the buffer than the
-        // current cycle, prevent underflow
+        // a slot load or lua restore can result in newer snapshots in the
+        // buffer than the current cycle, prevent underflow
         let rewound_cycles = current.saturating_sub(snapshot_cycles as u64);
 
         Some(rewound_cycles as f64 / GB_CLOCK_SPEED)

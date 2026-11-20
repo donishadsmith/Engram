@@ -14,13 +14,8 @@ repos:
 -   repo: local
     hooks:
       - id: fmt
-        name: cargo fmt
-        entry: cargo fmt
+        name: cargo fmt with nightly
+        entry: cargo +nightly fmt
         language: system
         types: [rust]
         pass_filenames: false
-
--   repo: https://github.com/psf/black
-    rev: 26.5.1
-    hooks:
-    -   id: black

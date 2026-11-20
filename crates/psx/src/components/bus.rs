@@ -1,9 +1,9 @@
 // https://psx-spx.consoledev.net/ps1/system/iomap/
 // https://nsec.sjtu.edu.cn/data/MK.Computer.Organization.and.Design.4th.Edition.Oct.2011.pdf
 
-use serde::{Deserialize, Serialize};
 use std::{env::var, fmt::Arguments, fs::File, io::BufWriter};
 
+use serde::{Deserialize, Serialize};
 use shared::{
     debug::Trace,
     enums::Width,
@@ -269,7 +269,8 @@ impl Bus {
         }
     }
 
-    //pub fn notify_fetch(&mut self, address: u32, fetch_source: FetchSource) {}
+    //pub fn notify_fetch(&mut self, address: u32, fetch_source: FetchSource)
+    // {}
 
     pub fn determine_cycle_cost(&mut self, address: u32, width: Width, accessor: MemoryAccessor) {}
 

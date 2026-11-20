@@ -4,7 +4,6 @@ pub mod global_control;
 
 use std::{array::from_fn, collections::VecDeque};
 
-use crate::components::dma::FifoChannel;
 use fifo::Fifo;
 use global_control::GlobalControl;
 use serde::{Deserialize, Serialize};
@@ -13,6 +12,8 @@ use shared::{
     psg::{PsgChannel, PsgMixer, PsgOutput},
     structs::GroupedRegisters,
 };
+
+use crate::components::dma::FifoChannel;
 
 fn psg_history() -> [VecDeque<u8>; 4] {
     from_fn(|_| VecDeque::with_capacity(2048))

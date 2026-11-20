@@ -1,12 +1,7 @@
 // https://archive.org/details/NintendoGbaManualV1.1/page/n59/mode/1up
-use crate::{
-    GBA_CLOCK_SPEED,
-    components::{
-        bus::{AccessType, Bus},
-        cpu::{Arm7tdmi, HaltState},
-        dma::Trigger,
-        gamepak::GamePak,
-    },
+use std::{
+    io::Error,
+    mem::{swap, take},
 };
 
 use serde::{Deserialize, Serialize};
@@ -18,9 +13,15 @@ use shared::{
     traits::BitOps,
     utils::error_message,
 };
-use std::{
-    io::Error,
-    mem::{swap, take},
+
+use crate::{
+    GBA_CLOCK_SPEED,
+    components::{
+        bus::{AccessType, Bus},
+        cpu::{Arm7tdmi, HaltState},
+        dma::Trigger,
+        gamepak::GamePak,
+    },
 };
 
 pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGBA4";
@@ -118,7 +119,8 @@ impl GBA {
 
         self.bus.dump(format_args!("interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}", ie, iflag, dispstat, ime));
 
-        // technically serviced by the time it shows on ui + plus will just be a flash on ui when enabled but looks cool
+        // technically serviced by the time it shows on ui + plus will just be a
+        // flash on ui when enabled but looks cool
         self.bus.copy_interrupt_info();
         self.check_interrupts();
 
@@ -280,7 +282,8 @@ impl GBA {
 
         self.save()?;
 
-        // note to self: since rtc is based on sysytem clock be aware that the time will automatically be updated to current time
+        // note to self: since rtc is based on sysytem clock be aware that the
+        // time will automatically be updated to current time
         swap(
             &mut data.bus.watchpoint_manager,
             &mut self.bus.watchpoint_manager,
@@ -302,10 +305,11 @@ impl GBA {
         swap(&mut data.bus.trace, &mut self.bus.trace);
         data.apu_sample_remainder = self.apu_sample_remainder;
 
-        // unfortunate edge case when the emu is paused and then a state is reloaded,
-        // since debugger backgrounds are filled during hblank, of course debugger backgrounds will remain
-        // black until hblank end when swapped with the frontend version
-        // when not paused :(; revisit this when less tired
+        // unfortunate edge case when the emu is paused and then a state is
+        // reloaded, since debugger backgrounds are filled during hblank, of
+        // course debugger backgrounds will remain black until hblank end when
+        // swapped with the frontend version when not paused :(; revisit this
+        // when less tired
         data.bus.ppu.transparant_background = self.bus.ppu.transparant_background;
         data.bus.ppu.transparant_sprite_background = self.bus.ppu.transparant_sprite_background;
         data.bus.ppu.debugger_active = self.bus.ppu.debugger_active;
@@ -470,8 +474,8 @@ impl Emulator for GBA {
 
         self.load_state(&state).ok()?;
 
-        // a slot load or lua restore can result in newer snapshots in the buffer than the
-        // current cycle, prevent underflow
+        // a slot load or lua restore can result in newer snapshots in the
+        // buffer than the current cycle, prevent underflow
         let rewound_cycles = current.saturating_sub(snapshot_cycles as u64);
 
         Some(rewound_cycles as f64 / GBA_CLOCK_SPEED as f64)

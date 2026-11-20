@@ -2,7 +2,8 @@ mod affine;
 mod special_effects;
 pub mod sprites;
 
-use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
+use std::{array::from_fn, mem::take};
+
 use affine::{AffineMatrix, AffineState};
 use serde::{Deserialize, Serialize};
 use shared::{
@@ -12,7 +13,8 @@ use shared::{
     utils::zero_arr,
 };
 use sprites::{SpriteAttributes, SpriteMode, SpritePixel};
-use std::{array::from_fn, mem::take};
+
+use crate::components::{dma::Trigger, ppu::special_effects::apply_effects};
 // https://www.patater.com/gbaguy/gba/ch5.htm
 // https://gbadev.net/tonc/
 // https://github.com/gbadev-org/awesome-gbadev/blob/master/README.md#tutorials
@@ -331,9 +333,9 @@ impl Ppu {
         }
     }
 
-    // probably not the cleanest implementation, maybe refactor after ppu produces
-    // visuals reasonably close to what commercial roms are supposed to look like
-    // still nneds mosaic an the sprite budget
+    // probably not the cleanest implementation, maybe refactor after ppu
+    // produces visuals reasonably close to what commercial roms are supposed to
+    // look like still nneds mosaic an the sprite budget
     // TODO: remember to do add mosaic + sprite budget
     fn render_scanline(&mut self) {
         let bg2_matrix = AffineMatrix::from_registers(
@@ -896,7 +898,8 @@ impl Ppu {
         }
     }
 
-    // skip the sprite maximum based on size and cycle budget and put all the sprites on screen
+    // skip the sprite maximum based on size and cycle budget and put all the
+    // sprites on screen
     pub fn render_sprite_line(&self) -> ([Option<SpritePixel>; 240], [bool; 240]) {
         let mut sprite_line: [Option<SpritePixel>; 240] = from_fn(|_| None);
         let mut obj_window = [false; 240];
@@ -1057,8 +1060,8 @@ impl Ppu {
         palette_index
     }
 
-    // not perfect but this is the minimum amount of code i could come with to add sprites
-    // to debugger
+    // not perfect but this is the minimum amount of code i could come with to
+    // add sprites to debugger
     pub fn update_oam_debug_data(&mut self) {
         self.sprites_data = Vec::with_capacity(128);
 

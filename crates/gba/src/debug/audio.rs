@@ -2,9 +2,9 @@ use std::mem::take;
 
 use egui::{Color32, Panel, RichText, TextureHandle, Ui};
 use egui_plot::{HLine, Line, Plot};
+use shared::debug::create_game_screen;
 
 use crate::components::{apu::Apu, dma::FifoChannel, gba::GBA};
-use shared::debug::create_game_screen;
 
 #[derive(Clone, Copy)]
 enum AudioChannel {

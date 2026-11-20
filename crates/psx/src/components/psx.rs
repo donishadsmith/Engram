@@ -1,5 +1,6 @@
-use crate::components::{bus::Bus, cpu::R3000a};
 use serde::{Deserialize, Serialize};
+
+use crate::components::{bus::Bus, cpu::R3000a};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub enum CdromEvent {}
