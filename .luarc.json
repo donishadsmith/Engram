@@ -1,0 +1,6 @@
+// too many annoying warnings
+{
+  "runtime.version": "Lua 5.4",
+  "diagnostics.globals": ["emulator", "console", "memory", "cpu", "debugger", "controller"],
+  "diagnostics.disable": ["duplicate-set-field", "lowercase-global"]
+}

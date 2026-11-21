@@ -1,7 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::{read_to_string, write},
+    fs::{read_dir, read_to_string, write},
     hash::Hash,
+    io::Error,
     mem::take,
     path::PathBuf,
     time::{Duration, Instant},
@@ -15,10 +16,7 @@ use egui::{
 };
 use egui_code_editor::{CodeEditor, ColorTheme, Completer, Syntax};
 use egui_phosphor::regular as icons;
-use macroquad::input::{
-    KeyCode::{self, RightShift},
-    is_key_down, is_key_pressed,
-};
+use macroquad::input::{KeyCode, is_key_down, is_key_pressed};
 use regex::Regex;
 use rfd::FileDialog;
 
@@ -30,7 +28,8 @@ const ICON_SPACE: f32 = 10.0;
 const COPY_DELAY: Duration = Duration::from_millis(200);
 
 const SHORTCUT: &str = r#"
-Shift+Enter: run the current script
+Ctrl+F5: run the current script
+Shift+F5: stop all scripts
 Ctrl+N: new script (max of 6)
 Ctrl+S: save the current script
 Ctrl+C: copy the selected text (internal implementation due to clipboard copy issue,
@@ -90,7 +89,7 @@ fn member_table(code: &str, cursor: usize) -> Option<&str> {
         .nth(cursor)
         .map_or(code.len(), |(index, _)| index);
 
-    let before = code[..end].trim_end_matches(is_word).strip_suffix('.')?;
+    let before = code[..end].trim_end_matches(is_word).strip_suffix(".")?;
     let table = &before[before.trim_end_matches(is_word).len()..];
 
     (!table.is_empty()).then_some(table)
@@ -103,6 +102,7 @@ struct ScriptTab {
     code: String,
     path: Option<PathBuf>,
     progress_unsaved: bool,
+    first_level_files: Vec<PathBuf>,
 }
 
 impl Hash for ScriptTab {
@@ -132,7 +132,7 @@ pub const DARK_HIGH_CONTRAST: ColorTheme = ColorTheme {
 
 // the illusion of choice, but primarily just different dark theme variants
 // just adding a single white theme
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum EditorTheme {
     DarkHighContrast,
     GithubDark,
@@ -175,6 +175,10 @@ impl EditorTheme {
             _ => ColorTheme::GITHUB_DARK,
         }
     }
+
+    fn is_light(self) -> bool {
+        matches!(self, EditorTheme::GithubLight)
+    }
 }
 
 // committing to the science naming bit
@@ -210,6 +214,7 @@ impl LuaLab {
             name: "Untitled-1".to_string(),
             path: None,
             progress_unsaved: false,
+            first_level_files: Vec::new(),
         };
 
         tabs.push(script);
@@ -340,6 +345,7 @@ impl LuaLab {
                             });
 
                             ui.menu_button("Session", |ui| {
+                                // maybe redundant?
                                 if ui.button(format!("{}  Stop Scripts", icons::STOP_CIRCLE)).on_hover_text(
                                     "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints"
                                     ).clicked() {
@@ -377,20 +383,31 @@ impl LuaLab {
                                 run = true;
                             }
 
-                            // getting tired of having to click run
-                        if (is_key_down(KeyCode::LeftShift) | is_key_down(RightShift)) && is_key_pressed(KeyCode::Enter) {
-                                run = true
-                            }
+                        // getting tired of having to click run
+                        if super_key_down() && is_key_pressed(KeyCode::F5) {
+                            run = true
+                        }
+
+                        if super_key_down() && is_key_pressed(KeyCode::F5) {
+                            run = true
+                        }
+
+                        if (is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift)) && is_key_pressed(KeyCode::F5) {
+                            self.termination_request = true
+                        }
                         });
                     });
 
                     let current_id = self.get_current_tab_ref().id;
                     let current_pending_close = self.pending_close.is_some();
                     let file_dialog_active = self.file_dialog.is_some();
+                    let theme = self.theme;
 
                     // primarily fudged numbers until it came out somewhat ok, a lot of magic numbers
                     ui.horizontal(|ui| {
                         ui.add_space(40.0);
+                        let row = ui.max_rect();
+                        let mut active_rect: Option<egui::Rect> = None;
                         let can_add_tab = !self.max_tabs_reached();
                         let can_close_tab = self.tabs.len() > 1;
                         let tab_height = ui.spacing().interact_size.y;
@@ -406,7 +423,14 @@ impl LuaLab {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.separator();
+
+                                    ui.scope(|ui| {
+                                        // just used photoshop color picker for the rgbs for these
+                                        ui.visuals_mut().widgets.noninteractive.bg_stroke.color = if theme == EditorTheme::DarkHighContrast {
+                                            egui::Color32::from_rgb(111, 195, 233)} else {egui::Color32::WHITE
+                                            };
+                                        ui.separator();
+                                    });
 
                                     handle.show_drag_cursor_on_hover(false).ui(ui, |ui| {
                                         let response = ui.allocate_response(egui::vec2(DIAMETER, DIAMETER), egui::Sense::click());
@@ -429,7 +453,31 @@ impl LuaLab {
                                         let show_close = ((tab.id == current_id) || hovered) && !file_dialog_active;
                                         if can_close_tab && show_close && (hovered || !tab.progress_unsaved) && !current_pending_close {
                                             if response.contains_pointer() {
-                                                ui.painter().text(response.rect.left_center(), egui::Align2::CENTER_CENTER, icons::RECTANGLE_DASHED, egui::FontId::proportional(17.0), text_color);
+                                                match theme {
+                                                   EditorTheme::DarkHighContrast => {
+                                                        ui.painter()
+                                                        .text(
+                                                            response.rect.left_center(),
+                                                            egui::Align2::CENTER_CENTER,
+                                                            icons::RECTANGLE_DASHED,
+                                                            egui::FontId::proportional(17.0),
+                                                            egui::Color32::from_rgb(243, 122, 24));
+                                                        },
+                                                   _ => {
+                                                        let (r, g, b, opacity) = if theme.is_light() {
+                                                            (47, 79, 79, 90)
+                                                        } else {
+                                                            (210, 210, 210, 50)
+                                                        };
+
+                                                        ui.painter().
+                                                        circle_filled(
+                                                            response.rect.left_center(),
+                                                            DIAMETER,
+                                                            egui::Color32::from_rgba_unmultiplied(r, g, b, opacity)
+                                                        );
+                                                    }
+                                                }
                                             }
 
                                             ui.painter().text(response.rect.left_center(), egui::Align2::CENTER_CENTER, icons::X, egui::FontId::proportional(12.0), text_color);
@@ -455,23 +503,52 @@ impl LuaLab {
                                         let left = rect.center().x - (ICON_SPACE + galley.size().x) / 2.0;
                                         let text_color = ui.visuals().text_color();
 
-                                        ui.painter().text(egui::Pos2::new(left, rect.center().y), egui::Align2::CENTER_CENTER, if tab.path.is_some() {icons::FILE_TEXT} else {icons::TEXT_ALIGN_LEFT}, egui::FontId::proportional(12.0), text_color);
+                                        ui.painter()
+                                        .text(
+                                            egui::Pos2::new(left, rect.center().y),
+                                            egui::Align2::CENTER_CENTER,
+                                            if tab.path.is_some() {icons::FILE_TEXT} else {icons::TEXT_ALIGN_LEFT},
+                                            egui::FontId::proportional(12.0), text_color);
 
-                                        if (tab.id == current_id || name_response.hovered() || reponse_hover) && can_close_tab {
-                                            let rectangle = egui::Rect::from_min_max(egui::Pos2::new(rect.left() - DIAMETER,rect.top()), egui::Pos2::new(rect.right() + 18.0, rect.bottom()));
+                                        let rectangle = egui::Rect::from_min_max(egui::Pos2::new(rect.left() - DIAMETER, rect.top()), egui::Pos2::new(rect.right() + 18.0, rect.bottom()));
+                                        if tab.id == current_id {
+                                            active_rect = Some(rectangle);
+                                        }
 
-                                            let color = if tab.id == current_id {
-                                                text_color
-                                            } else {
-                                                text_color.gamma_multiply(0.5)
-                                            };
+                                        if (name_response.hovered() || reponse_hover) && can_close_tab && tab.id != current_id {
+                                            match theme {
+                                                // find easiest way to draw a dashed rectangle that covers entire tab, if possible?
+                                                EditorTheme::DarkHighContrast => {
+                                                    if tab.id != current_id {
+                                                        let stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(243, 122, 24));
+                                                        ui.painter().rect_stroke(
+                                                            rectangle,
+                                                            1.0,
+                                                            stroke,
+                                                            egui::StrokeKind::Outside,
+                                                        );
+                                                    }
+                                                }
+                                                _ => {
+                                                    ui.painter().rect_filled(rectangle, 1.0, egui::Color32::from_rgba_unmultiplied(128, 128, 128, 50));
+                                                }
+                                            }
+                                        }
 
-                                            let stroke = egui::Stroke::new(1.0, color);
-                                            ui.painter().rect_stroke(
-                                                rectangle,
-                                                1.0,
-                                                stroke,
-                                                egui::StrokeKind::Outside,
+                                        if let Some(tab_rect) = active_rect {
+                                            let bottom = tab_rect.bottom() + 3.0;
+
+                                            // to tired to figure out rounded corners that chromium/electron apps have
+                                            ui.painter().line(
+                                                vec![
+                                                    egui::pos2(row.left(), bottom),
+                                                    egui::pos2(tab_rect.left(), bottom),
+                                                    egui::pos2(tab_rect.left(), tab_rect.top()),
+                                                    egui::pos2(tab_rect.right(), tab_rect.top()),
+                                                    egui::pos2(tab_rect.right(), bottom),
+                                                    egui::pos2(row.right(), bottom),
+                                                ],
+                                                egui::Stroke::new(1.0, egui::Color32::from_rgb(243, 122, 24)),
                                             );
                                         }
 
@@ -513,8 +590,9 @@ impl LuaLab {
                     self.add_tab();
                 }
 
-                ui.separator();
                 if let Some(path) = self.get_current_tab_ref().path.clone() {
+                    let mut open_file: Option<PathBuf> = None;
+
                     ui.horizontal(|ui| {
                         ui.add_space(10.0);
                         let steal_vs_code_breadcrumb_design = path
@@ -524,8 +602,26 @@ impl LuaLab {
                         .collect::<Vec<_>>()
                         .join(icons::CARET_RIGHT);
 
-                        ui.add(egui::Label::new(steal_vs_code_breadcrumb_design).wrap_mode(egui::TextWrapMode::Truncate));
+                        let response = ui.add(
+                            egui::Label::new(steal_vs_code_breadcrumb_design)
+                            .wrap_mode(egui::TextWrapMode::Truncate)
+                            .sense(egui::Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                        // not quiite as in depth as vscode but decent enough
+                        egui::Popup::menu(&response).show(|ui| {
+                            for file in &self.get_current_tab_ref().first_level_files {
+                                if let Some(filename) = file.file_name() {
+                                    if ui.button(filename.to_string_lossy()).clicked() {
+                                        open_file = Some(file.clone())
+                                    }
+                                }
+                            }
+                        });
                     });
+
+                    if let Some(path) = open_file {
+                        self.load_script(path);
+                    }
                 } else {
                     ui.label("");
                 }
@@ -725,6 +821,7 @@ impl LuaLab {
             name: self.steal_vs_code_naming_scheme(),
             path: None,
             progress_unsaved: false,
+            first_level_files: Vec::new(),
         };
 
         self.tabs.push(tab);
@@ -758,6 +855,11 @@ impl LuaLab {
                     .push(format!("current script saved to: {}", path.display()));
 
                 self.get_tab_mut(tab_position).progress_unsaved = false;
+                let tab = self.get_tab_mut(tab_position);
+
+                if let Some(path) = tab.path.as_ref() {
+                    let _ = collect_files(path, &mut tab.first_level_files);
+                }
             }
             Err(err) => {
                 self.output.push(err.to_string());
@@ -769,6 +871,8 @@ impl LuaLab {
     }
 
     fn load_script(&mut self, path: PathBuf) {
+        let mut update_files = false;
+
         // stealing more vscode behavior, with a few differences
         match read_to_string(&path) {
             Ok(text) => {
@@ -785,6 +889,7 @@ impl LuaLab {
                 if !tab.progress_unsaved && tab.code.is_empty() {
                     self.get_current_tab_mut().code = text;
                     self.update_script_path(path, self.get_current_tab_ref().id);
+                    update_files = true
                 } else if self.max_tabs_reached() {
                     self.output.push(format!(
                         "failed to load script since the max tabs ({}) have been reached",
@@ -796,9 +901,18 @@ impl LuaLab {
                     self.add_tab();
                     self.get_current_tab_mut().code = text;
                     self.update_script_path(path, self.get_current_tab_ref().id);
+                    update_files = true
                 }
             }
             Err(err) => self.output.push(format!("failed to read script: {err}")),
+        }
+
+        if update_files {
+            let tab = self.get_current_tab_mut();
+
+            if let Some(path) = tab.path.as_ref() {
+                let _ = collect_files(path, &mut tab.first_level_files);
+            }
         }
     }
 
@@ -1088,4 +1202,23 @@ fn dedent(line: &str) -> &str {
     let spaces = line.chars().take(4).take_while(|x| *x == ' ').count();
 
     &line[spaces..]
+}
+
+fn collect_files(path: &PathBuf, first_level_files: &mut Vec<PathBuf>) -> Result<(), Error> {
+    let Some(current_dir) = path.parent() else {
+        return Ok(());
+    };
+
+    let mut files: Vec<PathBuf> = read_dir(current_dir)?
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            let ext = path.extension()?.to_str()?;
+            (path.is_file() && (ext == "lua" || ext == "txt")).then_some(path)
+        })
+        .collect();
+
+    files.sort();
+    *first_level_files = files;
+
+    Ok(())
 }

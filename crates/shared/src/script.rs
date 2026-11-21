@@ -26,7 +26,7 @@ use crate::{
 
 pub const API: &str = r#"
 Console:
-print(...)  console.log(...): intentionally redundent, tab-separated print functions
+print(...)  console.log(...): intentionally redundant, tab-separated print functions
 console.clear()
 
 Memory (bus accesses):
