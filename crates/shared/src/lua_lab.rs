@@ -28,8 +28,8 @@ const ICON_SPACE: f32 = 10.0;
 const COPY_DELAY: Duration = Duration::from_millis(200);
 
 const SHORTCUT: &str = r#"
-Ctrl+F5: run the current script
-Shift+F5: stop all scripts
+Ctrl+R: run the current script
+Ctrl+T: stop all scripts
 Ctrl+N: new script (max of 6)
 Ctrl+S: save the current script
 Ctrl+C: copy the selected text (internal implementation due to clipboard copy issue,
@@ -384,15 +384,13 @@ impl LuaLab {
                             }
 
                         // getting tired of having to click run
-                        if super_key_down() && is_key_pressed(KeyCode::F5) {
+                        // cannot do vscode ctrl/shift + f5 since it conflicts with save and load states when the editor doesnt
+                        // have focus
+                        if super_key_down() && is_key_pressed(KeyCode::R) {
                             run = true
                         }
 
-                        if super_key_down() && is_key_pressed(KeyCode::F5) {
-                            run = true
-                        }
-
-                        if (is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift)) && is_key_pressed(KeyCode::F5) {
+                        if super_key_down()  && is_key_pressed(KeyCode::T) {
                             self.termination_request = true
                         }
                         });
@@ -599,11 +597,19 @@ impl LuaLab {
                         .components()
                         .filter(|component| !matches!(component.as_os_str().to_str(), Some("\\") | Some("/")))
                         .map(|component| component.as_os_str().to_string_lossy())
-                        .collect::<Vec<_>>()
-                        .join(icons::CARET_RIGHT);
+                        .collect::<Vec<_>>();
+
+                        let mut breadcrumb = String::new();
+                        for (index, part) in steal_vs_code_breadcrumb_design.iter().enumerate() {
+                            if index != steal_vs_code_breadcrumb_design.len() - 1 {
+                                breadcrumb.push_str(format!("{part} {} ", icons::CARET_RIGHT).as_str());
+                            } else {
+                                breadcrumb.push_str(format!("{} {part}", icons::FILE_TEXT).as_str())
+                            }
+                        }
 
                         let response = ui.add(
-                            egui::Label::new(steal_vs_code_breadcrumb_design)
+                            egui::Label::new(breadcrumb)
                             .wrap_mode(egui::TextWrapMode::Truncate)
                             .sense(egui::Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand);
 

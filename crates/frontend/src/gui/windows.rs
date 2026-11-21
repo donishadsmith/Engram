@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use egui::{Context, Ui};
 use egui_phosphor::regular as icons;
+use macroquad::window::screen_width;
 use shared::{
     EmulatorState,
     constants::ALLOWED_REWIND_CAPACITY,
@@ -163,6 +164,10 @@ fn folder_selection(ui: &mut Ui, ui_state: &mut UiState, path: &PathBuf) {
 }
 
 pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
+    if screen_width() < 1.0 {
+        return;
+    }
+    
     if session.lua_lab.opened {
         if let Some(emulator) = &mut session.emulator
             && let Some(script_engine) = emulator.script_engine()
