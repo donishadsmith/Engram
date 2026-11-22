@@ -11,6 +11,8 @@ egui-macroquad.workspace = true
 egui_plot.workspace = true
 shared.workspace = true
 serde.workspace = true
+lz4_flex.workspace = true
+postcard.workspace = true
 
 # REMEMBER TO REMOVE THESE EVENTUALLY
 [lints.clippy]

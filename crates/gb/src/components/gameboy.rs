@@ -5,12 +5,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use shared::{
-    Emulator, EmulatorState, ScriptTarget,
+    Breakpoint, Cycles, Emulator, Rewind, ScriptTarget, ScriptedInput, State, Watchpoint,
     render::{Frame, PixelFormat, to_rbg_single},
-    script::{
-        CpuError, DomainError, MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange,
-    },
-    structs::{ElapsedCycles, RewindManager},
+    script::{CpuError, DomainError, MemoryAccessor},
+    structs::{BreakpointManager, CycleManager, RewindManager, WatchpointManager},
     traits::BitOps,
     utils::error_message,
 };
@@ -27,7 +25,7 @@ use crate::{
     },
 };
 
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB5";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMGB6";
 pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 
 // http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf
@@ -37,17 +35,14 @@ pub const T_CYCLES_PER_FRAME_DOUBLE: u32 = 140448;
 #[derive(Serialize, Deserialize)]
 pub struct GameBoy {
     pub cpu: SharpSm83<Bus>,
-    pub scripted_keypad: Option<[bool; 8]>,
+    #[serde(skip)]
+    pub scripted_keypad: Option<Vec<bool>>,
     pub keypad: [bool; 8],
     pub remaining_cycles: u32,
     pub apu_sample_period: f64,
     pub rumble_strength: f32,
     #[serde(skip)]
-    pause_at_cycle: Option<ElapsedCycles>,
-    #[serde(skip)]
-    elapsed_cycles_pause: Option<ElapsedCycles>,
-    #[serde(skip)]
-    cycle_pause: bool,
+    cycle_manager: CycleManager,
     #[serde(skip)]
     pub force_screen_update: bool,
     #[serde(skip)]
@@ -67,9 +62,7 @@ impl GameBoy {
             remaining_cycles: 0,
             apu_sample_period,
             rumble_strength: 0.0,
-            elapsed_cycles_pause: None,
-            pause_at_cycle: None,
-            cycle_pause: false,
+            cycle_manager: CycleManager::default(),
             force_screen_update: false,
             rewind_manager: RewindManager::new(GB_CLOCK_SPEED as u64),
         }
@@ -150,15 +143,14 @@ impl GameBoy {
 
     pub fn end_of_frame(&mut self) {
         self.cpu.bus.joypad.poll(
-            self.scripted_keypad.unwrap_or(self.keypad),
+            self.scripted_keypad
+                .as_deref()
+                .and_then(|keys| keys.try_into().ok())
+                .unwrap_or(self.keypad),
             &mut self.cpu.bus.interrupt_flag,
         );
 
         self.cpu.bus.gamepak.mbc.tick();
-    }
-
-    pub fn take_watchpoint_pause(&mut self) -> bool {
-        take(&mut self.cpu.bus.watchpoint_manager.pause)
     }
 
     pub fn replenish_remaining_cycles(&mut self) {
@@ -209,8 +201,64 @@ impl GameBoy {
     pub fn take_frame(&mut self) -> bool {
         take(&mut self.cpu.bus.ppu.frame_ready) || take(&mut self.cpu.bus.ppu.lcd_off_frame)
     }
+}
 
-    pub fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
+impl Emulator for GameBoy {
+    fn save(&mut self) -> Result<(), Error> {
+        self.cpu.bus.gamepak.write_sav()?;
+
+        Ok(())
+    }
+
+    fn frontend_mut(&mut self) -> &mut Frame {
+        &mut self.cpu.bus.ppu.frontend
+    }
+}
+
+impl Breakpoint for GameBoy {
+    fn breakpoint_manager_ref(&self) -> &BreakpointManager {
+        &self.cpu.breakpoint_manager
+    }
+
+    fn breakpoint_manager_mut(&mut self) -> &mut BreakpointManager {
+        &mut self.cpu.breakpoint_manager
+    }
+}
+
+impl Watchpoint for GameBoy {
+    fn watchpoint_manager_ref(&self) -> &WatchpointManager {
+        &self.cpu.bus.watchpoint_manager
+    }
+
+    fn watchpoint_manager_mut(&mut self) -> &mut WatchpointManager {
+        &mut self.cpu.bus.watchpoint_manager
+    }
+}
+
+impl Cycles for GameBoy {
+    fn cycle_manager_ref(&self) -> &CycleManager {
+        &self.cycle_manager
+    }
+
+    fn cycle_manager_mut(&mut self) -> &mut CycleManager {
+        &mut self.cycle_manager
+    }
+
+    fn clock_rate(&self) -> f64 {
+        GB_CLOCK_SPEED
+    }
+
+    fn elapsed_cycles(&self) -> u64 {
+        self.cpu.bus.t_cycles
+    }
+}
+
+impl State for GameBoy {
+    fn state_magic_name(&self) -> &[u8] {
+        STATE_MAGIC_NAME
+    }
+
+    fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
         let magic_len = STATE_MAGIC_NAME.len();
         if bytes.len() < magic_len || &bytes[..magic_len] != STATE_MAGIC_NAME {
             return Err(error_message("Not a Game Boy save state".to_string()));
@@ -255,7 +303,7 @@ impl GameBoy {
             &mut data.cpu.bus.gamepak.sav_path,
             &mut self.cpu.bus.gamepak.sav_path,
         );
-        data.scripted_keypad = self.scripted_keypad;
+        swap(&mut data.scripted_keypad, &mut self.scripted_keypad);
 
         swap(
             &mut data.cpu.bus.apu.psg_output,
@@ -263,12 +311,7 @@ impl GameBoy {
         );
         data.cpu.bus.apu.mixer.changed = true;
 
-        swap(&mut data.cycle_pause, &mut self.cycle_pause);
-        swap(
-            &mut data.elapsed_cycles_pause,
-            &mut self.elapsed_cycles_pause,
-        );
-        swap(&mut data.pause_at_cycle, &mut self.pause_at_cycle);
+        swap(&mut data.cycle_manager, &mut self.cycle_manager);
 
         swap(&mut data.rewind_manager, &mut self.rewind_manager);
 
@@ -276,39 +319,19 @@ impl GameBoy {
 
         Ok(())
     }
+}
 
-    fn pause_at_cycle_reached(&self) -> bool {
-        self.pause_at_cycle
-            .as_ref()
-            .is_some_and(|pause| self.elapsed_cycles() >= pause.target_elapsed_cycles)
+impl Rewind for GameBoy {
+    fn rewind_manager_ref(&self) -> &RewindManager {
+        &self.rewind_manager
     }
 
-    fn elapsed_cycles_pause_reached(&self) -> bool {
-        self.elapsed_cycles_pause.as_ref().is_some_and(|pause| {
-            self.elapsed_cycles() >= pause.starting_cycle + pause.target_elapsed_cycles
-        })
+    fn rewind_manager_mut(&mut self) -> &mut RewindManager {
+        &mut self.rewind_manager
     }
 
-    pub fn pause_at_current_cycle(&mut self) -> bool {
-        if self.pause_at_cycle_reached() || self.elapsed_cycles_pause_reached() {
-            self.cycle_pause = true;
-
-            return true;
-        }
-
-        false
-    }
-
-    pub fn take_cycle_pause(&mut self) -> bool {
-        if self.pause_at_cycle_reached() {
-            self.pause_at_cycle = None;
-        }
-
-        if self.elapsed_cycles_pause_reached() {
-            self.elapsed_cycles_pause = None;
-        }
-
-        take(&mut self.cycle_pause)
+    fn snapshot(&self) -> Result<Vec<u8>, Error> {
+        self.save_state()
     }
 
     fn rewind_cycles(&self) -> u64 {
@@ -320,121 +343,21 @@ impl GameBoy {
             self.cpu.bus.t_cycles
         }
     }
-
-    pub fn capture_rewind(&mut self) {
-        let cycles = self.rewind_cycles();
-        if self.rewind_manager.should_capture(cycles)
-            && let Ok(state) = self.save_state(STATE_MAGIC_NAME)
-        {
-            self.rewind_manager.push(cycles, state);
-        }
-    }
-}
-
-impl Emulator for GameBoy {
-    fn save(&mut self) -> Result<(), Error> {
-        self.cpu.bus.gamepak.write_sav()?;
-
-        Ok(())
-    }
-
-    fn remove_breakpoint(&mut self, address: u32) -> bool {
-        self.cpu.breakpoint_manager.remove(address)
-    }
-
-    fn set_breakpoint(&mut self, address: u32, pause: bool) -> bool {
-        self.cpu.breakpoint_manager.set(address, pause)
-    }
-
-    fn take_breakpoint_hit(&mut self) -> Option<u32> {
-        take(&mut self.cpu.breakpoint_manager.hit)
-    }
-
-    fn clear_all_breakpoints(&mut self) {
-        self.cpu.breakpoint_manager.queue.clear();
-        self.cpu.breakpoint_manager.range = None;
-    }
-
-    fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
-        self.cpu
-            .breakpoint_manager
-            .queue
-            .clone()
-            .into_iter()
-            .collect()
-    }
-
-    fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {
-        self.cpu
-            .bus
-            .watchpoint_manager
-            .queue
-            .iter()
-            .map(|(&watchpoint_range, args)| (watchpoint_range, args.clone()))
-            .collect()
-    }
-
-    fn set_watchpoint(
-        &mut self,
-        watchpoint_range: WatchpointRange,
-        watchpoint_args: WatchpointArgs,
-    ) -> bool {
-        let queue = &mut self.cpu.bus.watchpoint_manager.queue;
-
-        queue.insert(watchpoint_range, watchpoint_args).is_some()
-    }
-
-    fn clear_all_watchpoints(&mut self) {
-        self.cpu.bus.watchpoint_manager.queue.clear();
-    }
-
-    fn remove_watchpoint(&mut self, watchpoint_range: WatchpointRange) {
-        self.cpu
-            .bus
-            .watchpoint_manager
-            .queue
-            .remove(&watchpoint_range);
-    }
-
-    fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
-        take(&mut self.cpu.bus.watchpoint_manager.hits)
-    }
-
-    fn frontend_mut(&mut self) -> &mut Frame {
-        &mut self.cpu.bus.ppu.frontend
-    }
-
-    fn set_cycle_pause(&mut self, cycle: u64) {
-        self.pause_at_cycle = Some(ElapsedCycles {
-            starting_cycle: 0,
-            target_elapsed_cycles: cycle,
-        });
-    }
-
-    fn set_elapsed_cycles_pause(&mut self, elapsed_cycle: u64) {
-        self.elapsed_cycles_pause = Some(ElapsedCycles {
-            starting_cycle: self.elapsed_cycles(),
-            target_elapsed_cycles: elapsed_cycle,
-        });
-    }
-
-    fn rewind(&mut self, count: usize) -> Option<f64> {
-        let current = self.rewind_cycles();
-        let (state, snapshot_cycles) = self.rewind_manager.pop_n(count)?;
-
-        self.load_state(&state).ok()?;
-
-        // a slot load or lua restore can result in newer snapshots in the
-        // buffer than the current cycle, prevent underflow
-        let rewound_cycles = current.saturating_sub(snapshot_cycles as u64);
-
-        Some(rewound_cycles as f64 / GB_CLOCK_SPEED)
-    }
 }
 
 impl Drop for GameBoy {
     fn drop(&mut self) {
         let _ = self.save();
+    }
+}
+
+impl ScriptedInput for GameBoy {
+    fn scripted_keypad_ref(&self) -> &Option<Vec<bool>> {
+        &self.scripted_keypad
+    }
+
+    fn scripted_keypad_mut(&mut self) -> &mut Option<Vec<bool>> {
+        &mut self.scripted_keypad
     }
 }
 
@@ -629,72 +552,5 @@ impl ScriptTarget for GameBoy {
         };
 
         Some((domain, base))
-    }
-
-    fn set_scripted_inputs(&mut self, keys: Option<Vec<bool>>) {
-        if keys.is_none() {
-            self.scripted_keypad = None;
-
-            return;
-        }
-
-        let keys = keys.unwrap();
-        if !keys.contains(&true) {
-            self.scripted_keypad = None;
-        } else {
-            self.scripted_keypad = keys.try_into().ok();
-        }
-    }
-
-    fn check_scripted_inputs(&self) -> Option<&[bool]> {
-        if let Some(arr) = &self.scripted_keypad {
-            Some(arr)
-        } else {
-            None
-        }
-    }
-
-    fn elapsed_cycles(&self) -> u64 {
-        self.cpu.bus.t_cycles
-    }
-
-    fn cycle_paused_text(&mut self) -> Vec<String> {
-        let mut vec = Vec::with_capacity(2);
-
-        if let Some(pause) = self.pause_at_cycle.as_ref()
-            && self.pause_at_cycle_reached()
-        {
-            vec.push(format!(
-                "pause due to specific t-cycle being reached - Current t-cycle {}; Target t-cycle {}",
-                self.elapsed_cycles(),
-                pause.target_elapsed_cycles
-            ));
-        }
-
-        if let Some(pause) = self.elapsed_cycles_pause.as_ref()
-            && self.elapsed_cycles_pause_reached()
-        {
-            vec.push(format!(
-                "pause due to specific elapsed t-cycles being reached - Starting t-cycle {}; Current t-cycle {}; Target t-cycle {}; Requested elapsed t-cycles {}",
-                pause.starting_cycle,
-                self.elapsed_cycles(),
-                pause.starting_cycle + pause.target_elapsed_cycles,
-                pause.target_elapsed_cycles
-            ));
-        }
-
-        vec
-    }
-
-    fn restore(&mut self, buffer: Vec<u8>) -> Result<(), Error> {
-        self.load_state(&buffer)
-    }
-
-    fn snapshot(&self) -> Result<Vec<u8>, Error> {
-        self.save_state(STATE_MAGIC_NAME)
-    }
-
-    fn rewind_occupancy(&self) -> (usize, usize, usize) {
-        self.rewind_manager.occupancy()
     }
 }

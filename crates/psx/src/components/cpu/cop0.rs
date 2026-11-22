@@ -53,6 +53,23 @@ impl Cop0Registers {
             _ => unreachable!(),
         }
     }
+
+    pub fn from_name(name: &str) -> Option<Cop0Registers> {
+        match name {
+            "cop0_bpc" => Some(Cop0Registers::Bpc),
+            "cop0_bda" => Some(Cop0Registers::Bda),
+            "cop0_tar" => Some(Cop0Registers::Tar),
+            "cop0_dcic" => Some(Cop0Registers::Dcic),
+            "cop0_bada" => Some(Cop0Registers::Bada),
+            "cop0_bdam" => Some(Cop0Registers::Bdam),
+            "cop0_bpcm" => Some(Cop0Registers::Bpcm),
+            "cop0_sr" => Some(Cop0Registers::Sr),
+            "cop0_cause" => Some(Cop0Registers::Cause),
+            "cop0_epc" => Some(Cop0Registers::Epc),
+            "cop0_prid" => Some(Cop0Registers::Prid),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -161,7 +178,7 @@ impl Cop0 {
         }
     }
 
-    pub fn move_from(&mut self, register: Cop0Registers) -> u32 {
+    pub fn move_from(&self, register: Cop0Registers) -> u32 {
         match register {
             Cop0Registers::Bada => self.bada,
             Cop0Registers::Bda => self.bda,

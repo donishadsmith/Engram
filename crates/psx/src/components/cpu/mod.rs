@@ -170,6 +170,49 @@ pub enum RegisterAlias {
     Lo,
 }
 
+impl RegisterAlias {
+    pub fn from_name(name: &str) -> Option<RegisterAlias> {
+        match name {
+            "zero" => Some(RegisterAlias::Zero),
+            "at" => Some(RegisterAlias::At),
+            "v0" => Some(RegisterAlias::V0),
+            "v1" => Some(RegisterAlias::V1),
+            "a0" => Some(RegisterAlias::A0),
+            "a1" => Some(RegisterAlias::A1),
+            "a2" => Some(RegisterAlias::A2),
+            "a3" => Some(RegisterAlias::A3),
+            "t0" => Some(RegisterAlias::T0),
+            "t1" => Some(RegisterAlias::T1),
+            "t2" => Some(RegisterAlias::T2),
+            "t3" => Some(RegisterAlias::T3),
+            "t4" => Some(RegisterAlias::T4),
+            "t5" => Some(RegisterAlias::T5),
+            "t6" => Some(RegisterAlias::T6),
+            "t7" => Some(RegisterAlias::T7),
+            "s0" => Some(RegisterAlias::S0),
+            "s1" => Some(RegisterAlias::S1),
+            "s2" => Some(RegisterAlias::S2),
+            "s3" => Some(RegisterAlias::S3),
+            "s4" => Some(RegisterAlias::S4),
+            "s5" => Some(RegisterAlias::S5),
+            "s6" => Some(RegisterAlias::S6),
+            "s7" => Some(RegisterAlias::S7),
+            "t8" => Some(RegisterAlias::T8),
+            "t9" => Some(RegisterAlias::T9),
+            "k0" => Some(RegisterAlias::K0),
+            "k1" => Some(RegisterAlias::K1),
+            "gp" => Some(RegisterAlias::Gp),
+            "sp" => Some(RegisterAlias::Sp),
+            "fp" => Some(RegisterAlias::Fp),
+            "ra" => Some(RegisterAlias::Ra),
+            "pc" => Some(RegisterAlias::Pc),
+            "hi" => Some(RegisterAlias::Hi),
+            "lo" => Some(RegisterAlias::Lo),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Registers {
     pub r: [u32; 32],

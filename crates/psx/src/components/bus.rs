@@ -144,13 +144,13 @@ pub struct Bus {
     istat: u32,
     imask: u32,
     #[serde(skip)]
-    trace: Option<Trace>,
+    pub trace: Option<Trace>,
     #[serde(skip)]
     pub watchpoint_manager: WatchpointManager,
 }
 
 impl Bus {
-    pub fn new() -> Self {
+    pub fn new(spu_sample_period: f64) -> Self {
         let trace = var("PSXTRACE")
             .ok()
             .and_then(|str| str.parse().ok())

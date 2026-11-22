@@ -3,13 +3,16 @@ use std::{
     path::PathBuf,
     sync::mpsc::{self, Receiver, TryRecvError},
     thread::spawn,
+    time::{Duration, Instant},
 };
 
 use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
+use spin_sleep::sleep_until;
 
 use crate::{
     EmulatorState,
+    constants::MAX_FRAMES_PER_CALL,
     enums::Width,
     script::{MemoryAccessor, WatchpointArgs, WatchpointHit, WatchpointRange, WatchpointType},
     traits::UnsignedInt,
@@ -382,5 +385,96 @@ impl RewindManager {
 impl Default for RewindManager {
     fn default() -> Self {
         RewindManager::new(u64::MAX)
+    }
+}
+
+pub struct FrameTracker {
+    fps_start: Instant,
+    fps_frames: u64,
+    pub fps: f64,
+}
+
+impl FrameTracker {
+    pub fn new() -> Self {
+        Self {
+            fps_start: Instant::now(),
+            fps_frames: 0,
+            fps: 0.0,
+        }
+    }
+
+    pub fn compute_fps(&mut self, frames: u64) {
+        self.fps_frames += frames;
+
+        let elapsed_time = self.fps_start.elapsed().as_secs_f64();
+        if elapsed_time >= 1.0 {
+            self.fps = self.fps_frames as f64 / elapsed_time;
+            self.fps_frames = 0;
+            self.fps_start = Instant::now();
+        }
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::new();
+    }
+}
+
+pub struct FramePacer {
+    pub frame_period: Duration,
+    pub frame_deadline: Instant,
+    pub speed: f32,
+    base_period: f64,
+}
+
+impl FramePacer {
+    pub fn new(base_period: f64) -> Self {
+        let frame_period = Duration::from_secs_f64(base_period);
+
+        Self {
+            frame_period,
+            frame_deadline: Instant::now() + frame_period,
+            speed: 1.0,
+            base_period,
+        }
+    }
+
+    pub fn update_frame_deadline(&mut self) {
+        self.frame_deadline = Instant::now() + self.frame_period
+    }
+
+    pub fn set_speed(&mut self, speed: f32) {
+        self.speed = speed;
+
+        self.frame_period = Duration::from_secs_f64(if speed < 1.0 {
+            self.base_period / speed as f64
+        } else {
+            self.base_period
+        });
+    }
+
+    pub fn sleep(&mut self) {
+        let current_time = Instant::now();
+        if current_time > self.frame_deadline + self.frame_period * MAX_FRAMES_PER_CALL {
+            self.frame_deadline = current_time;
+        }
+
+        sleep_until(self.frame_deadline);
+        self.frame_deadline += self.frame_period;
+    }
+}
+
+pub struct CycleManager {
+    pub elapsed_cycles_pause: Option<ElapsedCycles>,
+    pub pause_at_cycle: Option<ElapsedCycles>,
+    pub cycle_pause: bool,
+}
+
+impl Default for CycleManager {
+    fn default() -> Self {
+        CycleManager {
+            elapsed_cycles_pause: None,
+            pause_at_cycle: None,
+            cycle_pause: false,
+        }
     }
 }

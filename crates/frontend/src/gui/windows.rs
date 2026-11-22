@@ -167,7 +167,7 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
     if screen_width() < 1.0 {
         return;
     }
-    
+
     if session.lua_lab.opened {
         if let Some(emulator) = &mut session.emulator
             && let Some(script_engine) = emulator.script_engine()

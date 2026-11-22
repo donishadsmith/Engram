@@ -24,7 +24,7 @@ pub struct Apu {
     pub psg: PsgChannel,
     #[serde(skip)]
     pub psg_output: PsgOutput,
-    sample_counter: f64,
+    pub sample_counter: f64,
     pub sample_buffer: Vec<f32>,
     previous_samples: [u8; 4],
 }
