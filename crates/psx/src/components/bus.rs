@@ -141,12 +141,16 @@ pub struct Bus {
         1F801070h  2  I_STAT / I_REG  Interrupt status register
         1F801074h  2  I_MASK          Interrupt mask register
     */
-    istat: u32,
-    imask: u32,
+    pub istat: u32,
+    pub imask: u32,
     #[serde(skip)]
     pub trace: Option<Trace>,
     #[serde(skip)]
     pub watchpoint_manager: WatchpointManager,
+    #[serde(skip)]
+    pub istat_copy: u32,
+    #[serde(skip)]
+    pub imask_copy: u32,
 }
 
 impl Bus {
@@ -172,6 +176,8 @@ impl Bus {
             imask: 0,
             trace,
             watchpoint_manager: WatchpointManager::default(),
+            imask_copy: 0,
+            istat_copy: 0,
         }
     }
 
@@ -219,7 +225,7 @@ impl Bus {
         match address {
             0x1F801070..0x1F801074 => T::read(self.istat, address),
             0x1F801074..0x1F801078 => T::read(self.imask, address),
-            _ => todo!(),
+            _ => {T::ZERO},
         }
     }
 
@@ -259,7 +265,7 @@ impl Bus {
                 self.istat &= interrupt_mask;
             }
             0x1F801074..0x1F801078 => T::write(&mut self.imask, address, value),
-            _ => todo!(),
+            _ => {},
         }
     }
 
@@ -289,6 +295,11 @@ impl Bus {
         self.watchpoint_manager
             .queue
             .remove(&translate_watchpoint(range));
+    }
+
+    pub fn copy_interrupt_info(&mut self) {
+        self.istat_copy = self.istat;
+        self.imask_copy = self.imask;
     }
 }
 

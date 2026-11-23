@@ -377,6 +377,12 @@ impl R3000a {
 
         self.registers.take_pending_load();
 
+        if self.interrupt_pending(&bus) {
+            self.exception(ExceptionCode::ExternalInterrupt);
+
+            return
+        }
+
         if !executing_address.is_multiple_of(4) {
             self.cop0.set_bad_address(executing_address);
             self.exception(ExceptionCode::LoadAddressError);
@@ -437,7 +443,7 @@ impl R3000a {
                 0b100011 => self.subu(instruction),
                 0b001100 => self.syscall(),
                 0b100110 => self.xor(instruction),
-                _ => todo!(),
+                _ => self.exception(ExceptionCode::ReservedInstruction),
             },
             0b001000 => self.addi(instruction),
             0b001001 => self.addiu(instruction),
@@ -448,7 +454,7 @@ impl R3000a {
                 0b10001 => self.bgezal(instruction),
                 0b0 => self.bltz(instruction),
                 0b10000 => self.bltzal(instruction),
-                _ => todo!(),
+                _ => self.exception(ExceptionCode::ReservedInstruction),
             },
             0b000111 => self.bgtz(instruction),
             0b000110 => self.blez(instruction),
@@ -459,7 +465,7 @@ impl R3000a {
                 0b00100 => self.mtcz(instruction),
                 0b00110 => self.ctcz(instruction, bus),
                 rs if (rs as u8).is_set(4) => self.copz(instruction),
-                _ => todo!(),
+                _ => self.exception(ExceptionCode::ReservedInstruction),
             },
             0b000010 => self.jump(instruction),
             0b000011 => self.jal(instruction),
@@ -482,7 +488,7 @@ impl R3000a {
             0b101010 => self.swl(instruction, bus),
             0b101110 => self.swr(instruction, bus),
             0b001110 => self.xori(instruction),
-            _ => todo!(),
+            _ => self.exception(ExceptionCode::ReservedInstruction),
         }
     }
 
@@ -1093,5 +1099,15 @@ impl R3000a {
             instruction.rt(),
             self.registers.r[instruction.rs()] ^ instruction.immediate_16(),
         );
+    }
+
+    pub fn interrupt_pending(&mut self, bus: &Bus) -> bool {
+        // https://problemkaputt.de/psxspx-interrupts.htm
+        // https://problemkaputt.de/psxspx-cop0-exception-handling.htm
+        self.cop0
+            .cause
+            .set_bit_range_value(10..11, ((bus.istat & bus.imask) != 0u32) as u32);
+
+        self.cop0.sr.is_set(0) && (self.cop0.sr & self.cop0.cause & 0xFF00) != 0
     }
 }

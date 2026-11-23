@@ -91,7 +91,7 @@ PlayStation 1 is extremely WIP.
 
 <p align="center">
   <img src="assets/lab.png" width="800">
-  <br><sub>Logging writes to Pokemon Crystal's species byte after a previous script modified RAM to make the best Pokemon (Celebi) shiny</sub>
+  <br><sub>Logging writes to Pokemon Crystal's species byte after a previous script modified RAM to make the best Pokemon and cutest mythical Pokemon (Celebi) shiny</sub>
 </p>
 
 ## Usage
@@ -101,7 +101,10 @@ cd Engram
 cargo run --release
 ```
 
-**Note**: Video recording requires [ffmpeg](https://ffmpeg.org/download.html) in your `PATH`.
+**Note**: 
+- Video recording requires [ffmpeg](https://ffmpeg.org/download.html) in your `PATH`.
+- Can download pre-built executables [here](https://github.com/donishadsmith/Engram/releases/latest).
+
 
 ### Linux dependencies
 Additional dependencies for audio (cpal), rendering/windowing (macroquad) and controllers (gilrs) are required:

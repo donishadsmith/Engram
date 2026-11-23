@@ -141,18 +141,29 @@ impl SpriteAttributes {
         }
     }
 
-    pub fn visible_row(&self, vcount: u8) -> Option<i32> {
-        if self.disabled || self.mode == SpriteMode::Prohibited {
+    pub fn visible_row(sprite_id: usize, oam: &Box<[u8]>, vcount: u8) -> Option<i32> {
+        let attribute0 = create_halfword(sprite_id * 8, oam);
+        let affine = attribute0.is_set(8);
+        if !affine && attribute0.is_set(9) {
             return None;
         }
 
-        if self.coordinate.x + self.bounding_box.width <= 0 || self.coordinate.x >= 240 {
+        let shape = attribute0.get_bit_range(14..16) as usize;
+        if shape == 3 {
             return None;
         }
 
-        let row = vcount as i32 - self.coordinate.y;
+        let size = (oam[sprite_id * 8 + 3] >> 6) as usize;
+        let mut height = SPRITE_DIMENSIONS[shape][size].1 as i32;
+        if affine && attribute0.is_set(9) {
+            height *= 2;
+        }
 
-        (row >= 0 && row < self.bounding_box.height).then_some(row)
+        let y = attribute0.get_bit_range(0..8) as i32;
+        let y = if y >= 160 { y - 256 } else { y };
+        let row = vcount as i32 - y;
+
+        (row >= 0 && row < height).then_some(row)
     }
 }
 

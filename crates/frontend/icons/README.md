@@ -1,0 +1,1 @@
+Lua icon downloaded from [seti-ui repo](https://github.com/jesseweed/seti-ui) and converted to ttf via [icomoon](https://icomoon.io/app)

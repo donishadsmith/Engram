@@ -59,6 +59,16 @@ async fn main() -> Result<(), Error> {
     let mut ui_state = UiState::new();
 
     egui_phosphor::add_to_fonts(&mut ui_state.fonts, egui_phosphor::Variant::Regular);
+    ui_state.fonts.font_data.insert(
+        "lua_icon".to_owned(),
+        egui::FontData::from_static(include_bytes!("../icons/icomoon.ttf")).into(),
+    );
+    ui_state
+        .fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .push("lua_icon".to_owned());
 
     loop {
         // i swear my pc wasnt overheating this badly even with vsync off,

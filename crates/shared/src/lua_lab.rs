@@ -10,8 +10,8 @@ use std::{
 
 use arboard::Clipboard;
 use egui::{
-    Context, ScrollArea, Window,
-    text::{CCursor, CCursorRange},
+    Context, FontId, ScrollArea, TextFormat, TextStyle, Window,
+    text::{CCursor, CCursorRange, LayoutJob},
     text_edit::TextEditOutput,
 };
 use egui_code_editor::{CodeEditor, ColorTheme, Completer, Syntax};
@@ -47,6 +47,11 @@ Notes:
     - Tab and Shift+Tab replace selected text, so use the bracket shortcuts on a selection
 "#;
 
+// dumbest thing ive done, spent an hour+ of my life finding the logo vscode uses for lua,
+// converting an svg to a ttf, getting the exact rgb from photoshop, then wiring it up in 3
+// different places for an icon that is purely aesthetic
+const LUA: &str = "\u{e900}";
+const LUA_LOGO: (u8, u8, u8) = (81, 154, 186);
 const MAX_TABS: usize = 6;
 
 #[derive(PartialEq)]
@@ -329,6 +334,7 @@ impl LuaLab {
                                     *ui.visuals_mut() = egui::Visuals::light();
                                 }
 
+                                // maybe make the text color behavior a little more accurate later
                                 ui.visuals_mut().override_text_color = Some(text_color);
 
                                 ui.horizontal(|ui| {
@@ -425,8 +431,7 @@ impl LuaLab {
                                     ui.scope(|ui| {
                                         // just used photoshop color picker for the rgbs for these
                                         ui.visuals_mut().widgets.noninteractive.bg_stroke.color = if theme == EditorTheme::DarkHighContrast {
-                                            egui::Color32::from_rgb(111, 195, 233)} else {egui::Color32::WHITE
-                                            };
+                                            egui::Color32::from_rgb(111, 195, 233)} else if theme.is_light() {egui::Color32::BLACK} else {egui::Color32::WHITE};
                                         ui.separator();
                                     });
 
@@ -458,7 +463,7 @@ impl LuaLab {
                                                             response.rect.left_center(),
                                                             egui::Align2::CENTER_CENTER,
                                                             icons::RECTANGLE_DASHED,
-                                                            egui::FontId::proportional(17.0),
+                                                            FontId::proportional(17.0),
                                                             egui::Color32::from_rgb(243, 122, 24));
                                                         },
                                                    _ => {
@@ -478,7 +483,7 @@ impl LuaLab {
                                                 }
                                             }
 
-                                            ui.painter().text(response.rect.left_center(), egui::Align2::CENTER_CENTER, icons::X, egui::FontId::proportional(12.0), text_color);
+                                            ui.painter().text(response.rect.left_center(), egui::Align2::CENTER_CENTER, icons::X, FontId::proportional(12.0), text_color);
 
                                             if response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                                                 if tab.progress_unsaved {
@@ -501,12 +506,14 @@ impl LuaLab {
                                         let left = rect.center().x - (ICON_SPACE + galley.size().x) / 2.0;
                                         let text_color = ui.visuals().text_color();
 
+                                        let is_lua =  tab.path.as_ref().and_then(|path| path.extension()).is_some_and(|ext| ext == "lua");
+                                        let logo_color = if is_lua {egui::Color32::from_rgb(LUA_LOGO.0, LUA_LOGO.1, LUA_LOGO.2)} else {text_color};
                                         ui.painter()
                                         .text(
                                             egui::Pos2::new(left, rect.center().y),
                                             egui::Align2::CENTER_CENTER,
-                                            if tab.path.is_some() {icons::FILE_TEXT} else {icons::TEXT_ALIGN_LEFT},
-                                            egui::FontId::proportional(12.0), text_color);
+                                            if is_lua {LUA} else {icons::TEXT_ALIGN_LEFT},
+                                            FontId::proportional(14.0), logo_color);
 
                                         let rectangle = egui::Rect::from_min_max(egui::Pos2::new(rect.left() - DIAMETER, rect.top()), egui::Pos2::new(rect.right() + 18.0, rect.bottom()));
                                         if tab.id == current_id {
@@ -546,7 +553,10 @@ impl LuaLab {
                                                     egui::pos2(tab_rect.right(), bottom),
                                                     egui::pos2(row.right(), bottom),
                                                 ],
-                                                egui::Stroke::new(1.0, egui::Color32::from_rgb(243, 122, 24)),
+
+                                                // for dark mode and light mode outside of dark high coontrast, not quite the line coloring and filling behavior
+                                                // of vscode but decent enough as long as dark hc is relatively close
+                                                egui::Stroke::new(1.0, if theme == EditorTheme::DarkHighContrast {egui::Color32::from_rgb(243, 122, 24)} else {text_color}),
                                             );
                                         }
 
@@ -593,31 +603,40 @@ impl LuaLab {
 
                     ui.horizontal(|ui| {
                         ui.add_space(10.0);
+                        let is_lua = path.extension().map(|string| string.to_str() == Some("lua")).unwrap_or(false);
                         let steal_vs_code_breadcrumb_design = path
                         .components()
                         .filter(|component| !matches!(component.as_os_str().to_str(), Some("\\") | Some("/")))
                         .map(|component| component.as_os_str().to_string_lossy())
                         .collect::<Vec<_>>();
 
-                        let mut breadcrumb = String::new();
+                        let font_id = TextStyle::Body.resolve(ui.style());
+                        let normal = TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() };
+
+                        let mut layout_job = LayoutJob::default();
+                        let last = steal_vs_code_breadcrumb_design.len() - 1;
+
                         for (index, part) in steal_vs_code_breadcrumb_design.iter().enumerate() {
-                            if index != steal_vs_code_breadcrumb_design.len() - 1 {
-                                breadcrumb.push_str(format!("{part} {} ", icons::CARET_RIGHT).as_str());
+                            if index != last {
+                                layout_job.append(&format!("{part} {} ", icons::CARET_RIGHT), 0.0, normal.clone());
                             } else {
-                                breadcrumb.push_str(format!("{} {part}", icons::FILE_TEXT).as_str())
+                                layout_text(is_lua, &normal, &font_id, &mut layout_job, part.to_string());
                             }
                         }
 
                         let response = ui.add(
-                            egui::Label::new(breadcrumb)
+                            egui::Label::new(layout_job)
                             .wrap_mode(egui::TextWrapMode::Truncate)
                             .sense(egui::Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand);
 
                         // not quiite as in depth as vscode but decent enough
                         egui::Popup::menu(&response).show(|ui| {
                             for file in &self.get_current_tab_ref().first_level_files {
+                                let mut layout_job = LayoutJob::default();
+                                let is_lua = file.extension().map(|string| string.to_str() == Some("lua")).unwrap_or(false);
                                 if let Some(filename) = file.file_name() {
-                                    if ui.button(filename.to_string_lossy()).clicked() {
+                                    layout_text(is_lua, &normal, &font_id, &mut layout_job, filename.to_string_lossy().to_string());
+                                    if ui.button(layout_job).clicked() {
                                         open_file = Some(file.clone())
                                     }
                                 }
@@ -1227,4 +1246,25 @@ fn collect_files(path: &PathBuf, first_level_files: &mut Vec<PathBuf>) -> Result
     *first_level_files = files;
 
     Ok(())
+}
+
+fn layout_text(
+    is_lua: bool,
+    normal: &TextFormat,
+    font_id: &FontId,
+    layout_job: &mut LayoutJob,
+    text: String,
+) {
+    let logo_color = TextFormat {
+        font_id: font_id.clone(),
+        color: if is_lua {
+            egui::Color32::from_rgb(LUA_LOGO.0, LUA_LOGO.1, LUA_LOGO.2)
+        } else {
+            normal.color
+        },
+        ..Default::default()
+    };
+    let icon = if is_lua { LUA } else { icons::TEXT_ALIGN_LEFT };
+    layout_job.append(icon, 0.0, logo_color.clone());
+    layout_job.append(&format!(" {text}"), 0.0, normal.clone());
 }

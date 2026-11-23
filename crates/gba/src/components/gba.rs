@@ -83,15 +83,13 @@ impl GBA {
     }
 
     pub fn run(&mut self) {
-        let bus = &mut self.bus;
-
         let pc = self.cpu.next_executing_address();
-        let hits_before = bus.watchpoint_manager.hits.len();
+        let hits_before = self.bus.watchpoint_manager.hits.len();
 
         if self.cpu.is_halted() {
-            bus.scheduler.skip_to_next_event();
+            self.bus.scheduler.skip_to_next_event();
         } else {
-            self.cpu.step(bus);
+            self.cpu.step(&mut self.bus);
 
             if self.cpu.breakpoint_manager.hit.is_some() {
                 return;
@@ -349,6 +347,10 @@ impl State for GBA {
             &mut self.bus.gamepak.sav_path,
         );
         swap(&mut data.scripted_keypad, &mut self.scripted_keypad);
+
+        data.bus.interrupt_enable_copy = self.bus.interrupt_enable_copy;
+        data.bus.interrupt_master_enable_copy = self.bus.interrupt_master_enable_copy;
+        data.bus.interrupt_flag_copy = self.bus.interrupt_flag_copy;
 
         data.apu_sample_period = self.apu_sample_period;
         swap(&mut data.bus.trace, &mut self.bus.trace);

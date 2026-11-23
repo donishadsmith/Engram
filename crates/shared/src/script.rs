@@ -999,7 +999,7 @@ impl ScriptEngine {
                 Ok(())
             })?)?;
 
-            emulator.set("fast_forward", scope.create_function(|_, speed: f32| {
+            emulator.set("speed", scope.create_function(|_, speed: f32| {
                 if ALLOWED_SPEED.contains(&speed) {
                     requests.borrow_mut().push(ScriptRequest::Speed(speed));
                 } else {

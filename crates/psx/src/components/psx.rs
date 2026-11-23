@@ -15,7 +15,7 @@ use crate::components::{
 };
 
 pub const PSX_CLOCK_SPEED: f64 = 33868800.0;
-pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMPSX1";
+pub const STATE_MAGIC_NAME: &[u8] = b"ENGRAMPSX0-ALPHA";
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub enum CdromEvent {}
@@ -72,12 +72,61 @@ impl Psx {
         }
     }
 
+    pub fn run(&mut self) {
+        let pc = self.cpu.registers.current_pc;
+        let hits_before = self.bus.watchpoint_manager.hits.len();
+
+        self.cpu.step(&mut self.bus);
+
+        if self.cpu.breakpoint_manager.hit.is_some() {
+            return;
+        }
+
+        self.handle_events();
+
+        let (istat, imask) = (self.bus.istat, self.bus.imask);
+
+        self.bus.dump(format_args!(
+            "interrupt_status={:032b} interrupt_mask={:032b}",
+            istat, imask
+        ));
+
+        // technically serviced by the time it shows on ui + plus will just be a
+        // flash on ui when enabled but looks cool
+        self.bus.copy_interrupt_info();
+
+        for hit in &mut self.bus.watchpoint_manager.hits[hits_before..] {
+            hit.pc = pc;
+        }
+    }
+
     pub fn debugging_active(&self) -> bool {
         !self.cpu.breakpoint_manager.queue.is_empty()
             || !self.bus.watchpoint_manager.queue.is_empty()
             || self.bus.trace.is_some()
             || self.cycle_manager.pause_at_cycle.is_some()
             || self.cycle_manager.elapsed_cycles_pause.is_some()
+    }
+
+    pub fn run_until_event(&mut self) {
+        loop {
+            self.cpu.step(&mut self.bus);
+
+            if self.bus.scheduler.current >= self.bus.scheduler.next() {
+                break;
+            }
+        }
+
+        self.handle_events();
+        self.bus.copy_interrupt_info();
+    }
+
+    fn handle_events(&mut self) {
+        while let Some((deadline, event)) = self.bus.scheduler.pop() {
+            match event {
+                _ => {}
+            }
+        }
     }
 
     pub fn take_frame(&mut self) -> bool {
@@ -195,6 +244,9 @@ impl State for Psx {
         swap(&mut data.cycle_manager, &mut self.cycle_manager);
 
         swap(&mut data.rewind_manager, &mut self.rewind_manager);
+
+        data.bus.istat_copy = self.bus.istat_copy;
+        data.bus.imask_copy = self.bus.imask_copy;
 
         *self = data;
 

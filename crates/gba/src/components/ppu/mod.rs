@@ -451,18 +451,17 @@ impl Ppu {
     ) {
         if mode_type == RenderType::Text {
             self.populate_text_line(bg_line);
+        } else if mode_type == RenderType::Affine {
+            self.get_affine_bg_palette_index(bg_line, matrix.unwrap())
         } else {
             for pixel in 0..SCREEN_WIDTH {
                 let index = match mode_type {
-                    RenderType::Affine => {
-                        self.get_affine_bg_palette_index(bg_line.id, pixel, matrix.unwrap())
-                    }
                     RenderType::Bitmap => self.get_bitmap_palette_index(
                         get_bitmap_mode_params(self.current_mode()),
                         pixel,
                         matrix.unwrap(),
                     ),
-                    RenderType::Text => unreachable!(),
+                    RenderType::Text | RenderType::Affine => unreachable!(),
                 };
 
                 bg_line.palette_indices[pixel] = index
@@ -644,12 +643,8 @@ impl Ppu {
         }
     }
 
-    fn get_affine_bg_palette_index(
-        &mut self,
-        bg_id: usize,
-        lcd_pixel_x: usize,
-        matrix: AffineMatrix,
-    ) -> Option<usize> {
+    fn get_affine_bg_palette_index(&mut self, bg_line: &mut BgLine, matrix: AffineMatrix) {
+        let bg_id = bg_line.id;
         let control = self.bg_control.from_index(bg_id);
         let character_base_block = control.get_bit_range(2..4) as usize;
         let screen_base_block = control.get_bit_range(8..13) as usize;
@@ -678,40 +673,44 @@ impl Ppu {
             character_base_block,
             screen_base_block,
         };
-
-        let mut affine_map_pixel_x = reference.x.transformed_pixel(matrix.pa, lcd_pixel_x);
-        let mut affine_map_pixel_y = reference.y.transformed_pixel(matrix.pc, lcd_pixel_x);
-
-        if wrap {
-            affine_map_pixel_x = affine_map_pixel_x.rem_euclid(screen_size);
-            affine_map_pixel_y = affine_map_pixel_y.rem_euclid(screen_size);
-        } else if affine_map_pixel_x < 0
-            || affine_map_pixel_x >= screen_size
-            || affine_map_pixel_y < 0
-            || affine_map_pixel_y >= screen_size
-        {
-            return None;
-        }
-
-        let (affine_map_pixel_x, affine_map_pixel_y) =
-            (affine_map_pixel_x as usize, affine_map_pixel_y as usize);
-
         let tiles_per_side = screen_size as usize / 8;
-        let tileset_offset = self.vram[screen_base_block * 0x800
-            + (affine_map_pixel_y / 8) * tiles_per_side
-            + affine_map_pixel_x / 8] as usize;
-        let index = self.read_tile_pixel_palette_index(
-            character_base_block,
-            tileset_offset,
-            Coordinate {
-                x: affine_map_pixel_x % 8,
-                y: affine_map_pixel_y % 8,
-            },
-            Bpp::EigthBpp,
-            0,
-        );
 
-        if index == 0 { None } else { Some(index) }
+        for lcd_x in 0..SCREEN_WIDTH {
+            let mut affine_map_pixel_x = reference.x.transformed_pixel(matrix.pa, lcd_x);
+            let mut affine_map_pixel_y = reference.y.transformed_pixel(matrix.pc, lcd_x);
+
+            if wrap {
+                affine_map_pixel_x = affine_map_pixel_x.rem_euclid(screen_size);
+                affine_map_pixel_y = affine_map_pixel_y.rem_euclid(screen_size);
+            } else if affine_map_pixel_x < 0
+                || affine_map_pixel_x >= screen_size
+                || affine_map_pixel_y < 0
+                || affine_map_pixel_y >= screen_size
+            {
+                bg_line.palette_indices[lcd_x] = None;
+
+                continue;
+            }
+
+            let (affine_map_pixel_x, affine_map_pixel_y) =
+                (affine_map_pixel_x as usize, affine_map_pixel_y as usize);
+
+            let tileset_offset = self.vram[screen_base_block * 0x800
+                + (affine_map_pixel_y / 8) * tiles_per_side
+                + affine_map_pixel_x / 8] as usize;
+            let index = self.read_tile_pixel_palette_index(
+                character_base_block,
+                tileset_offset,
+                Coordinate {
+                    x: affine_map_pixel_x % 8,
+                    y: affine_map_pixel_y % 8,
+                },
+                Bpp::EigthBpp,
+                0,
+            );
+
+            bg_line.palette_indices[lcd_x] = if index == 0 { None } else { Some(index) };
+        }
     }
 
     fn read_tile_pixel_palette_index(
@@ -758,7 +757,9 @@ impl Ppu {
     }
 
     fn build_window_mask(&self, obj_window: [bool; 240]) -> [u8; 240] {
-        let mut window_mask = [0u8; 240];
+        if self.dispcnt.get_bit_range(13..16) == 0 {
+            return [0xFF; 240];
+        }
 
         let win0h = self.window_features.from_index(0);
         let win1h = self.window_features.from_index(1);
@@ -769,8 +770,8 @@ impl Ppu {
         let winin = self.window_features.from_index(4);
         let winout = self.window_features.from_index(5);
 
-        let window0_x1 = win0h.get_bit_range(8..16);
-        let mut window0_x2 = win0h.get_bit_range(0..8).min(240);
+        let window0_x1 = win0h.get_bit_range(8..16) as usize;
+        let mut window0_x2 = win0h.get_bit_range(0..8).min(240) as usize;
         if window0_x1 > window0_x2 {
             window0_x2 = 240;
         }
@@ -781,8 +782,8 @@ impl Ppu {
             window0_y2 = 160;
         }
 
-        let window1_x1 = win1h.get_bit_range(8..16);
-        let mut window1_x2 = win1h.get_bit_range(0..8).min(240);
+        let window1_x1 = win1h.get_bit_range(8..16) as usize;
+        let mut window1_x2 = win1h.get_bit_range(0..8).min(240) as usize;
         if window1_x1 > window1_x2 {
             window1_x2 = 240;
         }
@@ -793,28 +794,25 @@ impl Ppu {
             window1_y2 = 160;
         }
 
-        for pixel in 0..SCREEN_WIDTH {
-            if self.dispcnt.get_bit_range(13..15) == 0 {
-                window_mask[pixel] = 0xFF;
+        let mut window_mask = [winout.get_bit_range(0..6) as u8; 240];
 
-                continue;
+        if self.dispcnt.is_set(15) {
+            let value = winout.get_bit_range(8..14) as u8;
+            for (mask, inside) in window_mask.iter_mut().zip(obj_window) {
+                if inside {
+                    *mask = value;
+                }
             }
+        }
 
-            if (window0_x1..window0_x2).contains(&(pixel as u16))
-                && (window0_y1..window0_y2).contains(&(self.vcount as u16))
-                && self.dispcnt.is_set(13)
-            {
-                window_mask[pixel] = winin.get_bit_range(0..6) as u8;
-            } else if (window1_x1..window1_x2).contains(&(pixel as u16))
-                && (window1_y1..window1_y2).contains(&(self.vcount as u16))
-                && self.dispcnt.is_set(14)
-            {
-                window_mask[pixel] = winin.get_bit_range(8..14) as u8;
-            } else if obj_window[pixel] && self.dispcnt.is_set(15) {
-                window_mask[pixel] = winout.get_bit_range(8..14) as u8;
-            } else {
-                window_mask[pixel] = winout.get_bit_range(0..6) as u8;
-            }
+        if self.dispcnt.is_set(14) && (window1_y1..window1_y2).contains(&(self.vcount as u16)) {
+            let (x1, x2) = (window1_x1 as usize, window1_x2 as usize);
+            window_mask[x1.min(x2)..x2].fill(winin.get_bit_range(8..14) as u8);
+        }
+
+        if self.dispcnt.is_set(13) && (window0_y1..window0_y2).contains(&(self.vcount as u16)) {
+            let (x1, x2) = (window0_x1 as usize, window0_x2 as usize);
+            window_mask[x1.min(x2)..x2].fill(winin.get_bit_range(0..6) as u8);
         }
 
         window_mask
@@ -905,25 +903,27 @@ impl Ppu {
         let mut obj_window = [false; 240];
 
         for sprite_id in 0..128 {
+            let Some(row) = SpriteAttributes::visible_row(sprite_id, &self.oam, self.vcount) else {
+                continue;
+            };
+
             let sprite = SpriteAttributes::from_bytes(sprite_id, &self.oam);
+
+            if sprite.coordinate.x + sprite.bounding_box.width <= 0 || sprite.coordinate.x >= 240 {
+                continue;
+            }
 
             if self.current_mode() >= 3 && sprite.tile < 512 {
                 continue;
             }
 
-            let (mosaic_h, mosaic_v) = if sprite.mosaic && sprite.mosaic {
+            let (mosaic_h, mosaic_v) = if sprite.mosaic {
                 (
                     self.mosaic.get_bit_range(8..12) as i32 + 1,
                     self.mosaic.get_bit_range(12..16) as i32 + 1,
                 )
             } else {
                 (1, 1)
-            };
-
-            //let (mosaic_h, mosaic_v) = (10, 10);
-
-            let Some(row) = sprite.visible_row(self.vcount) else {
-                continue;
             };
 
             let row = (row - self.vcount as i32 % mosaic_v).max(0);

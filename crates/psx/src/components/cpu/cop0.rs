@@ -81,8 +81,8 @@ pub struct Cop0 {
     bada: u32,
     bdam: u32,
     bpcm: u32,
-    sr: u32,
-    cause: u32,
+    pub sr: u32,
+    pub cause: u32,
     epc: u32,
     prid: u32,
 }
