@@ -17,10 +17,7 @@ MemoryMap
 use std::mem::take;
 
 use serde::{Deserialize, Serialize};
-use shared::{
-    enums::Width, script::MemoryAccessor, structs::WatchpointManager, traits::BitOps,
-    utils::zero_arr,
-};
+use shared::{enums::Width, script::MemoryAccessor, structs::WatchpointManager, traits::BitOps, utils::zero_arr};
 
 use crate::components::{
     apu::Apu,
@@ -90,11 +87,7 @@ pub struct Bus {
 impl Bus {
     pub fn new(gamepak: GamePak, sample_rate: f64) -> Self {
         let cgb_flag = gamepak.header.cgb_flag;
-        let wram_size = if cgb_flag == CgbFlag::Cgb {
-            0x8000
-        } else {
-            0x2000
-        };
+        let wram_size = if cgb_flag == CgbFlag::Cgb { 0x8000 } else { 0x2000 };
 
         Self {
             oam_dma: OamDmaState {
@@ -233,8 +226,7 @@ impl Bus {
         }
 
         let source_address = ((self.hdma_registers[0] as u16) << 8) | self.hdma_registers[1] as u16;
-        let offset =
-            (((self.hdma_registers[2] as u16) << 8) | self.hdma_registers[3] as u16) as usize;
+        let offset = (((self.hdma_registers[2] as u16) << 8) | self.hdma_registers[3] as u16) as usize;
         let blocks_remaining = (value.get_bit_range(0..7) as usize) + 1;
 
         self.vram_dma = VramDmaState {
@@ -259,10 +251,7 @@ impl Bus {
                 return;
             }
 
-            let byte = self.read(
-                self.vram_dma.source_address.wrapping_add(i as u16),
-                MemoryAccessor::Dma,
-            );
+            let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16), MemoryAccessor::Dma);
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
             self.watchpoint_manager.check_write(
                 destination_address as u32,
@@ -290,10 +279,7 @@ impl Bus {
                 return;
             }
 
-            let byte = self.read(
-                self.vram_dma.source_address.wrapping_add(i as u16),
-                MemoryAccessor::Dma,
-            );
+            let byte = self.read(self.vram_dma.source_address.wrapping_add(i as u16), MemoryAccessor::Dma);
             let destination_address = 0x8000 + (self.vram_dma.offset + i) as u16;
             self.watchpoint_manager.check_write(
                 destination_address as u32,
@@ -317,20 +303,14 @@ impl Bus {
 
 impl AddressBus for Bus {
     fn read(&mut self, address: u16, accessor: MemoryAccessor) -> u8 {
-        if accessor != MemoryAccessor::Lua
-            && self.oam_dma.in_progress
-            && self.oam_dma.delay == 0
-            && address < 0xFF00
-        {
+        if accessor != MemoryAccessor::Lua && self.oam_dma.in_progress && self.oam_dma.delay == 0 && address < 0xFF00 {
             return 0xFF;
         }
 
         let value = match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.read(address),
             0x8000..=0x9FFF => self.ppu.vram.read(address),
-            0xC000..=0xCFFF | 0xD000..=0xDFFF | 0xE000..=0xFDFF => {
-                self.wram[self.get_wram_index(address)]
-            }
+            0xC000..=0xCFFF | 0xD000..=0xDFFF | 0xE000..=0xFDFF => self.wram[self.get_wram_index(address)],
             0xFF00 => self.joypad.read(),
             0xFF01 => self.serial_data,
             0xFF02 => self.serial_control | 0x7E,
@@ -356,33 +336,19 @@ impl AddressBus for Bus {
             _ => 0xFF,
         };
 
-        self.watchpoint_manager.check_read(
-            address as u32,
-            accessor,
-            value as u32,
-            self.t_cycles,
-            Width::Byte,
-        );
+        self.watchpoint_manager
+            .check_read(address as u32, accessor, value as u32, self.t_cycles, Width::Byte);
 
         value
     }
 
     fn write(&mut self, address: u16, value: u8, accessor: MemoryAccessor) {
-        if accessor != MemoryAccessor::Lua
-            && self.oam_dma.in_progress
-            && self.oam_dma.delay == 0
-            && address < 0xFF00
-        {
+        if accessor != MemoryAccessor::Lua && self.oam_dma.in_progress && self.oam_dma.delay == 0 && address < 0xFF00 {
             return;
         }
 
-        self.watchpoint_manager.check_write(
-            address as u32,
-            accessor,
-            value as u32,
-            self.t_cycles,
-            Width::Byte,
-        );
+        self.watchpoint_manager
+            .check_write(address as u32, accessor, value as u32, self.t_cycles, Width::Byte);
 
         match address {
             0x0000..=0x7FFF | 0xA000..=0xBFFF => self.gamepak.mbc.write(address, value),
@@ -404,8 +370,7 @@ impl AddressBus for Bus {
             0xFF0F => self.interrupt_flag = value.get_bit_range(0..5),
             0xFF10..=0xFF26 | 0xFF30..=0xFF3F => self.apu.write_register(address, value),
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B | 0xFF68..=0xFF6C => {
-                self.ppu
-                    .write_register(address, value, &mut self.interrupt_flag)
+                self.ppu.write_register(address, value, &mut self.interrupt_flag)
             }
             0xFF46 => self.oam_dma_transfer(value),
             0xFF4D if self.is_cgb() => {

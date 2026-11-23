@@ -207,8 +207,7 @@ where
         };
 
         let opcode_address = cpu.registers.program_counter.address.wrapping_sub(1);
-        cpu.registers.instruction_register =
-            Some(cpu.bus.read(opcode_address, MemoryAccessor::Cpu));
+        cpu.registers.instruction_register = Some(cpu.bus.read(opcode_address, MemoryAccessor::Cpu));
 
         cpu
     }
@@ -216,28 +215,18 @@ where
     pub fn push(&mut self, address: u16) {
         // High byte stored first, stack grows down
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
-        self.bus.write(
-            self.registers.stack_pointer,
-            (address >> 8) as u8,
-            MemoryAccessor::Cpu,
-        );
+        self.bus
+            .write(self.registers.stack_pointer, (address >> 8) as u8, MemoryAccessor::Cpu);
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_sub(1);
-        self.bus.write(
-            self.registers.stack_pointer,
-            address as u8,
-            MemoryAccessor::Cpu,
-        );
+        self.bus
+            .write(self.registers.stack_pointer, address as u8, MemoryAccessor::Cpu);
     }
 
     pub fn pop(&mut self) -> (u8, u8) {
         // Low byte poppped first
-        let low_byte = self
-            .bus
-            .read(self.registers.stack_pointer, MemoryAccessor::Cpu);
+        let low_byte = self.bus.read(self.registers.stack_pointer, MemoryAccessor::Cpu);
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_add(1);
-        let high_byte = self
-            .bus
-            .read(self.registers.stack_pointer, MemoryAccessor::Cpu);
+        let high_byte = self.bus.read(self.registers.stack_pointer, MemoryAccessor::Cpu);
         self.registers.stack_pointer = self.registers.stack_pointer.wrapping_add(1);
 
         (low_byte, high_byte)
@@ -250,9 +239,7 @@ where
 
     pub fn ret(&mut self) {
         let (low_byte, high_byte) = self.pop();
-        self.registers
-            .program_counter
-            .jump(high_byte.merge_bytes(low_byte));
+        self.registers.program_counter.jump(high_byte.merge_bytes(low_byte));
     }
 
     pub fn cycle(&mut self) -> u8 {
@@ -265,10 +252,7 @@ where
         if !self.halted {
             let executing_address = self.registers.program_counter.address.wrapping_sub(1) as u32;
             if self.breakpoint_manager.in_range(executing_address)
-                && self
-                    .breakpoint_manager
-                    .queue
-                    .contains_key(&executing_address)
+                && self.breakpoint_manager.queue.contains_key(&executing_address)
                 && self.breakpoint_manager.resume_from != Some(executing_address)
             {
                 self.breakpoint_manager.hit = Some(executing_address);
@@ -348,8 +332,7 @@ where
 
         if self.halt_bug {
             self.halt_bug = false;
-            self.registers.program_counter.address =
-                self.registers.program_counter.address.wrapping_sub(1);
+            self.registers.program_counter.address = self.registers.program_counter.address.wrapping_sub(1);
         }
 
         self.call(interrupt_mode.to_address());
@@ -428,10 +411,7 @@ mod tests {
         // Test flag setting
         let monochrome_gamepak = GamePak::fake();
         // Default checksum is 0, so f register is set to 0x10000000
-        let mut register = Registers::new(
-            monochrome_gamepak.header.cgb_flag,
-            monochrome_gamepak.header.checksum,
-        );
+        let mut register = Registers::new(monochrome_gamepak.header.cgb_flag, monochrome_gamepak.header.checksum);
 
         let a: u8 = 255;
         let b: Option<u8> = Some(2);

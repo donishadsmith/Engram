@@ -112,10 +112,7 @@ impl Apu {
             0xFF24 => self.mixer.nr50,
             0xFF25 => self.mixer.nr51,
             0xFF26 => 0x70 | self.mixer.status(self.psg.enabled()),
-            0xFF30..=0xFF3F => self
-                .psg
-                .channel3
-                .read_wave_ram(address as u32, self.mixer.on) as u8,
+            0xFF30..=0xFF3F => self.psg.channel3.read_wave_ram(address as u32, self.mixer.on) as u8,
             _ => 0xFF,
         }
     }
@@ -148,11 +145,10 @@ impl Apu {
             0xFF24 => self.mixer.write(PsgMixerRegister::Nr50, value),
             0xFF25 => self.mixer.write(PsgMixerRegister::Nr51, value),
             0xFF26 => self.mixer.write(PsgMixerRegister::Nr52, value),
-            0xFF30..=0xFF3F => {
-                self.psg
-                    .channel3
-                    .write_wave_ram(address as u32, value as u16, self.mixer.on)
-            }
+            0xFF30..=0xFF3F => self
+                .psg
+                .channel3
+                .write_wave_ram(address as u32, value as u16, self.mixer.on),
             _ => {}
         }
     }

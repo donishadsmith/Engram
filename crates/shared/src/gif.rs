@@ -30,13 +30,8 @@ impl GifRecorder {
 
     pub fn start(&mut self, frame: &crate::render::Frame, image_dir: PathBuf) -> Result<(), Error> {
         let path = image_dir.join(format!("clip_{}.gif", Local::now().format("%Y%m%d_%H%M%S")));
-        let mut encoder = Encoder::new(
-            File::create(&path)?,
-            frame.width as u16,
-            frame.height as u16,
-            &[],
-        )
-        .map_err(Error::other)?;
+        let mut encoder =
+            Encoder::new(File::create(&path)?, frame.width as u16, frame.height as u16, &[]).map_err(Error::other)?;
         encoder.set_repeat(Repeat::Infinite).map_err(Error::other)?;
         self.encoder = Some(encoder);
 
@@ -60,12 +55,7 @@ impl GifRecorder {
             return;
         }
 
-        let mut gif_frame = Frame::from_rgb_speed(
-            frame.width as u16,
-            frame.height as u16,
-            &mut to_rgb(frame),
-            10,
-        );
+        let mut gif_frame = Frame::from_rgb_speed(frame.width as u16, frame.height as u16, &mut to_rgb(frame), 10);
 
         gif_frame.delay = self.delay as u16;
 

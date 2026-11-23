@@ -83,17 +83,11 @@ mod tests {
 
     use crate::components::{bus::AccessType, gamepak::BackupType, utils::create_bus};
 
-    const BOOL_ARR1: [bool; 10] = [
-        true, false, true, false, false, false, false, false, false, false,
-    ];
+    const BOOL_ARR1: [bool; 10] = [true, false, true, false, false, false, false, false, false, false];
 
-    const BOOL_ARR2: [bool; 10] = [
-        false, false, false, false, false, false, false, false, false, true,
-    ];
+    const BOOL_ARR2: [bool; 10] = [false, false, false, false, false, false, false, false, false, true];
 
-    const BOOL_ARR3: [bool; 10] = [
-        true, false, true, false, false, false, false, false, false, true,
-    ];
+    const BOOL_ARR3: [bool; 10] = [true, false, true, false, false, false, false, false, false, true];
 
     #[test]
     fn test_button_press_or() {

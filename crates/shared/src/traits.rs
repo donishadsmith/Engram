@@ -83,11 +83,7 @@ pub trait BitOps:
     }
 
     fn get_bit(self, bit: usize) -> Self {
-        if Self::is_set(self, bit) {
-            Self::ONE
-        } else {
-            Self::ZERO
-        }
+        if Self::is_set(self, bit) { Self::ONE } else { Self::ZERO }
     }
 
     fn set_bit_range_value(&mut self, range: Range<usize>, value: Self) {

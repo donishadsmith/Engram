@@ -86,27 +86,17 @@ impl GameBoy {
 
         let double_speed = self.cpu.bus.key_register.is_set(7);
         let cpu_t_cycles = if double_speed { t_cycles } else { t_cycles * 2 };
-        self.cpu
-            .bus
-            .gamepak
-            .mbc
-            .increment_force_feedback_counter(cpu_t_cycles);
+        self.cpu.bus.gamepak.mbc.increment_force_feedback_counter(cpu_t_cycles);
         let ppu_t_cycles = cpu_t_cycles / 2;
 
-        self.cpu
-            .bus
-            .ppu
-            .tick(ppu_t_cycles, &mut self.cpu.bus.interrupt_flag);
+        self.cpu.bus.ppu.tick(ppu_t_cycles, &mut self.cpu.bus.interrupt_flag);
         self.cpu.bus.hblank_dma_step();
         self.cpu
             .bus
             .timer
             .tick(t_cycles, &mut self.cpu.bus.interrupt_flag, double_speed);
         let div_apu = self.cpu.bus.timer.increase_div_apu_counter;
-        self.cpu
-            .bus
-            .apu
-            .tick(ppu_t_cycles, self.apu_sample_period, div_apu);
+        self.cpu.bus.apu.tick(ppu_t_cycles, self.apu_sample_period, div_apu);
 
         for hit in &mut self.cpu.bus.watchpoint_manager.hits[hits_before..] {
             hit.pc = pc;
@@ -120,9 +110,7 @@ impl GameBoy {
         while self.remaining_cycles > 0 {
             self.remaining_cycles = self.remaining_cycles.saturating_sub(self.step());
 
-            if self.cpu.bus.ppu.frame_ready
-                || self.cpu.bus.ppu.lcd_off_frame && self.remaining_cycles <= 0
-            {
+            if self.cpu.bus.ppu.frame_ready || self.cpu.bus.ppu.lcd_off_frame && self.remaining_cycles <= 0 {
                 let rumble_count = self.cpu.bus.gamepak.mbc.force_feedback_counter() as f32;
                 self.rumble_strength = (rumble_count / T_CYCLES_PER_FRAME_DOUBLE as f32).min(1.0);
                 self.cpu.bus.gamepak.mbc.reset_rumble_counter();
@@ -178,7 +166,8 @@ impl GameBoy {
         std::fs::write(
             "ppu_registers.txt",
             format!(
-                "lcdc={:02X} stat={:02X} scy={} scx={} wy={} wx={} bgp={:02X} obp0={:02X} obp1={:02X} ly={} bgpi={:02X} obpi={:02X}\nBG CRAM:\n{}\nOBJ CRAM:\n{}",
+                "lcdc={:02X} stat={:02X} scy={} scx={} wy={} wx={} bgp={:02X} obp0={:02X} obp1={:02X} ly={} \
+                 bgpi={:02X} obpi={:02X}\nBG CRAM:\n{}\nOBJ CRAM:\n{}",
                 ppu.lcdc,
                 ppu.stat,
                 ppu.scy,
@@ -271,9 +260,7 @@ impl State for GameBoy {
 
         let (old, new) = (&self.cpu.bus.gamepak.header, &data.cpu.bus.gamepak.header);
         if old.title != new.title || old.checksum != new.checksum {
-            return Err(error_message(
-                "Save state is for a different game".to_string(),
-            ));
+            return Err(error_message("Save state is for a different game".to_string()));
         }
 
         self.save()?;
@@ -285,10 +272,7 @@ impl State for GameBoy {
             &mut self.cpu.bus.watchpoint_manager,
         );
 
-        swap(
-            &mut data.cpu.breakpoint_manager,
-            &mut self.cpu.breakpoint_manager,
-        );
+        swap(&mut data.cpu.breakpoint_manager, &mut self.cpu.breakpoint_manager);
 
         data.apu_sample_period = self.apu_sample_period;
         data.force_screen_update = true;
@@ -299,16 +283,10 @@ impl State for GameBoy {
             .gamepak
             .mbc
             .set_rom(self.cpu.bus.gamepak.mbc.get_rom().into());
-        swap(
-            &mut data.cpu.bus.gamepak.sav_path,
-            &mut self.cpu.bus.gamepak.sav_path,
-        );
+        swap(&mut data.cpu.bus.gamepak.sav_path, &mut self.cpu.bus.gamepak.sav_path);
         swap(&mut data.scripted_keypad, &mut self.scripted_keypad);
 
-        swap(
-            &mut data.cpu.bus.apu.psg_output,
-            &mut self.cpu.bus.apu.psg_output,
-        );
+        swap(&mut data.cpu.bus.apu.psg_output, &mut self.cpu.bus.apu.psg_output);
         data.cpu.bus.apu.mixer.changed = true;
 
         swap(&mut data.cycle_manager, &mut self.cycle_manager);
@@ -443,22 +421,10 @@ impl ScriptTarget for GameBoy {
             "ir" => return Err(CpuError::ReadOnly),
             "pc" => self.cpu.registers.program_counter.address = value as u16,
             "sp" => self.cpu.registers.stack_pointer = value as u16,
-            "af" => self
-                .cpu
-                .registers
-                .set_16bit(Register16Bits::AF, value as u16),
-            "bc" => self
-                .cpu
-                .registers
-                .set_16bit(Register16Bits::BC, value as u16),
-            "de" => self
-                .cpu
-                .registers
-                .set_16bit(Register16Bits::DE, value as u16),
-            "hl" => self
-                .cpu
-                .registers
-                .set_16bit(Register16Bits::HL, value as u16),
+            "af" => self.cpu.registers.set_16bit(Register16Bits::AF, value as u16),
+            "bc" => self.cpu.registers.set_16bit(Register16Bits::BC, value as u16),
+            "de" => self.cpu.registers.set_16bit(Register16Bits::DE, value as u16),
+            "hl" => self.cpu.registers.set_16bit(Register16Bits::HL, value as u16),
             _ => return Err(CpuError::UnknownRegister),
         }
 

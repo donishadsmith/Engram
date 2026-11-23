@@ -136,9 +136,7 @@ fn get_picture_path() -> PathBuf {
 }
 
 fn get_data_path() -> PathBuf {
-    data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("Engram")
+    data_dir().unwrap_or_else(|| PathBuf::from(".")).join("Engram")
 }
 
 fn get_video_path() -> PathBuf {
@@ -163,8 +161,7 @@ pub fn load_config() -> Config {
         .unwrap_or_default();
 
     if config.data_dirs.image_dir.is_none() {
-        config.data_dirs.image_dir =
-            Some(get_picture_path().into_os_string().into_string().unwrap())
+        config.data_dirs.image_dir = Some(get_picture_path().into_os_string().into_string().unwrap())
     }
 
     if config.data_dirs.data_dir.is_none() {

@@ -18,8 +18,8 @@ use std::{env::var, fmt::Arguments, fs::File, io::BufWriter};
 
 use serde::{Deserialize, Serialize};
 use shared::{
-    debug::Trace, enums::Width, psg::PsgMixerRegister, scheduler::EventScheduler,
-    script::MemoryAccessor, structs::WatchpointManager, traits::BitOps, utils::zero_arr,
+    debug::Trace, enums::Width, psg::PsgMixerRegister, scheduler::EventScheduler, script::MemoryAccessor,
+    structs::WatchpointManager, traits::BitOps, utils::zero_arr,
 };
 
 use crate::components::{
@@ -68,9 +68,7 @@ impl WaitState {
 
     fn cycles(self, waitcnt: u16, access_type: AccessType) -> u8 {
         match self {
-            WaitState::SramWaitControl => {
-                WAIT_STATE_NONSEQUENTIAL[waitcnt.get_bit_range(0..2) as usize]
-            }
+            WaitState::SramWaitControl => WAIT_STATE_NONSEQUENTIAL[waitcnt.get_bit_range(0..2) as usize],
             WaitState::WaitState0 if access_type == AccessType::Nonsequential => {
                 WAIT_STATE_NONSEQUENTIAL[waitcnt.get_bit_range(2..4) as usize]
             }
@@ -213,11 +211,7 @@ impl Bus {
     #[inline]
     pub fn vram_index(address: u32) -> usize {
         let index = address.get_bit_range(0..17) as usize;
-        let index = if index >= 0x18000 {
-            index - 0x8000
-        } else {
-            index
-        };
+        let index = if index >= 0x18000 { index - 0x8000 } else { index };
 
         index
     }
@@ -347,17 +341,12 @@ impl Bus {
             0x02 => self.ewram[Bus::ewram_index(address)] = value,
             0x03 => self.iwram[Bus::iwram_index(address)] = value,
             0x04 if (0x4000060..=0x400007F).contains(&address) => {
-                let halfword = write_u8_modify_halfword(
-                    address,
-                    self.apu.psg_registers.read_u16(address),
-                    value,
-                );
+                let halfword = write_u8_modify_halfword(address, self.apu.psg_registers.read_u16(address), value);
                 self.apu.psg_registers.write_u16(address, halfword);
                 self.apu.write_psg_byte(address, value);
             }
             0x04 => {
-                let halfword =
-                    write_u8_modify_halfword(address, self.read_halfword(address), value);
+                let halfword = write_u8_modify_halfword(address, self.read_halfword(address), value);
                 self.write_register(address & !1, halfword);
             }
             0x05 => {
@@ -370,11 +359,7 @@ impl Bus {
                 // https://www.patater.com/gbaguy/gba/ch5.htm
                 // https://problemkaputt.de/gbatek-gba-unpredictable-things.htm
                 let index = Bus::vram_index(address) & !1;
-                let obj_start = if self.ppu.current_mode() >= 3 {
-                    0x14000
-                } else {
-                    0x10000
-                };
+                let obj_start = if self.ppu.current_mode() >= 3 { 0x14000 } else { 0x10000 };
                 if index + 1 < obj_start {
                     self.ppu.vram[index] = value;
                     self.ppu.vram[index + 1] = value;
@@ -393,19 +378,14 @@ impl Bus {
         let value = if self.is_eeprom_address(address) {
             self.eeprom_read_u16(access_type)
         } else if address & !1 == 0x4000300 {
-            if address.is_clear(0) {
-                self.postflg as u16
-            } else {
-                0
-            }
+            if address.is_clear(0) { self.postflg as u16 } else { 0 }
         } else {
             let shifted_address = address >> 24;
             if !matches!(shifted_address, 0x0E | 0x0F) {
                 address.clear_bit(0);
             }
 
-            let little_endian =
-                |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
+            let little_endian = |arr: &[u8], index: usize| u16::from_le_bytes([arr[index], arr[index + 1]]);
 
             match shifted_address {
                 0x00 => (self.last_bios_fetch >> (8 * (address.get_bit_range(0..2)))) as u16,
@@ -528,11 +508,7 @@ impl Bus {
         self.cost(address, 32, access_type);
 
         let value = if address & !1 == 0x4000300 {
-            if address.is_clear(0) {
-                self.postflg as u32
-            } else {
-                0
-            }
+            if address.is_clear(0) { self.postflg as u32 } else { 0 }
         } else {
             let shifted_address = address >> 24;
             if !matches!(shifted_address, 0x0E | 0x0F) {
@@ -737,11 +713,7 @@ impl Bus {
             0x4000082 => self.apu.global_control.soundcnt_h,
             0x4000084 => self.apu.psg_mixer.status(self.apu.psg.enabled()) as u16,
             0x4000088 => self.apu.global_control.soundbias,
-            0x4000090..=0x400009F => self
-                .apu
-                .psg
-                .channel3
-                .read_wave_ram(address, self.apu.psg_mixer.on),
+            0x4000090..=0x400009F => self.apu.psg.channel3.read_wave_ram(address, self.apu.psg_mixer.on),
 
             // DMA Transfer Channels
             0x40000BA => self.dma.channels[0].control_register,
@@ -796,8 +768,8 @@ impl Bus {
 
             // https://github.com/mgba-emu/mgba/blob/master/src/gba/io.c
             // https://codeberg.org/nba-emu/NanoBoyAdvance/src/branch/master/src/nba/src/bus/io.cc
-            0x4000002 | 0x4000086 | 0x400008A | 0x4000136 | 0x4000142 | 0x400015A | 0x4000206
-            | 0x4000302 | 0x40000B8 | 0x40000C4 | 0x40000D0 | 0x40000DC | 0x400020A => 0,
+            0x4000002 | 0x4000086 | 0x400008A | 0x4000136 | 0x4000142 | 0x400015A | 0x4000206 | 0x4000302
+            | 0x40000B8 | 0x40000C4 | 0x40000D0 | 0x40000DC | 0x400020A => 0,
 
             _ => (self.last_instruction_read >> (8 * (address & 2))) as u16,
         }
@@ -816,8 +788,9 @@ impl Bus {
             0x4000008 | 0x400000A | 0x400000C | 0x400000E => {
                 self.ppu.bg_control.write_u16(address, value);
             }
-            0x4000010 | 0x4000012 | 0x4000014 | 0x4000016 | 0x4000018 | 0x400001A | 0x400001C
-            | 0x400001E => self.ppu.bg_text_offset.write_u16(address, value),
+            0x4000010 | 0x4000012 | 0x4000014 | 0x4000016 | 0x4000018 | 0x400001A | 0x400001C | 0x400001E => {
+                self.ppu.bg_text_offset.write_u16(address, value)
+            }
             0x4000020 | 0x4000022 | 0x4000024 | 0x4000026 => {
                 self.ppu.bg2_affine_parameters.write_u16(address, value);
             }
@@ -854,9 +827,7 @@ impl Bus {
                 self.ppu.window_features.write_u16(address, value)
             }
             0x400004C => self.ppu.mosaic = value,
-            0x4000050 | 0x4000052 | 0x4000054 => {
-                self.ppu.color_special_effects.write_u16(address, value)
-            }
+            0x4000050 | 0x4000052 | 0x4000054 => self.ppu.color_special_effects.write_u16(address, value),
 
             // Sound Registers
             0x4000060..=0x400007F => self.apu.write_psg_halfword(address, value),
@@ -878,18 +849,15 @@ impl Bus {
                 self.apu.global_control.soundcnt_h &= !0x8800;
             }
             0x4000084 => {
-                self.apu
-                    .psg_mixer
-                    .write(PsgMixerRegister::Nr52, value as u8);
+                self.apu.psg_mixer.write(PsgMixerRegister::Nr52, value as u8);
                 self.apu.enable_channels();
             }
             0x4000088 => self.apu.global_control.soundbias = value,
-            0x4000090..=0x400009F => {
-                self.apu
-                    .psg
-                    .channel3
-                    .write_wave_ram(address, value, self.apu.psg_mixer.on)
-            }
+            0x4000090..=0x400009F => self
+                .apu
+                .psg
+                .channel3
+                .write_wave_ram(address, value, self.apu.psg_mixer.on),
             0x40000A0 | 0x40000A2 => self.apu.fifo_a.push_samples(value),
             0x40000A4 | 0x40000A6 => self.apu.fifo_b.push_samples(value),
 
@@ -1006,8 +974,7 @@ impl Bus {
         self.accessor = MemoryAccessor::Dma;
 
         if (0x08..=0x0F).contains(&(self.dma.channels[channel].current_source_address >> 24))
-            && (0x08..=0x0F)
-                .contains(&(self.dma.channels[channel].current_destination_address >> 24))
+            && (0x08..=0x0F).contains(&(self.dma.channels[channel].current_destination_address >> 24))
         {
             self.idle(4);
         } else {
@@ -1026,10 +993,7 @@ impl Bus {
                         }
 
                         // can there be wierd counts?
-                        if matches!(
-                            self.dma.channels[channel].current_word_count,
-                            9 | 17 | 73 | 81
-                        ) {
+                        if matches!(self.dma.channels[channel].current_word_count, 9 | 17 | 73 | 81) {
                             eeprom.size_known = true;
                         }
                     }

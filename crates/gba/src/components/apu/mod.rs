@@ -167,16 +167,11 @@ impl Apu {
 
         let mut fifo_left = 0.0f32;
         let mut fifo_right = 0.0f32;
-        for (fifo, channel) in [
-            (&self.fifo_a, FifoChannel::A),
-            (&self.fifo_b, FifoChannel::B),
-        ] {
+        for (fifo, channel) in [(&self.fifo_a, FifoChannel::A), (&self.fifo_b, FifoChannel::B)] {
             let sample = if fifo.mute {
                 0.0
             } else {
-                f32::from(fifo.latched as i8)
-                    * 4.0
-                    * self.global_control.volume_control_fifo(channel)
+                f32::from(fifo.latched as i8) * 4.0 * self.global_control.volume_control_fifo(channel)
             };
 
             if self.global_control.panned_left_fifo(channel) {

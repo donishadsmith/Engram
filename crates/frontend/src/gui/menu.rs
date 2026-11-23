@@ -18,8 +18,8 @@ use shared::{
 use crate::{
     session::{InputSource, Session},
     utils::{
-        DestructiveAction, UiState, delete_all_slots_with_toast, delete_slots_with_toast,
-        load_slots_with_toast, save_slots_with_toast, slot_label, update_controller_hotkey_text,
+        DestructiveAction, UiState, delete_all_slots_with_toast, delete_slots_with_toast, load_slots_with_toast,
+        save_slots_with_toast, slot_label, update_controller_hotkey_text,
     },
 };
 
@@ -83,22 +83,18 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 if let Some(emulator) = &mut session.emulator {
                     for slot in 1..=SAVE_STATE_SLOTS {
                         let (state_text, exists) = slot_label(emulator, slot, "Shift");
-                        let state_text =
-                            if (1..5).contains(&slot) && session.latest_gamepad_id.is_some() {
-                                update_controller_hotkey_text(state_text, slot, true)
-                            } else {
-                                state_text
-                            };
+                        let state_text = if (1..5).contains(&slot) && session.latest_gamepad_id.is_some() {
+                            update_controller_hotkey_text(state_text, slot, true)
+                        } else {
+                            state_text
+                        };
 
                         if ui
-                            .add(
-                                egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend),
-                            )
+                            .add(egui::Button::new(state_text).wrap_mode(egui::TextWrapMode::Extend))
                             .clicked()
                         {
                             if session.destructive_action_popup && exists {
-                                ui_state.destructive_action =
-                                    Some(DestructiveAction::Overwrite(slot));
+                                ui_state.destructive_action = Some(DestructiveAction::Overwrite(slot));
                                 ui.close();
                             } else {
                                 save_slots_with_toast(emulator, &mut session.toasts, slot);
@@ -114,12 +110,11 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                 if let Some(emulator) = &mut session.emulator {
                     for slot in 1..=SAVE_STATE_SLOTS {
                         let (state_text, exists) = slot_label(emulator, slot, "Ctrl");
-                        let state_text =
-                            if (1..5).contains(&slot) && session.latest_gamepad_id.is_some() {
-                                update_controller_hotkey_text(state_text, slot, false)
-                            } else {
-                                state_text
-                            };
+                        let state_text = if (1..5).contains(&slot) && session.latest_gamepad_id.is_some() {
+                            update_controller_hotkey_text(state_text, slot, false)
+                        } else {
+                            state_text
+                        };
 
                         if ui
                             .add_enabled(
@@ -161,8 +156,7 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
                     if ui
                         .add_enabled(
                             emulator.current_save_states().iter().any(|x| x.is_some()),
-                            egui::Button::new("Delete All States")
-                                .wrap_mode(egui::TextWrapMode::Extend),
+                            egui::Button::new("Delete All States").wrap_mode(egui::TextWrapMode::Extend),
                         )
                         .highlight()
                         .clicked()
@@ -178,10 +172,7 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             });
         });
 
-        let solar_sensor = session
-            .emulator
-            .as_mut()
-            .and_then(|emulator| emulator.solar_sensor());
+        let solar_sensor = session.emulator.as_mut().and_then(|emulator| emulator.solar_sensor());
         ui.add_enabled_ui(solar_sensor.is_some(), |ui| {
             ui.menu_button(format!("{}  Solar", icons::SUN), |ui| {
                 ui.add(
@@ -227,8 +218,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
                     ui.close();
                 }
 
-                let mut binding_text =
-                    keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot));
+                let mut binding_text = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Screenshot));
 
                 if session.latest_gamepad_id.is_some() {
                     binding_text.push_str("/Select+South");
@@ -252,8 +242,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
             },
         );
 
-        let mut binding_text =
-            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
+        let mut binding_text = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Gif));
 
         if session.latest_gamepad_id.is_some() {
             binding_text.push_str("/Select+East");
@@ -266,10 +255,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
         };
 
         if ui
-            .add(
-                egui::Button::new(format!("{}  {text}", icons::GIF))
-                    .wrap_mode(egui::TextWrapMode::Extend),
-            )
+            .add(egui::Button::new(format!("{}  {text}", icons::GIF)).wrap_mode(egui::TextWrapMode::Extend))
             .clicked()
         {
             if session.gif.is_recording() {
@@ -282,8 +268,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
             ui.close();
         }
 
-        let mut binding_text =
-            keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Video));
+        let mut binding_text = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Video));
 
         if session.latest_gamepad_id.is_some() {
             binding_text.push_str("/Select+West");
@@ -302,8 +287,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
         if ui
             .add_enabled(
                 session.emulator.is_some() && !(dialog_open && !is_video_recording),
-                egui::Button::new(format!("{}  {text}", icons::VIDEO_CAMERA))
-                    .wrap_mode(egui::TextWrapMode::Extend),
+                egui::Button::new(format!("{}  {text}", icons::VIDEO_CAMERA)).wrap_mode(egui::TextWrapMode::Extend),
             )
             .clicked()
         {
@@ -317,10 +301,7 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
             } else if session.rom_dialog.is_none() {
                 match session.data_dirs.get_video_path() {
                     Ok(path) => {
-                        session
-                            .emulator
-                            .as_mut()
-                            .map(|emulator| emulator.start_video(path));
+                        session.emulator.as_mut().map(|emulator| emulator.start_video(path));
                         session.toasts.success("Video started");
                     }
                     Err(err) => {
@@ -336,22 +317,16 @@ pub fn show_tools_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiStat
 
 pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiState) {
     ui.menu_button("Settings", |ui| {
-        ui.menu_button(
-            format!("{}  Key/Controller Bindings", icons::KEYBOARD),
-            |ui| {
-                if ui
-                    .add(
-                        egui::Button::new("Game Boy/Game Boy Advance")
-                            .wrap_mode(egui::TextWrapMode::Extend),
-                    )
-                    .clicked()
-                {
-                    session.show_key_bindings = true;
-                    ui_state.target_key_id = Some(KeyId::Emulator(EmulatorId::Gba));
-                    ui.close();
-                }
-            },
-        );
+        ui.menu_button(format!("{}  Key/Controller Bindings", icons::KEYBOARD), |ui| {
+            if ui
+                .add(egui::Button::new("Game Boy/Game Boy Advance").wrap_mode(egui::TextWrapMode::Extend))
+                .clicked()
+            {
+                session.show_key_bindings = true;
+                ui_state.target_key_id = Some(KeyId::Emulator(EmulatorId::Gba));
+                ui.close();
+            }
+        });
 
         if ui
             .add(
@@ -366,25 +341,26 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
         }
 
         if ui
-            .add(
-                egui::Button::new(format!("{}  Rewind Capacity", icons::REWIND))
-                    .wrap_mode(egui::TextWrapMode::Extend),
-            )
-            .clicked() {
-                ui_state.open_rewind_settings = true;
-                ui.close();
-            }
+            .add(egui::Button::new(format!("{}  Rewind Capacity", icons::REWIND)).wrap_mode(egui::TextWrapMode::Extend))
+            .clicked()
+        {
+            ui_state.open_rewind_settings = true;
+            ui.close();
+        }
 
         if ui
-            .add(egui::Button::new(format!("{}  Restore Default Window Size", icons::FRAME_CORNERS))
-            .wrap_mode(egui::TextWrapMode::Extend))
-            .clicked() {
-                set_fullscreen(false);
-                let screen_width = 1600.0 / screen_dpi_scale();
-                let screen_height = 1200.0 / screen_dpi_scale();
-                request_new_screen_size(screen_width, screen_height);
-                session.display.fullscreen = false;
-            }
+            .add(
+                egui::Button::new(format!("{}  Restore Default Window Size", icons::FRAME_CORNERS))
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            )
+            .clicked()
+        {
+            set_fullscreen(false);
+            let screen_width = 1600.0 / screen_dpi_scale();
+            let screen_height = 1200.0 / screen_dpi_scale();
+            request_new_screen_size(screen_width, screen_height);
+            session.display.fullscreen = false;
+        }
 
         ui.horizontal(|ui| {
             ui.add_space(3.0);
@@ -407,9 +383,7 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
                 egui::RichText::new(format!("{}  Destructive Action Pop-up", icons::WARNING))
                     .color(ui.visuals().widgets.inactive.fg_stroke.color),
             )
-            .on_hover_text(
-                "Dialog box pops up whenever hard resetting or overwritting/deleting a save state.",
-            );
+            .on_hover_text("Dialog box pops up whenever hard resetting or overwritting/deleting a save state.");
 
             ui.add_space(5.0);
 
@@ -437,74 +411,53 @@ pub fn show_settings_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut UiS
         ui.label(format!("Input Source: {source}"));
 
         if let Some(gilrs) = &session.gilrs {
-            ui.menu_button(
-                format!("{}  Connected Controllers", icons::GAME_CONTROLLER),
-                |ui| {
-                    let mut controller_present = false;
+            ui.menu_button(format!("{}  Connected Controllers", icons::GAME_CONTROLLER), |ui| {
+                let mut controller_present = false;
 
-                    for (gamepad_id, gamepad) in gilrs.gamepads() {
-                        controller_present = true;
+                for (gamepad_id, gamepad) in gilrs.gamepads() {
+                    controller_present = true;
 
-                        let text = if Some(gamepad_id) == session.latest_gamepad_id
-                            && session.input_source == Some(InputSource::Gamepad)
-                        {
-                            egui::RichText::new(format!("{} (active)", gamepad.os_name())).strong()
-                        } else {
-                            egui::RichText::new(gamepad.os_name()).weak()
-                        };
+                    let text = if Some(gamepad_id) == session.latest_gamepad_id
+                        && session.input_source == Some(InputSource::Gamepad)
+                    {
+                        egui::RichText::new(format!("{} (active)", gamepad.os_name())).strong()
+                    } else {
+                        egui::RichText::new(gamepad.os_name()).weak()
+                    };
 
-                        ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Extend));
-                    }
+                    ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Extend));
+                }
 
-                    if !controller_present {
-                        ui.label(egui::RichText::new("None connected").weak());
-                    }
-                },
-            );
+                if !controller_present {
+                    ui.label(egui::RichText::new("None connected").weak());
+                }
+            });
         }
 
         ui.menu_button(format!("{}  Analog Deadzone Radius", icons::TARGET), |ui| {
-            ui.add(
-                egui::Slider::new(&mut session.analog_deadzone_radius, 0.0..=1.0)
-                    .text("Deadzone Radius"),
-            ).on_hover_text("Increase to combat infamous joystick drift or sticks that take insanely long to center.");
+            ui.add(egui::Slider::new(&mut session.analog_deadzone_radius, 0.0..=1.0).text("Deadzone Radius"))
+                .on_hover_text(
+                    "Increase to combat infamous joystick drift or sticks that take insanely long to center.",
+                );
         });
 
-        ui.menu_button(
-            format!("{}  Map Analog to D-Pad", icons::ARROWS_OUT_CARDINAL),
-            |ui| {
-                ui.checkbox(
-                    &mut session.map_analog_to_dpad.gba,
-                    "Game Boy/Game Boy Advance",
-                )
+        ui.menu_button(format!("{}  Map Analog to D-Pad", icons::ARROWS_OUT_CARDINAL), |ui| {
+            ui.checkbox(&mut session.map_analog_to_dpad.gba, "Game Boy/Game Boy Advance")
                 .on_hover_text("Register analog inputs as D-pad controls");
 
-                // for psx warn checking this ignores multidirectional support
-            },
-        );
+            // for psx warn checking this ignores multidirectional support
+        });
 
-        ui.menu_button(
-            format!("{}  Rumble", icons::VIBRATE),
-            |ui| {
-                ui.menu_button(
-                    "Rumble Effect On",
-                    |ui| {
-                        ui.checkbox(
-                            &mut session.rumble_effect_on.gameboy,
-                            "Game Boy",
-                        );
-                    },
-                );
+        ui.menu_button(format!("{}  Rumble", icons::VIBRATE), |ui| {
+            ui.menu_button("Rumble Effect On", |ui| {
+                ui.checkbox(&mut session.rumble_effect_on.gameboy, "Game Boy");
+            });
 
-                ui.separator();
+            ui.separator();
 
-                ui.add(
-                    egui::Slider::new(&mut session.rumble_strength, 0.0..=1.0)
-                        .text("Intensity"),
-                ).on_hover_text("Rumble strength multiplier");
-
-            },
-        );
+            ui.add(egui::Slider::new(&mut session.rumble_strength, 0.0..=1.0).text("Intensity"))
+                .on_hover_text("Rumble strength multiplier");
+        });
     });
 }
 
@@ -604,12 +557,9 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             _ => icons::SPEAKER_HIGH,
         };
 
-        ui.menu_button(
-            egui::RichText::new(format!("{volume_icon}")).strong(),
-            |ui| {
-                ui.add(egui::Slider::new(&mut session.master_volume, 0..=100).text("Volume"));
-            },
-        );
+        ui.menu_button(egui::RichText::new(format!("{volume_icon}")).strong(), |ui| {
+            ui.add(egui::Slider::new(&mut session.master_volume, 0..=100).text("Volume"));
+        });
 
         ui.label(egui::RichText::new("| ").strong());
 
@@ -644,9 +594,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         ui.label(egui::RichText::new("| ").strong());
 
         let (status_text, hover) = if session.is_paused()
-            || session
-                .return_state
-                .is_some_and(|state| state == EmulatorState::Paused)
+            || session.return_state.is_some_and(|state| state == EmulatorState::Paused)
             || session.pause_on_launch
         {
             (
@@ -683,8 +631,8 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             .on_hover_text("Hold to rewind")
             .on_hover_cursor(egui::CursorIcon::PointingHand);
 
-        let key_held = is_key_down(session.key_bindings.get_hotkey_bind(Hotkeys::Rewind))
-            && !session.is_input_blocked();
+        let key_held =
+            is_key_down(session.key_bindings.get_hotkey_bind(Hotkeys::Rewind)) && !session.is_input_blocked();
 
         session.perform_rewind(rewind.is_pointer_button_down_on() || key_held, ui_state);
 
@@ -700,17 +648,13 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             if recording {
                 if ui
                     .add(egui::Label::new(
-                        egui::RichText::new(format!("{}  RECORDING", icons::RECORD))
-                            .color(egui::Color32::RED),
+                        egui::RichText::new(format!("{}  RECORDING", icons::RECORD)).color(egui::Color32::RED),
                     ))
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
                     .clicked()
                 {
                     session.gif.stop();
-                    session
-                        .emulator
-                        .as_mut()
-                        .map(|emulator| emulator.stop_video());
+                    session.emulator.as_mut().map(|emulator| emulator.stop_video());
                     session.toasts.success("All recordings stopped");
                 }
             }

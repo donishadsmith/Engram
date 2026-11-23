@@ -66,19 +66,14 @@ where
                 };
 
                 if q == 0 {
-                    self.bus
-                        .write(address, self.registers.a, MemoryAccessor::Cpu);
+                    self.bus.write(address, self.registers.a, MemoryAccessor::Cpu);
                 } else {
                     self.registers.a = self.bus.read(address, MemoryAccessor::Cpu);
                 }
 
                 match p {
-                    2 => self
-                        .registers
-                        .set_16bit(Register16Bits::HL, address.wrapping_add(1)),
-                    3 => self
-                        .registers
-                        .set_16bit(Register16Bits::HL, address.wrapping_sub(1)),
+                    2 => self.registers.set_16bit(Register16Bits::HL, address.wrapping_add(1)),
+                    3 => self.registers.set_16bit(Register16Bits::HL, address.wrapping_sub(1)),
                     _ => {}
                 }
             }
@@ -95,8 +90,8 @@ where
 
                 self.registers.set_16bit(register, value);
             }
-            0x04 | 0x05 | 0x0C | 0x0D | 0x14 | 0x15 | 0x1C | 0x1D | 0x24 | 0x25 | 0x2C | 0x2D
-            | 0x34 | 0x35 | 0x3C | 0x3D => {
+            0x04 | 0x05 | 0x0C | 0x0D | 0x14 | 0x15 | 0x1C | 0x1D | 0x24 | 0x25 | 0x2C | 0x2D | 0x34 | 0x35 | 0x3C
+            | 0x3D => {
                 let (_, destination, z, _, _) = opcode_decoder(opcode);
                 let is_inc = z == 4;
 
@@ -128,11 +123,9 @@ where
                     0x06 => self.registers.set_8bit(Register8Bits::B, value),
                     0x16 => self.registers.set_8bit(Register8Bits::D, value),
                     0x26 => self.registers.set_8bit(Register8Bits::H, value),
-                    _ => self.bus.write(
-                        self.registers.get_16bit(Register16Bits::HL),
-                        value,
-                        MemoryAccessor::Cpu,
-                    ),
+                    _ => self
+                        .bus
+                        .write(self.registers.get_16bit(Register16Bits::HL), value, MemoryAccessor::Cpu),
                 }
             }
             0x07 | 0x0F | 0x17 | 0x1F => {
@@ -161,8 +154,7 @@ where
                 let address = self.fetch_2bytes();
 
                 self.bus.write(address, low_byte, MemoryAccessor::Cpu);
-                self.bus
-                    .write(address.wrapping_add(1), high_byte, MemoryAccessor::Cpu);
+                self.bus.write(address.wrapping_add(1), high_byte, MemoryAccessor::Cpu);
             }
             0x09 | 0x19 | 0x29 | 0x39 => {
                 let (_, _, _, p, _) = opcode_decoder(opcode);
@@ -187,11 +179,7 @@ where
             }
             0x18 | 0x20 | 0x28 | 0x30 | 0x38 => {
                 let displacement = self.fetch_byte().i16() as u16;
-                let address = self
-                    .registers
-                    .program_counter
-                    .address
-                    .wrapping_add(displacement);
+                let address = self.registers.program_counter.address.wrapping_add(displacement);
 
                 if opcode == 0x18 {
                     self.registers.program_counter.jump(address);
@@ -236,11 +224,7 @@ where
                     z: FlagType::Unmodified,
                     n: FlagType::Unset,
                     h: FlagType::Unset,
-                    c: if !carry {
-                        FlagType::Set
-                    } else {
-                        FlagType::Unset
-                    },
+                    c: if !carry { FlagType::Set } else { FlagType::Unset },
                 });
             }
             0x40..=0x75 | 0x77..=0x7F => {
@@ -255,11 +239,9 @@ where
                     3 => self.registers.set_8bit(Register8Bits::E, value),
                     4 => self.registers.set_8bit(Register8Bits::H, value),
                     5 => self.registers.set_8bit(Register8Bits::L, value),
-                    6 => self.bus.write(
-                        self.registers.get_16bit(Register16Bits::HL),
-                        value,
-                        MemoryAccessor::Cpu,
-                    ),
+                    6 => self
+                        .bus
+                        .write(self.registers.get_16bit(Register16Bits::HL), value, MemoryAccessor::Cpu),
                     7 => self.registers.set_8bit(Register8Bits::A, value),
                     _ => unreachable!(),
                 }
@@ -435,8 +417,7 @@ where
                     4 => {
                         let a = self.registers.get_8bit(Register8Bits::A);
                         let c = self.registers.get_8bit(Register8Bits::C) as u16;
-                        self.bus
-                            .write(0xFF00u16.wrapping_add(c), a, MemoryAccessor::Cpu);
+                        self.bus.write(0xFF00u16.wrapping_add(c), a, MemoryAccessor::Cpu);
                     }
                     5 => {
                         let value = self.registers.get_8bit(Register8Bits::A);
@@ -549,10 +530,9 @@ where
             3 => self.registers.e,
             4 => self.registers.h,
             5 => self.registers.l,
-            6 => self.bus.read(
-                self.registers.get_16bit(Register16Bits::HL),
-                MemoryAccessor::Cpu,
-            ),
+            6 => self
+                .bus
+                .read(self.registers.get_16bit(Register16Bits::HL), MemoryAccessor::Cpu),
             7 => self.registers.a,
             _ => unreachable!(),
         }
@@ -647,16 +627,8 @@ where
         self.registers.apply_flags(FlagDelta {
             z: FlagType::Unmodified,
             n: FlagType::Unset,
-            h: if half_carry {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
-            c: if overflow {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
+            h: if half_carry { FlagType::Set } else { FlagType::Unset },
+            c: if overflow { FlagType::Set } else { FlagType::Unset },
         });
     }
 
@@ -668,21 +640,9 @@ where
         };
 
         self.registers.apply_flags(FlagDelta {
-            z: if new == 0 {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
-            n: if is_inc {
-                FlagType::Unset
-            } else {
-                FlagType::Set
-            },
-            h: if half_carry {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
+            z: if new == 0 { FlagType::Set } else { FlagType::Unset },
+            n: if is_inc { FlagType::Unset } else { FlagType::Set },
+            h: if half_carry { FlagType::Set } else { FlagType::Unset },
             c: FlagType::Unmodified,
         });
 
@@ -759,18 +719,10 @@ where
 
     fn apply_rotate_flags(&mut self, result: u8, carry: bool) {
         self.registers.apply_flags(FlagDelta {
-            z: if result == 0 {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
+            z: if result == 0 { FlagType::Set } else { FlagType::Unset },
             n: FlagType::Unset,
             h: FlagType::Unset,
-            c: if carry {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
+            c: if carry { FlagType::Set } else { FlagType::Unset },
         });
     }
 
@@ -779,11 +731,7 @@ where
         let is_zero = value & (1 << y) == 0;
 
         self.registers.apply_flags(FlagDelta {
-            z: if is_zero {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
+            z: if is_zero { FlagType::Set } else { FlagType::Unset },
             n: FlagType::Unset,
             h: FlagType::Set,
             c: FlagType::Unmodified,
@@ -887,11 +835,7 @@ where
 
         self.registers.set_8bit(Register8Bits::A, a);
         self.registers.apply_flags(FlagDelta {
-            z: if a == 0 {
-                FlagType::Set
-            } else {
-                FlagType::Unset
-            },
+            z: if a == 0 { FlagType::Set } else { FlagType::Unset },
             n: FlagType::Unmodified,
             h: FlagType::Unset,
             c: if update_carry_flag {
@@ -984,8 +928,7 @@ mod tests {
 
         for opcode in implemented_instructions.iter() {
             let path = format!("tests/vendored/sm83/v2/{}.json", opcode);
-            let text = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
+            let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
             let cases: Vec<TestCase> = serde_json::from_str(&text).unwrap();
 
             for case in &cases {
@@ -1012,12 +955,7 @@ mod tests {
 
                 let final_state = &case.final_state;
 
-                assert_eq!(
-                    m_cycles as usize,
-                    case.cycles.len(),
-                    "{}: cycles",
-                    case.name
-                );
+                assert_eq!(m_cycles as usize, case.cycles.len(), "{}: cycles", case.name);
                 assert_eq!(cpu.registers.a, final_state.a, "{}: A", case.name);
                 assert_eq!(cpu.registers.b, final_state.b, "{}: B", case.name);
                 assert_eq!(cpu.registers.c, final_state.c, "{}: C", case.name);
@@ -1031,11 +969,7 @@ mod tests {
                     "{}: PC",
                     case.name
                 );
-                assert_eq!(
-                    cpu.registers.stack_pointer, final_state.sp,
-                    "{}: SP",
-                    case.name
-                );
+                assert_eq!(cpu.registers.stack_pointer, final_state.sp, "{}: SP", case.name);
 
                 for (address, value) in &final_state.ram {
                     assert_eq!(

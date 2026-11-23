@@ -89,10 +89,7 @@ fn new_file_shortcut() -> bool {
 
 fn member_table(code: &str, cursor: usize) -> Option<&str> {
     let is_word = |character: char| character.is_alphanumeric() || character == '_';
-    let end = code
-        .char_indices()
-        .nth(cursor)
-        .map_or(code.len(), |(index, _)| index);
+    let end = code.char_indices().nth(cursor).map_or(code.len(), |(index, _)| index);
 
     let before = code[..end].trim_end_matches(is_word).strip_suffix(".")?;
     let table = &before[before.trim_end_matches(is_word).len()..];
@@ -310,11 +307,17 @@ impl LuaLab {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.menu_button("File", |ui| {
-                            if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked() && self.file_dialog.is_none() && self.pending_close.is_none() {
+                            if ui.button(format!("{}  Load Script", icons::FOLDER_OPEN)).clicked()
+                                && self.file_dialog.is_none()
+                                && self.pending_close.is_none()
+                            {
                                 self.load_lua_script();
                             }
 
-                            if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked() && self.file_dialog.is_none() && self.pending_close.is_none() {
+                            if ui.button(format!("{}  Save Script", icons::FLOPPY_DISK)).clicked()
+                                && self.file_dialog.is_none()
+                                && self.pending_close.is_none()
+                            {
                                 self.save_lua_script(self.get_current_tab_ref().id);
                             }
                         });
@@ -325,36 +328,41 @@ impl LuaLab {
                             }
 
                             egui::Window::new("Help")
-                            .default_width(650.0)
-                            .vscroll(false)
-                            .frame(egui::Frame::window(&ui.ctx().global_style()).fill(bg_color))
-                            .open(&mut self.help_window)
-                            .show(ui.ctx(), |ui| {
-                                if matches!(self.theme, EditorTheme::GithubLight) {
-                                    *ui.visuals_mut() = egui::Visuals::light();
-                                }
+                                .default_width(650.0)
+                                .vscroll(false)
+                                .frame(egui::Frame::window(&ui.ctx().global_style()).fill(bg_color))
+                                .open(&mut self.help_window)
+                                .show(ui.ctx(), |ui| {
+                                    if matches!(self.theme, EditorTheme::GithubLight) {
+                                        *ui.visuals_mut() = egui::Visuals::light();
+                                    }
 
-                                // maybe make the text color behavior a little more accurate later
-                                ui.visuals_mut().override_text_color = Some(text_color);
+                                    // maybe make the text color behavior a little more accurate
+                                    // later
+                                    ui.visuals_mut().override_text_color = Some(text_color);
 
-                                ui.horizontal(|ui| {
-                                    ui.selectable_value(&mut self.help_tab, HelpTab::Api, "API");
-                                    ui.selectable_value(&mut self.help_tab, HelpTab::Shortcut, "Shortcuts");
+                                    ui.horizontal(|ui| {
+                                        ui.selectable_value(&mut self.help_tab, HelpTab::Api, "API");
+                                        ui.selectable_value(&mut self.help_tab, HelpTab::Shortcut, "Shortcuts");
+                                    });
+
+                                    ui.separator();
+
+                                    egui::ScrollArea::vertical().show(ui, |ui| match self.help_tab {
+                                        HelpTab::Api => ui.label(API),
+                                        HelpTab::Shortcut => ui.label(SHORTCUT),
+                                    });
                                 });
-
-                                ui.separator();
-
-                                egui::ScrollArea::vertical().show(ui, |ui| match self.help_tab {
-                                    HelpTab::Api => ui.label(API),
-                                    HelpTab::Shortcut => ui.label(SHORTCUT)
-                                });
-                            });
 
                             ui.menu_button("Session", |ui| {
                                 // maybe redundant?
-                                if ui.button(format!("{}  Stop Scripts", icons::STOP_CIRCLE)).on_hover_text(
-                                    "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints"
-                                    ).clicked() {
+                                if ui
+                                    .button(format!("{}  Stop Scripts", icons::STOP_CIRCLE))
+                                    .on_hover_text(
+                                        "Stops Lua scripts, callbacks, and clears all watchpoints and breakpoints",
+                                    )
+                                    .clicked()
+                                {
                                     self.termination_request = true;
                                 }
 
@@ -389,16 +397,16 @@ impl LuaLab {
                                 run = true;
                             }
 
-                        // getting tired of having to click run
-                        // cannot do vscode ctrl/shift + f5 since it conflicts with save and load states when the editor doesnt
-                        // have focus
-                        if super_key_down() && is_key_pressed(KeyCode::R) {
-                            run = true
-                        }
+                            // getting tired of having to click run
+                            // cannot do vscode ctrl/shift + f5 since it conflicts with save and
+                            // load states when the editor doesnt have focus
+                            if super_key_down() && is_key_pressed(KeyCode::R) {
+                                run = true
+                            }
 
-                        if super_key_down()  && is_key_pressed(KeyCode::T) {
-                            self.termination_request = true
-                        }
+                            if super_key_down() && is_key_pressed(KeyCode::T) {
+                                self.termination_request = true
+                            }
                         });
                     });
 
@@ -407,7 +415,8 @@ impl LuaLab {
                     let file_dialog_active = self.file_dialog.is_some();
                     let theme = self.theme;
 
-                    // primarily fudged numbers until it came out somewhat ok, a lot of magic numbers
+                    // primarily fudged numbers until it came out somewhat ok, a lot of magic
+                    // numbers
                     ui.horizontal(|ui| {
                         ui.add_space(40.0);
                         let row = ui.max_rect();
@@ -423,158 +432,225 @@ impl LuaLab {
                         let plus_width = if can_add_tab { 28.0 } else { 0.0 };
                         let tab_width = (ui.available_width() - plus_width - gap_count * spacing) / tab_count;
 
-                        egui_dnd::dnd(ui, "Tabs").with_drag_axis(egui_dnd::DragAxis::Horizontal).show_vec_sized(&mut self.tabs, egui::vec2(tab_width, tab_height), |ui, tab, handle, state| {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
+                        egui_dnd::dnd(ui, "Tabs")
+                            .with_drag_axis(egui_dnd::DragAxis::Horizontal)
+                            .show_vec_sized(
+                                &mut self.tabs,
+                                egui::vec2(tab_width, tab_height),
+                                |ui, tab, handle, state| {
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.scope(|ui| {
+                                            // just used photoshop color picker for the rgbs for
+                                            // these
+                                            ui.visuals_mut().widgets.noninteractive.bg_stroke.color =
+                                                if theme == EditorTheme::DarkHighContrast {
+                                                    egui::Color32::from_rgb(111, 195, 233)
+                                                } else if theme.is_light() {
+                                                    egui::Color32::BLACK
+                                                } else {
+                                                    egui::Color32::WHITE
+                                                };
+                                            ui.separator();
+                                        });
 
-                                    ui.scope(|ui| {
-                                        // just used photoshop color picker for the rgbs for these
-                                        ui.visuals_mut().widgets.noninteractive.bg_stroke.color = if theme == EditorTheme::DarkHighContrast {
-                                            egui::Color32::from_rgb(111, 195, 233)} else if theme.is_light() {egui::Color32::BLACK} else {egui::Color32::WHITE};
-                                        ui.separator();
-                                    });
+                                        handle.show_drag_cursor_on_hover(false).ui(ui, |ui| {
+                                            let response = ui.allocate_response(
+                                                egui::vec2(DIAMETER, DIAMETER),
+                                                egui::Sense::click(),
+                                            );
 
-                                    handle.show_drag_cursor_on_hover(false).ui(ui, |ui| {
-                                        let response = ui.allocate_response(egui::vec2(DIAMETER, DIAMETER), egui::Sense::click());
+                                            let text = if tab.id == current_id {
+                                                egui::RichText::new(&tab.name).strong().underline()
+                                            } else {
+                                                egui::RichText::new(&tab.name)
+                                            };
 
-                                        let text = if tab.id == current_id {
-                                            egui::RichText::new(&tab.name).strong().underline()
-                                        } else {
-                                            egui::RichText::new(&tab.name)
-                                        };
+                                            let (rect, name_response) = ui.allocate_exact_size(
+                                                egui::vec2(ui.available_width(), tab_height),
+                                                egui::Sense::click(),
+                                            );
 
-                                        let (rect, name_response) = ui.allocate_exact_size(
-                                            egui::vec2(ui.available_width(), tab_height),
-                                            egui::Sense::click(),
-                                        );
+                                            // possibly a better way to do this but had to break
+                                            // down the conditional like and think it through
+                                            // since trying to replicate this vscode behavior was a
+                                            // kinda tricky for me
+                                            let hovered =
+                                                name_response.contains_pointer() || response.contains_pointer();
+                                            let reponse_hover = response.hovered();
+                                            let show_close = ((tab.id == current_id) || hovered) && !file_dialog_active;
+                                            if can_close_tab
+                                                && show_close
+                                                && (hovered || !tab.progress_unsaved)
+                                                && !current_pending_close
+                                            {
+                                                if response.contains_pointer() {
+                                                    match theme {
+                                                        EditorTheme::DarkHighContrast => {
+                                                            ui.painter().text(
+                                                                response.rect.left_center(),
+                                                                egui::Align2::CENTER_CENTER,
+                                                                icons::RECTANGLE_DASHED,
+                                                                FontId::proportional(17.0),
+                                                                egui::Color32::from_rgb(243, 122, 24),
+                                                            );
+                                                        }
+                                                        _ => {
+                                                            let (r, g, b, opacity) = if theme.is_light() {
+                                                                (47, 79, 79, 90)
+                                                            } else {
+                                                                (210, 210, 210, 50)
+                                                            };
 
-                                        // possibly a better way to do this but had to break down the conditional like and think it through
-                                        // since trying to replicate this vscode behavior was a kinda tricky for me
-                                        let hovered = name_response.contains_pointer() || response.contains_pointer();
-                                        let reponse_hover = response.hovered();
-                                        let show_close = ((tab.id == current_id) || hovered) && !file_dialog_active;
-                                        if can_close_tab && show_close && (hovered || !tab.progress_unsaved) && !current_pending_close {
-                                            if response.contains_pointer() {
-                                                match theme {
-                                                   EditorTheme::DarkHighContrast => {
-                                                        ui.painter()
-                                                        .text(
-                                                            response.rect.left_center(),
-                                                            egui::Align2::CENTER_CENTER,
-                                                            icons::RECTANGLE_DASHED,
-                                                            FontId::proportional(17.0),
-                                                            egui::Color32::from_rgb(243, 122, 24));
-                                                        },
-                                                   _ => {
-                                                        let (r, g, b, opacity) = if theme.is_light() {
-                                                            (47, 79, 79, 90)
-                                                        } else {
-                                                            (210, 210, 210, 50)
-                                                        };
-
-                                                        ui.painter().
-                                                        circle_filled(
-                                                            response.rect.left_center(),
-                                                            DIAMETER,
-                                                            egui::Color32::from_rgba_unmultiplied(r, g, b, opacity)
-                                                        );
+                                                            ui.painter().circle_filled(
+                                                                response.rect.left_center(),
+                                                                DIAMETER,
+                                                                egui::Color32::from_rgba_unmultiplied(r, g, b, opacity),
+                                                            );
+                                                        }
                                                     }
                                                 }
-                                            }
 
-                                            ui.painter().text(response.rect.left_center(), egui::Align2::CENTER_CENTER, icons::X, FontId::proportional(12.0), text_color);
+                                                ui.painter().text(
+                                                    response.rect.left_center(),
+                                                    egui::Align2::CENTER_CENTER,
+                                                    icons::X,
+                                                    FontId::proportional(12.0),
+                                                    text_color,
+                                                );
 
-                                            if response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                                                if tab.progress_unsaved {
-                                                    pending_close = Some(tab.id)
-                                                } else {
-                                                    close_tab = Some(state.index);
+                                                if response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                                                    if tab.progress_unsaved {
+                                                        pending_close = Some(tab.id)
+                                                    } else {
+                                                        close_tab = Some(state.index);
+                                                    }
                                                 }
+                                            } else if tab.progress_unsaved {
+                                                ui.painter().circle_filled(response.rect.center(), RADIUS, text_color);
                                             }
-                                        } else if tab.progress_unsaved {
-                                            ui.painter().circle_filled(response.rect.center(), RADIUS, text_color);
-                                        }
 
-                                        let galley = egui::WidgetText::from(text.clone()).into_galley(
-                                            ui,
-                                            Some(egui::TextWrapMode::Truncate),
-                                            rect.width() - (DIAMETER + 3.0) - ICON_SPACE,
-                                            egui::TextStyle::Body,
-                                        );
+                                            let galley = egui::WidgetText::from(text.clone()).into_galley(
+                                                ui,
+                                                Some(egui::TextWrapMode::Truncate),
+                                                rect.width() - (DIAMETER + 3.0) - ICON_SPACE,
+                                                egui::TextStyle::Body,
+                                            );
 
-                                        let left = rect.center().x - (ICON_SPACE + galley.size().x) / 2.0;
-                                        let text_color = ui.visuals().text_color();
+                                            let left = rect.center().x - (ICON_SPACE + galley.size().x) / 2.0;
+                                            let text_color = ui.visuals().text_color();
 
-                                        let is_lua =  tab.path.as_ref().and_then(|path| path.extension()).is_some_and(|ext| ext == "lua");
-                                        let logo_color = if is_lua {egui::Color32::from_rgb(LUA_LOGO.0, LUA_LOGO.1, LUA_LOGO.2)} else {text_color};
-                                        ui.painter()
-                                        .text(
-                                            egui::Pos2::new(left, rect.center().y),
-                                            egui::Align2::CENTER_CENTER,
-                                            if is_lua {LUA} else {icons::TEXT_ALIGN_LEFT},
-                                            FontId::proportional(14.0), logo_color);
+                                            let is_lua = tab
+                                                .path
+                                                .as_ref()
+                                                .and_then(|path| path.extension())
+                                                .is_some_and(|ext| ext == "lua");
+                                            let logo_color = if is_lua {
+                                                egui::Color32::from_rgb(LUA_LOGO.0, LUA_LOGO.1, LUA_LOGO.2)
+                                            } else {
+                                                text_color
+                                            };
+                                            ui.painter().text(
+                                                egui::Pos2::new(left, rect.center().y),
+                                                egui::Align2::CENTER_CENTER,
+                                                if is_lua { LUA } else { icons::TEXT_ALIGN_LEFT },
+                                                FontId::proportional(14.0),
+                                                logo_color,
+                                            );
 
-                                        let rectangle = egui::Rect::from_min_max(egui::Pos2::new(rect.left() - DIAMETER, rect.top()), egui::Pos2::new(rect.right() + 18.0, rect.bottom()));
-                                        if tab.id == current_id {
-                                            active_rect = Some(rectangle);
-                                        }
+                                            let rectangle = egui::Rect::from_min_max(
+                                                egui::Pos2::new(rect.left() - DIAMETER, rect.top()),
+                                                egui::Pos2::new(rect.right() + 18.0, rect.bottom()),
+                                            );
+                                            if tab.id == current_id {
+                                                active_rect = Some(rectangle);
+                                            }
 
-                                        if (name_response.hovered() || reponse_hover) && can_close_tab && tab.id != current_id {
-                                            match theme {
-                                                // find easiest way to draw a dashed rectangle that covers entire tab, if possible?
-                                                EditorTheme::DarkHighContrast => {
-                                                    if tab.id != current_id {
-                                                        let stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(243, 122, 24));
-                                                        ui.painter().rect_stroke(
+                                            if (name_response.hovered() || reponse_hover)
+                                                && can_close_tab
+                                                && tab.id != current_id
+                                            {
+                                                match theme {
+                                                    // find easiest way to draw a dashed rectangle
+                                                    // that covers entire tab, if possible?
+                                                    EditorTheme::DarkHighContrast => {
+                                                        if tab.id != current_id {
+                                                            let stroke = egui::Stroke::new(
+                                                                1.0,
+                                                                egui::Color32::from_rgb(243, 122, 24),
+                                                            );
+                                                            ui.painter().rect_stroke(
+                                                                rectangle,
+                                                                1.0,
+                                                                stroke,
+                                                                egui::StrokeKind::Outside,
+                                                            );
+                                                        }
+                                                    }
+                                                    _ => {
+                                                        ui.painter().rect_filled(
                                                             rectangle,
                                                             1.0,
-                                                            stroke,
-                                                            egui::StrokeKind::Outside,
+                                                            egui::Color32::from_rgba_unmultiplied(128, 128, 128, 50),
                                                         );
                                                     }
                                                 }
-                                                _ => {
-                                                    ui.painter().rect_filled(rectangle, 1.0, egui::Color32::from_rgba_unmultiplied(128, 128, 128, 50));
-                                                }
                                             }
-                                        }
 
-                                        if let Some(tab_rect) = active_rect {
-                                            let bottom = tab_rect.bottom() + 3.0;
+                                            if let Some(tab_rect) = active_rect {
+                                                let bottom = tab_rect.bottom() + 3.0;
 
-                                            // to tired to figure out rounded corners that chromium/electron apps have
-                                            ui.painter().line(
-                                                vec![
-                                                    egui::pos2(row.left(), bottom),
-                                                    egui::pos2(tab_rect.left(), bottom),
-                                                    egui::pos2(tab_rect.left(), tab_rect.top()),
-                                                    egui::pos2(tab_rect.right(), tab_rect.top()),
-                                                    egui::pos2(tab_rect.right(), bottom),
-                                                    egui::pos2(row.right(), bottom),
-                                                ],
+                                                // to tired to figure out rounded corners that
+                                                // chromium/electron apps have
+                                                ui.painter().line(
+                                                    vec![
+                                                        egui::pos2(row.left(), bottom),
+                                                        egui::pos2(tab_rect.left(), bottom),
+                                                        egui::pos2(tab_rect.left(), tab_rect.top()),
+                                                        egui::pos2(tab_rect.right(), tab_rect.top()),
+                                                        egui::pos2(tab_rect.right(), bottom),
+                                                        egui::pos2(row.right(), bottom),
+                                                    ],
+                                                    // for dark mode and light mode outside of dark
+                                                    // high coontrast, not quite the line coloring
+                                                    // and filling behavior of vscode but decent
+                                                    // enough as long as dark hc is relatively close
+                                                    egui::Stroke::new(
+                                                        1.0,
+                                                        if theme == EditorTheme::DarkHighContrast {
+                                                            egui::Color32::from_rgb(243, 122, 24)
+                                                        } else {
+                                                            text_color
+                                                        },
+                                                    ),
+                                                );
+                                            }
 
-                                                // for dark mode and light mode outside of dark high coontrast, not quite the line coloring and filling behavior
-                                                // of vscode but decent enough as long as dark hc is relatively close
-                                                egui::Stroke::new(1.0, if theme == EditorTheme::DarkHighContrast {egui::Color32::from_rgb(243, 122, 24)} else {text_color}),
+                                            ui.painter().galley(
+                                                egui::pos2(left + ICON_SPACE, rect.center().y - galley.size().y / 2.0),
+                                                galley,
+                                                text_color,
                                             );
-                                        }
 
-                                        ui.painter().galley(
-                                            egui::pos2(left + ICON_SPACE, rect.center().y - galley.size().y / 2.0),
-                                            galley,
-                                            text_color,
-                                        );
-
-                                        if name_response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(text).clicked() && !(file_dialog_active || current_pending_close) {
-                                            select_tab = Some(state.index);
-                                        }
+                                            if name_response
+                                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                                .on_hover_text(text)
+                                                .clicked()
+                                                && !(file_dialog_active || current_pending_close)
+                                            {
+                                                select_tab = Some(state.index);
+                                            }
+                                        });
                                     });
                                 },
                             );
-                        });
 
-                        if can_add_tab && ui.button(icons::PLUS).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("New script").clicked() {
+                        if can_add_tab
+                            && ui
+                                .button(icons::PLUS)
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .on_hover_text("New script")
+                                .clicked()
+                        {
                             add_tab = true;
                         }
                     });
@@ -603,15 +679,22 @@ impl LuaLab {
 
                     ui.horizontal(|ui| {
                         ui.add_space(10.0);
-                        let is_lua = path.extension().map(|string| string.to_str() == Some("lua")).unwrap_or(false);
+                        let is_lua = path
+                            .extension()
+                            .map(|string| string.to_str() == Some("lua"))
+                            .unwrap_or(false);
                         let steal_vs_code_breadcrumb_design = path
-                        .components()
-                        .filter(|component| !matches!(component.as_os_str().to_str(), Some("\\") | Some("/")))
-                        .map(|component| component.as_os_str().to_string_lossy())
-                        .collect::<Vec<_>>();
+                            .components()
+                            .filter(|component| !matches!(component.as_os_str().to_str(), Some("\\") | Some("/")))
+                            .map(|component| component.as_os_str().to_string_lossy())
+                            .collect::<Vec<_>>();
 
                         let font_id = TextStyle::Body.resolve(ui.style());
-                        let normal = TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() };
+                        let normal = TextFormat {
+                            font_id: font_id.clone(),
+                            color: text_color,
+                            ..Default::default()
+                        };
 
                         let mut layout_job = LayoutJob::default();
                         let last = steal_vs_code_breadcrumb_design.len() - 1;
@@ -624,18 +707,30 @@ impl LuaLab {
                             }
                         }
 
-                        let response = ui.add(
-                            egui::Label::new(layout_job)
-                            .wrap_mode(egui::TextWrapMode::Truncate)
-                            .sense(egui::Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand);
+                        let response = ui
+                            .add(
+                                egui::Label::new(layout_job)
+                                    .wrap_mode(egui::TextWrapMode::Truncate)
+                                    .sense(egui::Sense::click()),
+                            )
+                            .on_hover_cursor(egui::CursorIcon::PointingHand);
 
                         // not quiite as in depth as vscode but decent enough
                         egui::Popup::menu(&response).show(|ui| {
                             for file in &self.get_current_tab_ref().first_level_files {
                                 let mut layout_job = LayoutJob::default();
-                                let is_lua = file.extension().map(|string| string.to_str() == Some("lua")).unwrap_or(false);
+                                let is_lua = file
+                                    .extension()
+                                    .map(|string| string.to_str() == Some("lua"))
+                                    .unwrap_or(false);
                                 if let Some(filename) = file.file_name() {
-                                    layout_text(is_lua, &normal, &font_id, &mut layout_job, filename.to_string_lossy().to_string());
+                                    layout_text(
+                                        is_lua,
+                                        &normal,
+                                        &font_id,
+                                        &mut layout_job,
+                                        filename.to_string_lossy().to_string(),
+                                    );
                                     if ui.button(layout_job).clicked() {
                                         open_file = Some(file.clone())
                                     }
@@ -656,7 +751,8 @@ impl LuaLab {
                     .frame(egui::Frame::window(&egui_ctx.global_style()).fill(bg_color))
                     .default_size(400.0)
                     .show(ui, |ui| {
-                        let completer = if let Some(table) = member_table(&self.tabs[self.current_tab].code, self.last_cursor)
+                        let completer = if let Some(table) =
+                            member_table(&self.tabs[self.current_tab].code, self.last_cursor)
                             && let Some(member_completer) = self.member_completers.get_mut(table)
                         {
                             member_completer
@@ -696,7 +792,12 @@ impl LuaLab {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let trash = egui::Button::new(egui::RichText::new(icons::BROOM).color(text_color)).frame(false);
-                        if ui.add(trash).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Clear console").clicked() {
+                        if ui
+                            .add(trash)
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text("Clear console")
+                            .clicked()
+                        {
                             self.output.clear();
                         }
                     });
@@ -725,7 +826,10 @@ impl LuaLab {
                 }
 
                 if save_shortcut() && self.pending_close.is_none() {
-                    if let Some(path) = self.get_current_tab_ref().path.clone() && path.exists() && self.file_dialog.is_none() {
+                    if let Some(path) = self.get_current_tab_ref().path.clone()
+                        && path.exists()
+                        && self.file_dialog.is_none()
+                    {
                         self.quick_save(&path, self.get_current_tab_ref().id);
                     } else {
                         self.save_lua_script(self.get_current_tab_ref().id);
@@ -818,10 +922,7 @@ impl LuaLab {
         }
 
         let possible_values: HashSet<u64> = (1..=MAX_TABS as u64).collect();
-        let differences = possible_values
-            .difference(&values)
-            .cloned()
-            .collect::<Vec<u64>>();
+        let differences = possible_values.difference(&values).cloned().collect::<Vec<u64>>();
         let number = differences.iter().min().unwrap();
 
         format!("Untitled-{number}")
@@ -876,8 +977,7 @@ impl LuaLab {
         match write(path, self.get_tab_ref(tab_position).code.clone()) {
             Ok(_) => {
                 self.update_script_path(path.to_path_buf(), tab_id);
-                self.output
-                    .push(format!("current script saved to: {}", path.display()));
+                self.output.push(format!("current script saved to: {}", path.display()));
 
                 self.get_tab_mut(tab_position).progress_unsaved = false;
                 let tab = self.get_tab_mut(tab_position);
@@ -954,9 +1054,7 @@ impl LuaLab {
     }
 
     fn check_on_load(&self, path: &PathBuf) -> Option<usize> {
-        self.tabs
-            .iter()
-            .position(|tab| tab.path == Some(path.to_path_buf()))
+        self.tabs.iter().position(|tab| tab.path == Some(path.to_path_buf()))
     }
 
     fn save_lua_script(&mut self, tab_id: u64) {
@@ -1078,12 +1176,7 @@ impl LuaLab {
             }
         };
 
-        let before_selection: String = self
-            .get_current_tab_ref()
-            .code
-            .chars()
-            .take(actual_start)
-            .collect();
+        let before_selection: String = self.get_current_tab_ref().code.chars().take(actual_start).collect();
 
         let selected_text = self.get_selected_text(actual_start, end);
 
@@ -1136,9 +1229,7 @@ impl LuaLab {
             .map(|clipboard| clipboard.set_text(text.clone()))
         {
             Some(Ok(())) => {}
-            Some(Err(err)) => self
-                .output
-                .push(format!("Failed to copy to clipboard: {err}")),
+            Some(Err(err)) => self.output.push(format!("Failed to copy to clipboard: {err}")),
             None => self.output.push("Clipboard unavailable".to_string()),
         }
     }
@@ -1153,52 +1244,45 @@ impl LuaLab {
         let mut open = true;
         let mut save: Option<bool> = None;
 
-        egui::Window::new(
-            egui::RichText::new("Lua Lab")
-                .strong()
-                .color(egui::Color32::WHITE),
-        )
-        .id("Lua Lab Dialog".into())
-        .collapsible(false)
-        .resizable(false)
-        .open(&mut open)
-        .show(egui_ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    ui.label(
-                        egui::RichText::new(icons::WARNING)
-                            .color(egui::Color32::YELLOW)
-                            .size(20.0),
-                    );
-
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!(
-                                "Changes will be lost if you don't save {}",
-                                tab.name
-                            ))
-                            .color(text_color)
-                            .size(15.0),
-                        )
-                        .wrap(),
-                    );
-                });
-            });
-
-            ui.add_space(10.0);
-            centered_row(ui, "close_options", |ui| {
+        egui::Window::new(egui::RichText::new("Lua Lab").strong().color(egui::Color32::WHITE))
+            .id("Lua Lab Dialog".into())
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .show(egui_ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
-                        save = Some(true);
-                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(icons::WARNING)
+                                .color(egui::Color32::YELLOW)
+                                .size(20.0),
+                        );
 
-                    ui.add_space(50.0);
-                    if ui.button("Don't Save").clicked() {
-                        save = Some(false);
-                    }
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!("Changes will be lost if you don't save {}", tab.name))
+                                    .color(text_color)
+                                    .size(15.0),
+                            )
+                            .wrap(),
+                        );
+                    });
+                });
+
+                ui.add_space(10.0);
+                centered_row(ui, "close_options", |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            save = Some(true);
+                        }
+
+                        ui.add_space(50.0);
+                        if ui.button("Don't Save").clicked() {
+                            save = Some(false);
+                        }
+                    });
                 });
             });
-        });
 
         if let Some(choice) = save {
             open = false;
@@ -1248,13 +1332,7 @@ fn collect_files(path: &PathBuf, first_level_files: &mut Vec<PathBuf>) -> Result
     Ok(())
 }
 
-fn layout_text(
-    is_lua: bool,
-    normal: &TextFormat,
-    font_id: &FontId,
-    layout_job: &mut LayoutJob,
-    text: String,
-) {
+fn layout_text(is_lua: bool, normal: &TextFormat, font_id: &FontId, layout_job: &mut LayoutJob, text: String) {
     let logo_color = TextFormat {
         font_id: font_id.clone(),
         color: if is_lua {

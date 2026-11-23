@@ -114,12 +114,7 @@ fn test_jsmolka_arm_test() {
 
     let max_iterations = gba.bus.gamepak.rom.len() * 1000;
 
-    check_status(run_vendored_instructions(
-        &mut gba,
-        max_iterations,
-        "arm",
-        12,
-    ));
+    check_status(run_vendored_instructions(&mut gba, max_iterations, "arm", 12));
 }
 
 #[test]
@@ -130,12 +125,7 @@ fn test_jsmolka_thumb_test() {
 
     let max_iterations = gba.bus.gamepak.rom.len() * 1000;
 
-    check_status(run_vendored_instructions(
-        &mut gba,
-        max_iterations,
-        "thumb",
-        7,
-    ));
+    check_status(run_vendored_instructions(&mut gba, max_iterations, "thumb", 7));
 }
 
 #[test]
@@ -146,10 +136,5 @@ fn test_jsmolka_memory_test() {
 
     let max_iterations = gba.bus.gamepak.rom.len() * 1000;
 
-    check_status(run_vendored_instructions(
-        &mut gba,
-        max_iterations,
-        "memory",
-        12,
-    ));
+    check_status(run_vendored_instructions(&mut gba, max_iterations, "memory", 12));
 }

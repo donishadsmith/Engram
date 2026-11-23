@@ -15,11 +15,7 @@ impl BitwiseOperation {
                 (
                     value,
                     FlagDelta {
-                        z: if value == 0 {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        z: if value == 0 { FlagType::Set } else { FlagType::Unset },
                         n: FlagType::Unset,
                         h: FlagType::Set,
                         c: FlagType::Unset,
@@ -31,11 +27,7 @@ impl BitwiseOperation {
                 (
                     value,
                     FlagDelta {
-                        z: if value == 0 {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        z: if value == 0 { FlagType::Set } else { FlagType::Unset },
                         n: FlagType::Unset,
                         h: FlagType::Unset,
                         c: FlagType::Unset,
@@ -47,11 +39,7 @@ impl BitwiseOperation {
                 (
                     value,
                     FlagDelta {
-                        z: if value == 0 {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        z: if value == 0 { FlagType::Set } else { FlagType::Unset },
                         n: FlagType::Unset,
                         h: FlagType::Unset,
                         c: FlagType::Unset,
@@ -99,22 +87,14 @@ impl ArithmeticOperation {
                 (
                     value,
                     FlagDelta {
-                        z: if value == 0 {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        z: if value == 0 { FlagType::Set } else { FlagType::Unset },
                         n: FlagType::Unset,
                         h: if half_carry_add(a, b, false) {
                             FlagType::Set
                         } else {
                             FlagType::Unset
                         },
-                        c: if overflow {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        c: if overflow { FlagType::Set } else { FlagType::Unset },
                     },
                 )
             }
@@ -133,11 +113,7 @@ impl ArithmeticOperation {
                             FlagType::Unset
                         },
                         n: FlagType::Unset,
-                        h: if half_carry {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        h: if half_carry { FlagType::Set } else { FlagType::Unset },
                         c: if adjusted_value_u16 > 0xFF {
                             FlagType::Set
                         } else {
@@ -153,22 +129,14 @@ impl ArithmeticOperation {
                 (
                     value,
                     FlagDelta {
-                        z: if value == 0 {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        z: if value == 0 { FlagType::Set } else { FlagType::Unset },
                         n: FlagType::Set,
                         h: if half_carry_sub(a, b, false) {
                             FlagType::Set
                         } else {
                             FlagType::Unset
                         },
-                        c: if underflow {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        c: if underflow { FlagType::Set } else { FlagType::Unset },
                     },
                 )
             }
@@ -191,11 +159,7 @@ impl ArithmeticOperation {
                         } else {
                             FlagType::Unset
                         },
-                        c: if underflow {
-                            FlagType::Set
-                        } else {
-                            FlagType::Unset
-                        },
+                        c: if underflow { FlagType::Set } else { FlagType::Unset },
                     },
                 )
             }

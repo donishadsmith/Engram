@@ -105,11 +105,7 @@ impl Lcdc {
     }
 
     fn bg_map_base(&self) -> u16 {
-        if self.bg_tile_map_select == 1 {
-            0x9C00
-        } else {
-            0x9800
-        }
+        if self.bg_tile_map_select == 1 { 0x9C00 } else { 0x9800 }
     }
 
     fn window_map_base(&self) -> u16 {
@@ -301,10 +297,8 @@ impl Ppu {
                 };
 
                 let tile_index = self.vram.read_banked(0, map_address);
-                let current_tile_address =
-                    lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
-                let color_index =
-                    self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
+                let current_tile_address = lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
+                let color_index = self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
 
                 (color_index, attributes)
             } else {
@@ -329,10 +323,8 @@ impl Ppu {
                 };
 
                 let tile_index = self.vram.read_banked(0, map_address);
-                let current_tile_address =
-                    lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
-                let color_index =
-                    self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
+                let current_tile_address = lcdc_struct.get_current_tile_address(tile_index) + tile_row * 2;
+                let color_index = self.compute_color_index(attributes.bank, bit, current_tile_address, bg_enable);
 
                 (color_index, attributes)
             };
@@ -353,18 +345,13 @@ impl Ppu {
         }
 
         let sprite_row = |row: u16, flip: bool, sprite_size: u8| {
-            if flip {
-                (sprite_size as u16 - 1) - row
-            } else {
-                row
-            }
+            if flip { (sprite_size as u16 - 1) - row } else { row }
         };
 
         let base_adress = 0x8000u16;
         for sprite_attribute in &sprite_attributes {
             if lcdc_struct.enable_sprite {
-                for x in sprite_attribute.position_x.max(0)
-                    ..(sprite_attribute.position_x + 8).min(SCREEN_WIDTH as i16)
+                for x in sprite_attribute.position_x.max(0)..(sprite_attribute.position_x + 8).min(SCREEN_WIDTH as i16)
                 {
                     let sprite_column = x - sprite_attribute.position_x;
                     let bit = if sprite_attribute.flip_x {
@@ -383,26 +370,17 @@ impl Ppu {
                         .wrapping_add((tile_index as u16).wrapping_mul(16))
                         .wrapping_add(row * 2);
 
-                    let color_index = self.compute_color_index(
-                        sprite_attribute.bank,
-                        bit as u16,
-                        current_tile_address,
-                        true,
-                    );
+                    let color_index =
+                        self.compute_color_index(sprite_attribute.bank, bit as u16, current_tile_address, true);
 
                     if color_index == 0 {
                         continue;
                     }
 
                     let color = if self.is_cgb {
-                        cram_color(
-                            &self.obj_palette_ram,
-                            sprite_attribute.palette_number,
-                            color_index,
-                        ) as u32
+                        cram_color(&self.obj_palette_ram, sprite_attribute.palette_number, color_index) as u32
                     } else {
-                        let dmg_palette =
-                            self.monochrome_object_palette(sprite_attribute.palette_number);
+                        let dmg_palette = self.monochrome_object_palette(sprite_attribute.palette_number);
                         let shade = (dmg_palette >> (color_index * 2)).get_bit_range(0..2);
                         DMG_SHADES[shade as usize] as u32
                     };
@@ -428,18 +406,12 @@ impl Ppu {
             .chunks(4)
             .enumerate()
             .map(|(i, bytes)| SpriteAttribute::from_oam(i, bytes, self.is_cgb))
-            .filter(|s| {
-                (s.position_y..(s.position_y + sprite_size as i16)).contains(&(self.ly as i16))
-            })
+            .filter(|s| (s.position_y..(s.position_y + sprite_size as i16)).contains(&(self.ly as i16)))
             .take(10)
             .collect();
 
         if !self.is_cgb || self.opri.is_set(0) {
-            sprite_attributes.sort_by(|a, b| {
-                b.position_x
-                    .cmp(&a.position_x)
-                    .then(b.oam_index.cmp(&a.oam_index))
-            });
+            sprite_attributes.sort_by(|a, b| b.position_x.cmp(&a.position_x).then(b.oam_index.cmp(&a.oam_index)));
         } else {
             sprite_attributes.reverse();
         }
@@ -454,13 +426,7 @@ impl Ppu {
         }
     }
 
-    fn compute_color_index(
-        &self,
-        bank: usize,
-        bit: u16,
-        current_tile_address: u16,
-        enable: bool,
-    ) -> u8 {
+    fn compute_color_index(&self, bank: usize, bit: u16, current_tile_address: u16, enable: bool) -> u8 {
         let tile_data_low = self.vram.read_banked(bank, current_tile_address);
         let tile_data_high = self.vram.read_banked(bank, current_tile_address + 1);
 
@@ -598,15 +564,9 @@ impl Ppu {
             0xFF49 => self.monochrome_color_ram[1],
             0xFF4A => self.wy,
             0xFF4B => self.wx,
-            0xFF68 if self.is_cgb => {
-                self.read_color_palette_register(ColorPaletteRegisterType::Background)
-            }
-            0xFF69 if self.is_cgb => {
-                self.read_color_palette_data(ColorPaletteRegisterType::Background)
-            }
-            0xFF6A if self.is_cgb => {
-                self.read_color_palette_register(ColorPaletteRegisterType::Object)
-            }
+            0xFF68 if self.is_cgb => self.read_color_palette_register(ColorPaletteRegisterType::Background),
+            0xFF69 if self.is_cgb => self.read_color_palette_data(ColorPaletteRegisterType::Background),
+            0xFF6A if self.is_cgb => self.read_color_palette_register(ColorPaletteRegisterType::Object),
             0xFF6B if self.is_cgb => self.read_color_palette_data(ColorPaletteRegisterType::Object),
             0xFF6C if self.is_cgb => self.opri.get_bit(0),
             _ => 0xFF,
@@ -633,13 +593,9 @@ impl Ppu {
             0xFF4A => self.wy = value,
             0xFF4B => self.wx = value,
             0xFF68 if self.is_cgb => self.bgpi = value,
-            0xFF69 if self.is_cgb => {
-                self.write_color_palette_data(value, ColorPaletteRegisterType::Background)
-            }
+            0xFF69 if self.is_cgb => self.write_color_palette_data(value, ColorPaletteRegisterType::Background),
             0xFF6A if self.is_cgb => self.obpi = value,
-            0xFF6B if self.is_cgb => {
-                self.write_color_palette_data(value, ColorPaletteRegisterType::Object)
-            }
+            0xFF6B if self.is_cgb => self.write_color_palette_data(value, ColorPaletteRegisterType::Object),
             0xFF6C if self.is_cgb => self.opri = value,
             _ => {}
         }

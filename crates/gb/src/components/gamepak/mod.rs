@@ -54,12 +54,7 @@ pub enum MbcType {
 }
 
 impl MbcType {
-    fn byte_to_struct(
-        rom: Box<[u8]>,
-        ram: Box<[u8]>,
-        rtc_save_state: Option<RtcSaveState>,
-        has_rumble: bool,
-    ) -> Self {
+    fn byte_to_struct(rom: Box<[u8]>, ram: Box<[u8]>, rtc_save_state: Option<RtcSaveState>, has_rumble: bool) -> Self {
         match rom[0x0147] {
             0x00 | 0x08 | 0x09 => MbcType::RomOnly(RomOnly::new(rom, ram)),
             0x01..=0x03 => MbcType::Mbc1(Mbc1::new(rom, ram)),
@@ -300,28 +295,18 @@ impl GamePak {
         let rom = read(&rom_path)?;
         let rom = rom.into_boxed_slice();
         if rom.len() < 0x150 {
-            return Err(error_message(
-                "File too small to be a valid ROM".to_string(),
-            ));
+            return Err(error_message("File too small to be a valid ROM".to_string()));
         }
 
         let header = Header::new(&rom);
-        let sav_path =
-            system_dir("gb", "saves")?.join(rom_path.with_extension("sav").file_name().unwrap());
+        let sav_path = system_dir("gb", "saves")?.join(rom_path.with_extension("sav").file_name().unwrap());
         let (ram, rtc_save_state) = Self::read_sav(&sav_path, &header)?;
         let mbc = MbcType::byte_to_struct(rom, ram, rtc_save_state, header.has_rumble);
 
-        Ok(Self {
-            header,
-            sav_path,
-            mbc,
-        })
+        Ok(Self { header, sav_path, mbc })
     }
 
-    pub fn read_sav(
-        sav_path: &PathBuf,
-        header: &Header,
-    ) -> Result<(Box<[u8]>, Option<RtcSaveState>), Error> {
+    pub fn read_sav(sav_path: &PathBuf, header: &Header) -> Result<(Box<[u8]>, Option<RtcSaveState>), Error> {
         let mut ram = zero_arr::<u8>(header.ram_size);
         let mut rtc_save_state = None;
 

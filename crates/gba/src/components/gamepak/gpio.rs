@@ -27,8 +27,7 @@ impl Gpio {
     }
 
     fn has_device(&self, address: u32) -> bool {
-        (0x80000C4..=0x80000C9).contains(&address)
-            && (self.rtc.is_some() || self.solar_sensor.is_some())
+        (0x80000C4..=0x80000C9).contains(&address) && (self.rtc.is_some() || self.solar_sensor.is_some())
     }
 
     pub fn read_device(&self, address: u32) -> bool {

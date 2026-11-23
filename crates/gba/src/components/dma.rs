@@ -144,14 +144,13 @@ impl Dma {
     }
 
     pub fn write_source_address(&mut self, address: u32, value: u16) {
-        self.source_address_register = self.source_address_register & get_word_mask(address)
-            | (value as u32) << get_halfword_shift(address);
+        self.source_address_register =
+            self.source_address_register & get_word_mask(address) | (value as u32) << get_halfword_shift(address);
     }
 
     pub fn write_destination_address(&mut self, address: u32, value: u16) {
-        self.destination_address_register = self.destination_address_register
-            & get_word_mask(address)
-            | (value as u32) << get_halfword_shift(address);
+        self.destination_address_register =
+            self.destination_address_register & get_word_mask(address) | (value as u32) << get_halfword_shift(address);
     }
 
     pub fn write_control_register(&mut self, value: u16) {
@@ -159,10 +158,8 @@ impl Dma {
 
         self.completion_interrupt_enabled = value.is_set(14);
         self.start_timing = StartTiming::from_bit(value.get_bit_range(12..14) as u8, self.id);
-        self.destination_increment_mode =
-            IncrementDmaMode::from_bit(value.get_bit_range(5..7) as u8, true);
-        self.source_increment_mode =
-            IncrementDmaMode::from_bit(value.get_bit_range(7..9) as u8, false);
+        self.destination_increment_mode = IncrementDmaMode::from_bit(value.get_bit_range(5..7) as u8, true);
+        self.source_increment_mode = IncrementDmaMode::from_bit(value.get_bit_range(7..9) as u8, false);
         self.gamepak_transfer = GamepakTransfer::from_bit(value.is_set(11), self.id);
         self.transfer_type = TransferType::from_bit(value.is_set(10));
         self.repeat = value.is_set(9);
@@ -171,8 +168,7 @@ impl Dma {
         self.on = value.is_set(15);
         if channel_previously_off && self.on {
             self.current_source_address = self.source_address_register.get_bit_range(0..28);
-            self.current_destination_address =
-                self.destination_address_register.get_bit_range(0..28);
+            self.current_destination_address = self.destination_address_register.get_bit_range(0..28);
             self.current_word_count = self.transfer_size();
         }
     }
@@ -199,8 +195,7 @@ impl Dma {
                 Trigger::Vblank => self.start_timing == StartTiming::Vblank,
                 Trigger::SoundFifo(channel) => {
                     let is_sound_channel = self.id == 1 || self.id == 2;
-                    let is_sound_destination_address =
-                        self.current_destination_address == channel as u32;
+                    let is_sound_destination_address = self.current_destination_address == channel as u32;
 
                     is_sound_channel
                         && is_sound_destination_address
@@ -265,8 +260,7 @@ impl Dma {
 
     pub fn reload_destination_address(&mut self) {
         if self.destination_increment_mode == IncrementDmaMode::Reload {
-            self.current_destination_address =
-                self.destination_address_register.get_bit_range(0..28);
+            self.current_destination_address = self.destination_address_register.get_bit_range(0..28);
         }
     }
 

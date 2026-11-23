@@ -360,10 +360,8 @@ impl Ppu {
             let row = self.vcount as usize * SCREEN_WIDTH;
             self.frame.pixels[row..row + SCREEN_WIDTH].fill(0x7FFF);
 
-            self.bg2_affine_state
-                .increment_internal_reference(bg2_matrix);
-            self.bg3_affine_state
-                .increment_internal_reference(bg3_matrix);
+            self.bg2_affine_state.increment_internal_reference(bg2_matrix);
+            self.bg3_affine_state.increment_internal_reference(bg3_matrix);
 
             return;
         }
@@ -390,11 +388,7 @@ impl Ppu {
                         if bg_id != 2 {
                             self.populate_bg_array(&mut bg_lines[bg_id], RenderType::Text, None);
                         } else {
-                            self.populate_bg_array(
-                                &mut bg_lines[bg_id],
-                                RenderType::Affine,
-                                Some(bg2_matrix),
-                            );
+                            self.populate_bg_array(&mut bg_lines[bg_id], RenderType::Affine, Some(bg2_matrix));
                         }
                     } else {
                         if bg_id < 2 {
@@ -402,17 +396,9 @@ impl Ppu {
                         }
 
                         if bg_id == 2 {
-                            self.populate_bg_array(
-                                &mut bg_lines[bg_id],
-                                RenderType::Affine,
-                                Some(bg2_matrix),
-                            );
+                            self.populate_bg_array(&mut bg_lines[bg_id], RenderType::Affine, Some(bg2_matrix));
                         } else {
-                            self.populate_bg_array(
-                                &mut bg_lines[bg_id],
-                                RenderType::Affine,
-                                Some(bg3_matrix),
-                            );
+                            self.populate_bg_array(&mut bg_lines[bg_id], RenderType::Affine, Some(bg3_matrix));
                         }
                     }
                 }
@@ -437,18 +423,11 @@ impl Ppu {
 
         self.composite(&bg_lines, &sprite_line, window_mask);
 
-        self.bg2_affine_state
-            .increment_internal_reference(bg2_matrix);
-        self.bg3_affine_state
-            .increment_internal_reference(bg3_matrix);
+        self.bg2_affine_state.increment_internal_reference(bg2_matrix);
+        self.bg3_affine_state.increment_internal_reference(bg3_matrix);
     }
 
-    fn populate_bg_array(
-        &mut self,
-        bg_line: &mut BgLine,
-        mode_type: RenderType,
-        matrix: Option<AffineMatrix>,
-    ) {
+    fn populate_bg_array(&mut self, bg_line: &mut BgLine, mode_type: RenderType, matrix: Option<AffineMatrix>) {
         if mode_type == RenderType::Text {
             self.populate_text_line(bg_line);
         } else if mode_type == RenderType::Affine {
@@ -473,19 +452,13 @@ impl Ppu {
             //let mosaic_h = 10;
             if mosaic_h > 1 {
                 for pixel in 0..SCREEN_WIDTH {
-                    bg_line.palette_indices[pixel] =
-                        bg_line.palette_indices[pixel - pixel % mosaic_h];
+                    bg_line.palette_indices[pixel] = bg_line.palette_indices[pixel - pixel % mosaic_h];
                 }
             }
         }
     }
 
-    fn composite(
-        &mut self,
-        bg_lines: &[BgLine; 4],
-        sprite_line: &[Option<SpritePixel>; 240],
-        window_mask: [u8; 240],
-    ) {
+    fn composite(&mut self, bg_lines: &[BgLine; 4], sprite_line: &[Option<SpritePixel>; 240], window_mask: [u8; 240]) {
         let backdrop = u16::from_le_bytes([self.palette_ram[0], self.palette_ram[1]]);
         for pixel in 0..SCREEN_WIDTH {
             let mut first = Pixel {
@@ -535,11 +508,7 @@ impl Ppu {
                     let candidate = Pixel {
                         id: LayerId::Sprite,
                         priority: sprite_pixel.priority,
-                        color: self.fetch_color(
-                            sprite_pixel.palette_index + 256,
-                            LayerId::Sprite,
-                            false,
-                        ) as u16,
+                        color: self.fetch_color(sprite_pixel.palette_index + 256, LayerId::Sprite, false) as u16,
                         semitransparent: sprite_pixel.semi_transparent,
                     };
 
@@ -604,8 +573,8 @@ impl Ppu {
 
             if tile_x != last_tile_x {
                 let screen_block_offset = (tile_y / 32) * blocks_per_row + (tile_x / 32);
-                let screen_block_vram_index = (screen_base_block + screen_block_offset) * 0x800
-                    + ((tile_y % 32) * 32 + (tile_x % 32)) * 2;
+                let screen_block_vram_index =
+                    (screen_base_block + screen_block_offset) * 0x800 + ((tile_y % 32) * 32 + (tile_x % 32)) * 2;
                 tile_attributes = u16::from_le_bytes([
                     self.vram[screen_block_vram_index],
                     self.vram[screen_block_vram_index + 1],
@@ -635,11 +604,7 @@ impl Ppu {
                 tile_attributes.get_bit_range(12..16) as usize,
             );
 
-            bg_line.palette_indices[lcd_x] = if palette_index == 0 {
-                None
-            } else {
-                Some(palette_index)
-            };
+            bg_line.palette_indices[lcd_x] = if palette_index == 0 { None } else { Some(palette_index) };
         }
     }
 
@@ -665,10 +630,7 @@ impl Ppu {
             mosaic: self.bg_control.from_index(bg_id).is_set(6),
             affine: true,
             screen_size: (screen_size as usize, screen_size as usize),
-            reference_coordinate: (
-                reference.x.raw() as f32 / 256.0,
-                reference.y.raw() as f32 / 256.0,
-            ),
+            reference_coordinate: (reference.x.raw() as f32 / 256.0, reference.y.raw() as f32 / 256.0),
             bpp: 8,
             character_base_block,
             screen_base_block,
@@ -692,12 +654,11 @@ impl Ppu {
                 continue;
             }
 
-            let (affine_map_pixel_x, affine_map_pixel_y) =
-                (affine_map_pixel_x as usize, affine_map_pixel_y as usize);
+            let (affine_map_pixel_x, affine_map_pixel_y) = (affine_map_pixel_x as usize, affine_map_pixel_y as usize);
 
-            let tileset_offset = self.vram[screen_base_block * 0x800
-                + (affine_map_pixel_y / 8) * tiles_per_side
-                + affine_map_pixel_x / 8] as usize;
+            let tileset_offset = self.vram
+                [screen_base_block * 0x800 + (affine_map_pixel_y / 8) * tiles_per_side + affine_map_pixel_x / 8]
+                as usize;
             let index = self.read_tile_pixel_palette_index(
                 character_base_block,
                 tileset_offset,
@@ -818,12 +779,7 @@ impl Ppu {
         window_mask
     }
 
-    fn fetch_color(
-        &self,
-        palette_index: usize,
-        layer_id: LayerId,
-        make_background_transparent: bool,
-    ) -> u32 {
+    fn fetch_color(&self, palette_index: usize, layer_id: LayerId, make_background_transparent: bool) -> u32 {
         if (palette_index == 0 || palette_index == 256) && make_background_transparent {
             return 1 << 31;
         }
@@ -873,26 +829,17 @@ impl Ppu {
             return None;
         }
 
-        let linear_index =
-            affine_y as usize * bitmap_mode_params.width as usize + affine_x as usize;
+        let linear_index = affine_y as usize * bitmap_mode_params.width as usize + affine_x as usize;
 
         let page = self.dispcnt.get_bit(4) as usize;
-        let page_offset = if bitmap_mode_params.page_flip {
-            page * 0xA000
-        } else {
-            0
-        };
+        let page_offset = if bitmap_mode_params.page_flip { page * 0xA000 } else { 0 };
 
         if bitmap_mode_params.bpp == 16 {
             Some(page_offset + linear_index * 2)
         } else {
             let index = page_offset + linear_index;
             let value = self.vram[index];
-            if value == 0 {
-                None
-            } else {
-                Some(value as usize)
-            }
+            if value == 0 { None } else { Some(value as usize) }
         }
     }
 
@@ -940,10 +887,10 @@ impl Ppu {
                         let dx = col - sprite.bounding_box.width / 2;
                         let dy = row - sprite.bounding_box.height / 2;
 
-                        let texture_x = ((matrix.pa.raw() * dx + matrix.pb.raw() * dy) >> 8)
-                            + sprite.dimension.width as i32 / 2;
-                        let texture_y = ((matrix.pc.raw() * dx + matrix.pd.raw() * dy) >> 8)
-                            + sprite.dimension.height as i32 / 2;
+                        let texture_x =
+                            ((matrix.pa.raw() * dx + matrix.pb.raw() * dy) >> 8) + sprite.dimension.width as i32 / 2;
+                        let texture_y =
+                            ((matrix.pc.raw() * dx + matrix.pd.raw() * dy) >> 8) + sprite.dimension.height as i32 / 2;
 
                         (texture_x, texture_y)
                     }
@@ -958,8 +905,7 @@ impl Ppu {
                     continue;
                 }
 
-                let palette_index =
-                    self.get_sprite_palette_index(&sprite, texture_x as usize, texture_y as usize);
+                let palette_index = self.get_sprite_palette_index(&sprite, texture_x as usize, texture_y as usize);
 
                 if palette_index == 0 {
                     continue;
@@ -990,12 +936,7 @@ impl Ppu {
         (sprite_line, obj_window)
     }
 
-    fn get_non_affine_sprite_textures(
-        &self,
-        sprite: &SpriteAttributes,
-        col: i32,
-        row: i32,
-    ) -> (i32, i32) {
+    fn get_non_affine_sprite_textures(&self, sprite: &SpriteAttributes, col: i32, row: i32) -> (i32, i32) {
         let texture_x = if sprite.horizontal_flip {
             sprite.dimension.width - 1 - col
         } else {
@@ -1011,12 +952,7 @@ impl Ppu {
         (texture_x, texture_y)
     }
 
-    fn get_sprite_palette_index(
-        &self,
-        sprite: &SpriteAttributes,
-        texture_x: usize,
-        texture_y: usize,
-    ) -> usize {
+    fn get_sprite_palette_index(&self, sprite: &SpriteAttributes, texture_x: usize, texture_y: usize) -> usize {
         let tile = Coordinate {
             x: texture_x / 8,
             y: texture_y / 8,
@@ -1049,13 +985,8 @@ impl Ppu {
             return self.vram[0x10000 + (offset & 0x7FFF)] as usize;
         }
 
-        let palette_index = self.read_tile_pixel_palette_index(
-            4,
-            tile_number,
-            pixel_inside_tile,
-            sprite.bpp,
-            sprite.palette_bank,
-        );
+        let palette_index =
+            self.read_tile_pixel_palette_index(4, tile_number, pixel_inside_tile, sprite.bpp, sprite.palette_bank);
 
         palette_index
     }
@@ -1089,21 +1020,11 @@ impl Ppu {
                     let pixel = (row * sprite.dimension.width + col) as usize;
                     let col = (col - (pixel as i32) % mosaic_h).max(0);
 
-                    let (texture_x, texture_y) =
-                        self.get_non_affine_sprite_textures(&sprite, col, row);
-                    let palette_index = self.get_sprite_palette_index(
-                        &sprite,
-                        texture_x as usize,
-                        texture_y as usize,
-                    );
+                    let (texture_x, texture_y) = self.get_non_affine_sprite_textures(&sprite, col, row);
+                    let palette_index = self.get_sprite_palette_index(&sprite, texture_x as usize, texture_y as usize);
 
-                    self.sprite_atlas.pixels
-                        [(atlas_y + row as usize) * 1024 + (atlas_x + col as usize)] = self
-                        .fetch_color(
-                            palette_index + 256,
-                            LayerId::Sprite,
-                            self.transparant_sprite_background,
-                        );
+                    self.sprite_atlas.pixels[(atlas_y + row as usize) * 1024 + (atlas_x + col as usize)] =
+                        self.fetch_color(palette_index + 256, LayerId::Sprite, self.transparant_sprite_background);
                 }
             }
 
@@ -1172,10 +1093,7 @@ impl Ppu {
                 }
             }
             DispstatBit::VcounterInterrupt => {
-                if self
-                    .dispstat
-                    .is_set(DispstatBit::VcounterInterrupt as usize)
-                {
+                if self.dispstat.is_set(DispstatBit::VcounterInterrupt as usize) {
                     interrupt_flag.set_bit(2);
                 }
             }
@@ -1220,10 +1138,7 @@ mod tests {
                     "vblank interrupt should occur from 159 to 160"
                 );
                 assert!(interrupt_flag.is_clear(1), "hblank interrupt should be off");
-                assert!(
-                    interrupt_flag.is_clear(2),
-                    "vcounter interrupt should be off"
-                );
+                assert!(interrupt_flag.is_clear(2), "vcounter interrupt should be off");
             }
         }
 

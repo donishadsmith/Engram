@@ -96,11 +96,7 @@ fn soft_reset(cpu: &mut Arm7tdmi, bus: &mut Bus) {
         bus.write_u8(address, 0, AccessType::Sequential);
     }
 
-    let entry_point = if return_flag == 0 {
-        0x08000000
-    } else {
-        0x02000000
-    };
+    let entry_point = if return_flag == 0 { 0x08000000 } else { 0x02000000 };
 
     cpu.soft_reset(entry_point);
 
@@ -169,20 +165,12 @@ fn intr_wait(cpu: &mut Arm7tdmi, bus: &mut Bus, clear_interrupt_flag: bool, targ
     let bios_flags = bus.read_u16(0x03007FF8, AccessType::Nonsequential);
 
     if clear_interrupt_flag {
-        bus.write_u16(
-            0x03007FF8,
-            bios_flags & !target_flags,
-            AccessType::Nonsequential,
-        );
+        bus.write_u16(0x03007FF8, bios_flags & !target_flags, AccessType::Nonsequential);
         cpu.registers.r[0] = 0;
         cpu.intr_wait_resume = true;
         cpu.halt_state = HaltState::IntrWait
     } else if bios_flags & target_flags != 0 {
-        bus.write_u16(
-            0x03007FF8,
-            bios_flags & !target_flags,
-            AccessType::Nonsequential,
-        );
+        bus.write_u16(0x03007FF8, bios_flags & !target_flags, AccessType::Nonsequential);
         cpu.intr_wait_resume = false;
     } else {
         cpu.intr_wait_resume = true;
@@ -394,22 +382,10 @@ fn arctan2(registers: &mut Registers) -> u64 {
     let (angle, r1, cycles): (i32, Option<i32>, u64) = if y == 0 {
         (if x >= 0 { CIRCLE_ORIGIN } else { HALF_CIRCLE }, None, 11)
     } else if x == 0 {
-        (
-            if y >= 0 {
-                QUARTER_CIRCLE
-            } else {
-                THREE_FOURTHS_CIRCLE
-            },
-            None,
-            11,
-        )
+        (if y >= 0 { QUARTER_CIRCLE } else { THREE_FOURTHS_CIRCLE }, None, 11)
     } else {
         let larger_magnitude_x = if y >= 0 {
-            if x >= 0 {
-                x >= y
-            } else {
-                x.wrapping_neg() >= y
-            }
+            if x >= 0 { x >= y } else { x.wrapping_neg() >= y }
         } else if x <= 0 {
             x.wrapping_neg() > y.wrapping_neg()
         } else {
@@ -429,11 +405,7 @@ fn arctan2(registers: &mut Registers) -> u64 {
             (angle as i32 + offset, Some(a), cycles)
         } else {
             let (angle, a, _, cycles) = apply_arctan_coefficients((x << 14).wrapping_div(y));
-            let offset = if y >= 0 {
-                QUARTER_CIRCLE
-            } else {
-                THREE_FOURTHS_CIRCLE
-            };
+            let offset = if y >= 0 { QUARTER_CIRCLE } else { THREE_FOURTHS_CIRCLE };
 
             (offset - angle as i32, Some(a), cycles)
         }
@@ -461,22 +433,13 @@ fn bg_affine_set(registers: &Registers, bus: &mut Bus) {
     let mut number_of_calculations = registers.r[2];
 
     while number_of_calculations != 0 {
-        let data_origin_x =
-            (bus.read_u32(source_address, AccessType::Nonsequential) as i32) as f32 / 256.0;
-        let data_origin_y =
-            (bus.read_u32(source_address + 4, AccessType::Sequential) as i32) as f32 / 256.0;
-        let display_center_x =
-            (bus.read_u16(source_address + 8, AccessType::Sequential) as i16) as f32;
-        let display_center_y =
-            (bus.read_u16(source_address + 10, AccessType::Sequential) as i16) as f32;
-        let scale_ratio_x =
-            (bus.read_u16(source_address + 12, AccessType::Sequential) as i16) as f32 / 256.0;
-        let scale_ratio_y =
-            (bus.read_u16(source_address + 14, AccessType::Sequential) as i16) as f32 / 256.0;
-        let theta = ((bus.read_u16(source_address + 16, AccessType::Sequential) >> 8) as i32)
-            as f32
-            / 128.0
-            * PI;
+        let data_origin_x = (bus.read_u32(source_address, AccessType::Nonsequential) as i32) as f32 / 256.0;
+        let data_origin_y = (bus.read_u32(source_address + 4, AccessType::Sequential) as i32) as f32 / 256.0;
+        let display_center_x = (bus.read_u16(source_address + 8, AccessType::Sequential) as i16) as f32;
+        let display_center_y = (bus.read_u16(source_address + 10, AccessType::Sequential) as i16) as f32;
+        let scale_ratio_x = (bus.read_u16(source_address + 12, AccessType::Sequential) as i16) as f32 / 256.0;
+        let scale_ratio_y = (bus.read_u16(source_address + 14, AccessType::Sequential) as i16) as f32 / 256.0;
+        let theta = ((bus.read_u16(source_address + 16, AccessType::Sequential) >> 8) as i32) as f32 / 128.0 * PI;
         source_address += 20;
 
         let cos = theta.cos();
@@ -490,11 +453,7 @@ fn bg_affine_set(registers: &Registers, bus: &mut Bus) {
         let rotate_x = data_origin_x - (a * display_center_x + b * display_center_y);
         let rotate_y = data_origin_y - (c * display_center_x + d * display_center_y);
 
-        bus.write_u16(
-            destination_address,
-            (a * 256.0) as i32 as u16,
-            AccessType::Sequential,
-        );
+        bus.write_u16(destination_address, (a * 256.0) as i32 as u16, AccessType::Sequential);
         bus.write_u16(
             destination_address + 2,
             (b * 256.0) as i32 as u16,
@@ -536,13 +495,9 @@ fn obj_affine_set(registers: &Registers, bus: &mut Bus) {
     let offset_between_calculations = registers.r[3];
 
     while number_of_calculations != 0 {
-        let scale_ratio_x =
-            (bus.read_u16(source_address, AccessType::Sequential) as i16) as f32 / 256.0;
-        let scale_ratio_y =
-            (bus.read_u16(source_address + 2, AccessType::Sequential) as i16) as f32 / 256.0;
-        let theta = ((bus.read_u16(source_address + 4, AccessType::Sequential) >> 8) as i32) as f32
-            / 128.0
-            * PI;
+        let scale_ratio_x = (bus.read_u16(source_address, AccessType::Sequential) as i16) as f32 / 256.0;
+        let scale_ratio_y = (bus.read_u16(source_address + 2, AccessType::Sequential) as i16) as f32 / 256.0;
+        let theta = ((bus.read_u16(source_address + 4, AccessType::Sequential) >> 8) as i32) as f32 / 128.0 * PI;
 
         source_address += 8;
 
@@ -554,11 +509,7 @@ fn obj_affine_set(registers: &Registers, bus: &mut Bus) {
         let c = scale_ratio_y * sin;
         let d = scale_ratio_y * cos;
 
-        bus.write_u16(
-            destination_address,
-            (a * 256.0) as i32 as u16,
-            AccessType::Sequential,
-        );
+        bus.write_u16(destination_address, (a * 256.0) as i32 as u16, AccessType::Sequential);
         bus.write_u16(
             destination_address + offset_between_calculations,
             (b * 256.0) as i32 as u16,
@@ -735,11 +686,7 @@ fn diff_unfilter(registers: &Registers, bus: &mut Bus, read_width: Width, write_
     match write_width {
         Width::Byte => {
             for i in 0..metadata.source_data_size {
-                bus.write_u8(
-                    destination_address + i,
-                    data[i as usize],
-                    AccessType::Sequential,
-                );
+                bus.write_u8(destination_address + i, data[i as usize], AccessType::Sequential);
             }
         }
         Width::Halfword => {
@@ -747,11 +694,7 @@ fn diff_unfilter(registers: &Registers, bus: &mut Bus, read_width: Width, write_
                 let low_byte = data[(i * 2) as usize] as u16;
                 let high_byte = data[((i * 2) + 1) as usize] as u16;
                 let halfword = low_byte | high_byte << 8;
-                bus.write_u16(
-                    destination_address + i * 2,
-                    halfword,
-                    AccessType::Sequential,
-                );
+                bus.write_u16(destination_address + i * 2, halfword, AccessType::Sequential);
             }
         }
         _ => unreachable!(),
@@ -917,9 +860,7 @@ fn lz77_uncomp(registers: &Registers, bus: &mut Bus, write_width: Width) {
                         packer.pending.unwrap()
                     } else {
                         bus.read_u8(
-                            destination_address + packer.pending.is_some() as u32
-                                - displacement
-                                - 1,
+                            destination_address + packer.pending.is_some() as u32 - displacement - 1,
                             AccessType::Sequential,
                         )
                     };
@@ -996,10 +937,7 @@ fn huff_uncomp(registers: &Registers, bus: &mut Bus) {
 
         for bit in (0..32).rev() {
             if let Some(symbol) = tree.step(bus, word.get_bit(bit)) {
-                if buffer.push(
-                    symbol.get_bit_range(0..data_size as usize) as u32,
-                    data_size as u8,
-                ) {
+                if buffer.push(symbol.get_bit_range(0..data_size as usize) as u32, data_size as u8) {
                     bus.write_u32(destination_address, buffer.flush(), AccessType::Sequential);
                     destination_address += 4;
                 }
@@ -1145,10 +1083,7 @@ mod tests {
 
             assert_eq!(registers.r[0], r0, "r0 for arctan2({x:10x}, {y:10x})");
             if r1 == 0xDEADBEEF {
-                assert_eq!(
-                    registers.r[1], y,
-                    "r1 should not be touched here ({x:10x}, {y:10x})"
-                );
+                assert_eq!(registers.r[1], y, "r1 should not be touched here ({x:10x}, {y:10x})");
             } else {
                 assert_eq!(registers.r[1], r1, "r1 (a) for arctan2({x:10x}, {y:10x})");
             }
@@ -1262,27 +1197,13 @@ mod tests {
         registers.r[1] = 0x02000000;
 
         let header = 6 << 8;
-        write_diff_source(
-            &mut bus,
-            0x03000000,
-            header,
-            &[0xFF, 0x00, 0x01, 0x00, 0xFF, 0xFF],
-        );
+        write_diff_source(&mut bus, 0x03000000, header, &[0xFF, 0x00, 0x01, 0x00, 0xFF, 0xFF]);
 
         diff_unfilter(&registers, &mut bus, Width::Halfword, Width::Halfword);
 
-        assert_eq!(
-            u16::from_le_bytes(bus.ewram[0..2].try_into().unwrap()),
-            0x00FF
-        );
-        assert_eq!(
-            u16::from_le_bytes(bus.ewram[2..4].try_into().unwrap()),
-            0x0100
-        );
-        assert_eq!(
-            u16::from_le_bytes(bus.ewram[4..6].try_into().unwrap()),
-            0x00FF
-        );
+        assert_eq!(u16::from_le_bytes(bus.ewram[0..2].try_into().unwrap()), 0x00FF);
+        assert_eq!(u16::from_le_bytes(bus.ewram[2..4].try_into().unwrap()), 0x0100);
+        assert_eq!(u16::from_le_bytes(bus.ewram[4..6].try_into().unwrap()), 0x00FF);
     }
 
     #[test]
@@ -1356,12 +1277,7 @@ mod tests {
         // literal A, literal B, then copy 3 from displacement 1 (2 back) ->
         // ABABA
         let header = 5 << 8;
-        write_diff_source(
-            &mut bus,
-            0x03000000,
-            header,
-            &[0x20, 0x41, 0x42, 0x00, 0x01],
-        );
+        write_diff_source(&mut bus, 0x03000000, header, &[0x20, 0x41, 0x42, 0x00, 0x01]);
 
         lz77_uncomp(&registers, &mut bus, Width::Byte);
 

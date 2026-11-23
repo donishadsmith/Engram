@@ -27,13 +27,7 @@ struct Active {
 }
 
 impl Active {
-    fn start(
-        width: u32,
-        height: u32,
-        fps: f32,
-        sample_rate: u32,
-        video_dir: PathBuf,
-    ) -> Result<Self, Error> {
+    fn start(width: u32, height: u32, fps: f32, sample_rate: u32, video_dir: PathBuf) -> Result<Self, Error> {
         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
         let output = video_dir.join(format!("video_{timestamp}.mp4"));
         let temp_video = video_dir.join(format!("video_{timestamp}.tmp.mkv"));
@@ -41,14 +35,7 @@ impl Active {
 
         let mut child = Command::new("ffmpeg")
             .args(["-y", "-f", "rawvideo", "-pix_fmt", "rgba"])
-            .args([
-                "-s",
-                &format!("{width}x{height}"),
-                "-r",
-                &fps.to_string(),
-                "-i",
-                "-",
-            ])
+            .args(["-s", &format!("{width}x{height}"), "-r", &fps.to_string(), "-i", "-"])
             .args(["-vf", "scale=iw*4:ih*4:flags=neighbor"])
             .args([
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
@@ -92,15 +79,7 @@ impl Active {
         Command::new("ffmpeg")
             .args(["-y", "-i"])
             .arg(&self.temp_video)
-            .args([
-                "-f",
-                "f32le",
-                "-ar",
-                &self.sample_rate.to_string(),
-                "-ac",
-                "2",
-                "-i",
-            ])
+            .args(["-f", "f32le", "-ar", &self.sample_rate.to_string(), "-ac", "2", "-i"])
             .arg(&self.temp_audio)
             .args(["-c:v", "copy", "-c:a", "aac", "-shortest"])
             .arg(&self.output)
@@ -138,13 +117,7 @@ impl VideoRecorder {
             return Err(Error::other("``ffmpeg is unavailable``"));
         }
 
-        match Active::start(
-            recording_size.0,
-            recording_size.1,
-            fps,
-            sample_rate,
-            video_dir,
-        ) {
+        match Active::start(recording_size.0, recording_size.1, fps, sample_rate, video_dir) {
             Ok(active) => self.active = Some(active),
             Err(_) => return Err("child process failed to start").map_err(Error::other),
         }

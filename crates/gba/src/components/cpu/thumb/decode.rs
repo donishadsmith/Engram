@@ -3,9 +3,8 @@ use shared::traits::BitOps;
 use crate::components::cpu::{
     Condition,
     arm::decode::{
-        AddressingMode, ArmInstruction, BitSize, DataOp, DecodedArm, HalfwordOffset, Operand2,
-        SdtOffset, ShiftAmount, ShiftType, ShiftedRegister, ThumbBranchType, TransferAction,
-        TransferKind,
+        AddressingMode, ArmInstruction, BitSize, DataOp, DecodedArm, HalfwordOffset, Operand2, SdtOffset, ShiftAmount,
+        ShiftType, ShiftedRegister, ThumbBranchType, TransferAction, TransferKind,
     },
 };
 
@@ -58,10 +57,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                     operand2,
                 );
 
-                return DecodedArm {
-                    condition,
-                    instruction,
-                };
+                return DecodedArm { condition, instruction };
             } else {
                 // format 1
                 return DecodedArm {
@@ -73,12 +69,8 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                         rd: instruction.get_bit_range(0..3) as u8,
                         operand2: Operand2::Register(ShiftedRegister {
                             rm: instruction.get_bit_range(3..6) as u8,
-                            shift_type: ShiftType::from_bits(
-                                instruction.get_bit_range(11..13) as u8
-                            ),
-                            shift_amount: ShiftAmount::Immediate(
-                                (instruction.get_bit_range(6..11)) as u8,
-                            ),
+                            shift_type: ShiftType::from_bits(instruction.get_bit_range(11..13) as u8),
+                            shift_amount: ShiftAmount::Immediate((instruction.get_bit_range(6..11)) as u8),
                         }),
                     },
                 };
@@ -176,10 +168,8 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
             } else {
                 if instruction.is_set(10) {
                     // format 5
-                    let rd =
-                        ((instruction.get_bit(7) << 3) | instruction.get_bit_range(0..3)) as u8; // rd/hd
-                    let rs =
-                        ((instruction.get_bit(6) << 3) | instruction.get_bit_range(3..6)) as u8; // rs/hs
+                    let rd = ((instruction.get_bit(7) << 3) | instruction.get_bit_range(0..3)) as u8; // rd/hd
+                    let rs = ((instruction.get_bit(6) << 3) | instruction.get_bit_range(3..6)) as u8; // rs/hs
 
                     let opcode = instruction.get_bit_range(8..10) as u8;
 
@@ -196,10 +186,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                             _ => unreachable!(),
                         };
 
-                        return DecodedArm {
-                            condition,
-                            instruction,
-                        };
+                        return DecodedArm { condition, instruction };
                     }
                 } else {
                     // format 4
@@ -218,26 +205,13 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                         0b0000 => thumb_dp(DataOp::And, rd, rd, true, unshifted_rs(rs)),
                         0b0001 => thumb_dp(DataOp::Eor, rd, rd, true, unshifted_rs(rs)),
                         0b0010 => thumb_dp(DataOp::Mov, 0, rd, true, shift(ShiftType::LogicalLeft)),
-                        0b0011 => {
-                            thumb_dp(DataOp::Mov, 0, rd, true, shift(ShiftType::LogicalRight))
-                        }
-                        0b0100 => {
-                            thumb_dp(DataOp::Mov, 0, rd, true, shift(ShiftType::ArithmeticRight))
-                        }
+                        0b0011 => thumb_dp(DataOp::Mov, 0, rd, true, shift(ShiftType::LogicalRight)),
+                        0b0100 => thumb_dp(DataOp::Mov, 0, rd, true, shift(ShiftType::ArithmeticRight)),
                         0b0101 => thumb_dp(DataOp::Adc, rd, rd, true, unshifted_rs(rs)),
                         0b0110 => thumb_dp(DataOp::Sbc, rd, rd, true, unshifted_rs(rs)),
                         0b0111 => thumb_dp(DataOp::Mov, 0, rd, true, shift(ShiftType::RotateRight)),
                         0b1000 => thumb_dp(DataOp::Tst, rd, rd, true, unshifted_rs(rs)),
-                        0b1001 => thumb_dp(
-                            DataOp::Rsb,
-                            rs,
-                            rd,
-                            true,
-                            Operand2::Immediate {
-                                value: 0,
-                                rotate: 0,
-                            },
-                        ),
+                        0b1001 => thumb_dp(DataOp::Rsb, rs, rd, true, Operand2::Immediate { value: 0, rotate: 0 }),
                         0b1010 => thumb_dp(DataOp::Cmp, rd, rd, true, unshifted_rs(rs)),
                         0b1011 => thumb_dp(DataOp::Cmn, rd, rd, true, unshifted_rs(rs)),
                         0b1100 => thumb_dp(DataOp::Orr, rd, rd, true, unshifted_rs(rs)),
@@ -254,10 +228,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                         _ => unreachable!(),
                     };
 
-                    return DecodedArm {
-                        condition,
-                        instruction,
-                    };
+                    return DecodedArm { condition, instruction };
                 }
             }
         }
@@ -309,9 +280,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                 return DecodedArm {
                     condition,
                     instruction: ArmInstruction::HalfwordDataTransfer {
-                        offset: HalfwordOffset::Immediate(
-                            (instruction.get_bit_range(6..11) as u8) << 1,
-                        ),
+                        offset: HalfwordOffset::Immediate((instruction.get_bit_range(6..11) as u8) << 1),
                         transfer_kind: TransferKind::UnsignedHalfword,
                         rd: instruction.get_bit_range(0..3) as u8,
                         rn: instruction.get_bit_range(3..6) as u8,
@@ -334,18 +303,9 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                     value: instruction.get_bit_range(0..8) as u8,
                     rotate: 15,
                 };
-                let instruction = thumb_dp(
-                    DataOp::Add,
-                    rn,
-                    instruction.get_bit_range(8..11) as u8,
-                    false,
-                    operand2,
-                );
+                let instruction = thumb_dp(DataOp::Add, rn, instruction.get_bit_range(8..11) as u8, false, operand2);
 
-                return DecodedArm {
-                    condition,
-                    instruction,
-                };
+                return DecodedArm { condition, instruction };
             }
 
             if instruction.is_set(10) {
@@ -387,10 +347,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                 };
                 let instruction = thumb_dp(dataop, 13, 13, false, operand2);
 
-                return DecodedArm {
-                    condition,
-                    instruction,
-                };
+                return DecodedArm { condition, instruction };
             }
         }
         0b110 => {
@@ -426,10 +383,7 @@ pub fn decode_thumb(instruction: u16) -> DecodedArm {
                 let offset = (((instruction.get_bit_range(0..8) as u32) << 24) as i32) >> 23;
                 return DecodedArm {
                     condition: Condition::from_bits(instruction.get_bit_range(8..12) as u8),
-                    instruction: ArmInstruction::Branch {
-                        link: false,
-                        offset,
-                    },
+                    instruction: ArmInstruction::Branch { link: false, offset },
                 };
             }
         }
@@ -534,10 +488,7 @@ mod tests {
                 set_flags: true,
                 rn: 2,
                 rd: 2,
-                operand2: Operand2::Immediate {
-                    value: 10,
-                    rotate: 0
-                },
+                operand2: Operand2::Immediate { value: 10, rotate: 0 },
             }
         );
     }
@@ -568,10 +519,7 @@ mod tests {
         let format5 = 0b0100011101110000;
         let instruction = decode_thumb(format5);
 
-        assert_eq!(
-            instruction.instruction,
-            ArmInstruction::BranchExchange { rn: 14 }
-        );
+        assert_eq!(instruction.instruction, ArmInstruction::BranchExchange { rn: 14 });
     }
 
     #[test]
@@ -701,10 +649,7 @@ mod tests {
                 set_flags: false,
                 rn: 15,
                 rd: 2,
-                operand2: Operand2::Immediate {
-                    value: 10,
-                    rotate: 15
-                },
+                operand2: Operand2::Immediate { value: 10, rotate: 15 },
             }
         );
     }
@@ -721,10 +666,7 @@ mod tests {
                 set_flags: false,
                 rn: 13,
                 rd: 13,
-                operand2: Operand2::Immediate {
-                    value: 1,
-                    rotate: 15
-                },
+                operand2: Operand2::Immediate { value: 1, rotate: 15 },
             }
         );
     }

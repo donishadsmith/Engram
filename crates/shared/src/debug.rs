@@ -72,14 +72,11 @@ pub fn get_texture_id(
     id: String,
 ) -> TextureId {
     if texture_handle.is_none() || frame.dimensions_changed || frame.buffer_changed {
-        let image =
-            egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &to_rgba(frame));
+        let image = egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &to_rgba(frame));
 
         match texture_handle {
             Some(texture) => texture.set(image, TextureOptions::NEAREST),
-            None => {
-                *texture_handle = Some(egui_ctx.load_texture(id, image, TextureOptions::NEAREST))
-            }
+            None => *texture_handle = Some(egui_ctx.load_texture(id, image, TextureOptions::NEAREST)),
         }
 
         frame.buffer_changed = false;
@@ -106,12 +103,10 @@ pub fn create_game_screen(
 ) {
     let texture_id = get_texture_id(texture_handle, ui.ctx(), frame, id);
 
-    CentralPanel::default()
-        .frame(egui::Frame::NONE)
-        .show(ui, |ui| {
-            let size = compute_size(ui.available_size(), frame);
-            ui.centered_and_justified(|ui| {
-                ui.image((texture_id, size));
-            });
+    CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
+        let size = compute_size(ui.available_size(), frame);
+        ui.centered_and_justified(|ui| {
+            ui.image((texture_id, size));
         });
+    });
 }

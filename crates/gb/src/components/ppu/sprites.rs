@@ -15,11 +15,7 @@ pub struct SpriteAttribute {
 impl SpriteAttribute {
     pub fn from_oam(oam_index: usize, bytes: &[u8], is_cgb: bool) -> Self {
         Self {
-            bank: if is_cgb {
-                bytes[3].get_bit(3) as usize
-            } else {
-                0
-            },
+            bank: if is_cgb { bytes[3].get_bit(3) as usize } else { 0 },
             oam_index,
             position_y: bytes[0] as i16 - 16,
             position_x: bytes[1] as i16 - 8,

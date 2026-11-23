@@ -15,9 +15,9 @@ use shared::{
 use crate::{
     session::Session,
     utils::{
-        DataLocation, DestructiveAction, KeybindingTab, UiState, bindings_grid,
-        delete_all_slots_with_toast, delete_slots_lua, delete_slots_with_toast, load_slots_lua,
-        save_slots_lua, save_slots_with_toast, thin_separator,
+        DataLocation, DestructiveAction, KeybindingTab, UiState, bindings_grid, delete_all_slots_with_toast,
+        delete_slots_lua, delete_slots_with_toast, load_slots_lua, save_slots_lua, save_slots_with_toast,
+        thin_separator,
     },
 };
 
@@ -28,9 +28,8 @@ pub fn show_controller_bindings(egui_ctx: &Context, session: &mut Session, ui_st
             ui.horizontal(|ui| {
                 if ui
                     .add(
-                        egui::Button::new(format!("{}  Keyboard", icons::KEYBOARD)).selected(
-                            ui_state.controller_keybinding_tab == KeybindingTab::Keyboard,
-                        ),
+                        egui::Button::new(format!("{}  Keyboard", icons::KEYBOARD))
+                            .selected(ui_state.controller_keybinding_tab == KeybindingTab::Keyboard),
                     )
                     .clicked()
                 {
@@ -41,9 +40,7 @@ pub fn show_controller_bindings(egui_ctx: &Context, session: &mut Session, ui_st
                     && ui
                         .add(
                             egui::Button::new(format!("{}  Controller", icons::GAME_CONTROLLER))
-                                .selected(
-                                    ui_state.controller_keybinding_tab == KeybindingTab::Gamepad,
-                                ),
+                                .selected(ui_state.controller_keybinding_tab == KeybindingTab::Gamepad),
                         )
                         .clicked()
                 {
@@ -91,11 +88,7 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
     egui::Window::new("Choose Data Locations")
         .open(&mut set_dirs)
         .show(egui_ctx, |ui| {
-            ui.label(
-                egui::RichText::new("Game Saves/Save States")
-                    .size(16.0)
-                    .strong(),
-            );
+            ui.label(egui::RichText::new("Game Saves/Save States").size(16.0).strong());
 
             thin_separator(ui);
 
@@ -147,16 +140,10 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
 fn folder_selection(ui: &mut Ui, ui_state: &mut UiState, path: &PathBuf) {
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(
-                ui_state.dir_dialog.is_none(),
-                egui::Button::new("Set Location"),
-            )
+            .add_enabled(ui_state.dir_dialog.is_none(), egui::Button::new("Set Location"))
             .clicked()
         {
-            ui_state.dir_dialog = Some((
-                DataLocation::Image,
-                PendingDialog::select_folder(path.to_path_buf()),
-            ));
+            ui_state.dir_dialog = Some((DataLocation::Image, PendingDialog::select_folder(path.to_path_buf())));
         }
 
         ui.add(egui::Label::new(path.display().to_string()).truncate());
@@ -203,16 +190,12 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                     // classic borrow checker no no
                     emulator.take_debugger_snapshot();
                     session.state = EmulatorState::Paused;
-                    session
-                        .lua_lab
-                        .push_output(vec!["emulator is paused".to_string()]);
+                    session.lua_lab.push_output(vec!["emulator is paused".to_string()]);
                 }
                 ScriptRequest::Screenshot => match session.data_dirs.get_image_path() {
                     Ok(path) => {
                         screenshot(path);
-                        session
-                            .lua_lab
-                            .push_output(vec!["screenshot saved".to_string()]);
+                        session.lua_lab.push_output(vec!["screenshot saved".to_string()]);
                     }
                     Err(err) => session
                         .lua_lab
@@ -224,27 +207,20 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                             match session.data_dirs.get_image_path() {
                                 Ok(path) => {
                                     match session.gif.start(emulator.frontend_ref(), path) {
-                                        Ok(_) => session
-                                            .lua_lab
-                                            .push_output(vec!["gif recording started".to_string()]),
+                                        Ok(_) => session.lua_lab.push_output(vec!["gif recording started".to_string()]),
                                         Err(_) => session.lua_lab.push_output(vec![
-                                            mlua::Error::RuntimeError(
-                                                "gif failed to start".to_string(),
-                                            )
-                                            .to_string(),
+                                            mlua::Error::RuntimeError("gif failed to start".to_string()).to_string(),
                                         ]),
                                     };
                                 }
-                                Err(err) => session.lua_lab.push_output(vec![
-                                    mlua::Error::RuntimeError(err.to_string()).to_string(),
-                                ]),
+                                Err(err) => session
+                                    .lua_lab
+                                    .push_output(vec![mlua::Error::RuntimeError(err.to_string()).to_string()]),
                             }
                         } else {
                             session.lua_lab.push_output(vec![
-                                mlua::Error::RuntimeError(
-                                    "frame not ready; gif recording could not start".to_string(),
-                                )
-                                .to_string(),
+                                mlua::Error::RuntimeError("frame not ready; gif recording could not start".to_string())
+                                    .to_string(),
                             ]);
                         }
                     }
@@ -264,20 +240,17 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                             match session.data_dirs.get_video_path() {
                                 Ok(path) => {
                                     match emulator.start_video(path) {
-                                        Ok(_) => session.lua_lab.push_output(vec![
-                                            "video recording started".to_string(),
-                                        ]),
+                                        Ok(_) => {
+                                            session.lua_lab.push_output(vec!["video recording started".to_string()])
+                                        }
                                         Err(_) => session.lua_lab.push_output(vec![
-                                            mlua::Error::RuntimeError(
-                                                "video failed to start".to_string(),
-                                            )
-                                            .to_string(),
+                                            mlua::Error::RuntimeError("video failed to start".to_string()).to_string(),
                                         ]),
                                     };
                                 }
-                                Err(err) => session.lua_lab.push_output(vec![
-                                    mlua::Error::RuntimeError(err.to_string()).to_string(),
-                                ]),
+                                Err(err) => session
+                                    .lua_lab
+                                    .push_output(vec![mlua::Error::RuntimeError(err.to_string()).to_string()]),
                             }
                         } else {
                             session.lua_lab.push_output(vec![
@@ -299,20 +272,14 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                 }
                 ScriptRequest::Reset => {
                     reset_request = true;
-                    session
-                        .lua_lab
-                        .push_output(vec!["emulator reset".to_string()]);
+                    session.lua_lab.push_output(vec!["emulator reset".to_string()]);
                     session.skip_toast = true;
                 }
-                ScriptRequest::StepInstruction | ScriptRequest::StepFrame => {
-                    session.pending_steps.push_back(request)
-                }
+                ScriptRequest::StepInstruction | ScriptRequest::StepFrame => session.pending_steps.push_back(request),
                 ScriptRequest::Resume => {
                     session.state = EmulatorState::Running;
                     apply_run_updates = true;
-                    session
-                        .lua_lab
-                        .push_output(vec!["emulator is running".to_string()]);
+                    session.lua_lab.push_output(vec!["emulator is running".to_string()]);
                     session.skip_toast = true;
                 }
                 ScriptRequest::SaveState(slot) => {
@@ -373,9 +340,7 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
                             )])
                         }
                     } else {
-                        session
-                            .lua_lab
-                            .push_output(vec!["no debuggers available".to_string()]);
+                        session.lua_lab.push_output(vec!["no debuggers available".to_string()]);
                     }
                 }
                 ScriptRequest::Speed(speed) => {
@@ -400,8 +365,7 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
             if session.state != EmulatorState::Paused {
                 session.pending_steps.clear();
                 session.lua_lab.push_output(vec![
-                    mlua::Error::RuntimeError("emulator must be paused to step".to_string())
-                        .to_string(),
+                    mlua::Error::RuntimeError("emulator must be paused to step".to_string()).to_string(),
                 ])
             } else {
                 match request {
@@ -421,9 +385,7 @@ pub fn show_lua_lab(egui_ctx: &Context, session: &mut Session, ui_state: &mut Ui
         }
 
         if let Some(emulator) = session.emulator.as_mut() {
-            emulator
-                .script_engine()
-                .map(|engine| engine.step_completed());
+            emulator.script_engine().map(|engine| engine.step_completed());
         }
     }
 
@@ -437,34 +399,26 @@ pub fn show_gif_settings(egui_ctx: &Context, session: &mut Session, ui_state: &m
     egui::Window::new("GIF Settings")
         .open(&mut ui_state.open_gif_settings)
         .show(egui_ctx, |ui| {
-            egui::Grid::new("GIF Settings")
-                .num_columns(1)
-                .show(ui, |ui| {
-                    ui.add(
-                        egui::Slider::new(&mut session.gif.every_n_frame, 1..=10)
-                            .text("Keep 1 in every n frames."),
-                    );
+            egui::Grid::new("GIF Settings").num_columns(1).show(ui, |ui| {
+                ui.add(egui::Slider::new(&mut session.gif.every_n_frame, 1..=10).text("Keep 1 in every n frames."));
 
-                    ui.end_row();
+                ui.end_row();
 
-                    ui.add(
-                        egui::Slider::new(&mut session.gif.delay, 2..=20)
-                            .text("Frame delay (1/100 s)."),
-                    );
+                ui.add(egui::Slider::new(&mut session.gif.delay, 2..=20).text("Frame delay (1/100 s)."));
 
-                    ui.end_row();
+                ui.end_row();
 
-                    if ui
-                        .add_enabled(
-                            session.emulator.is_some() && session.rom_dialog.is_none(),
-                            egui::Button::new("Start Recording"),
-                        )
-                        .on_disabled_hover_text("Accessible when ROM is loaded")
-                        .clicked()
-                    {
-                        ui_state.start_gif_recording = true;
-                    }
-                });
+                if ui
+                    .add_enabled(
+                        session.emulator.is_some() && session.rom_dialog.is_none(),
+                        egui::Button::new("Start Recording"),
+                    )
+                    .on_disabled_hover_text("Accessible when ROM is loaded")
+                    .clicked()
+                {
+                    ui_state.start_gif_recording = true;
+                }
+            });
         });
 
     if ui_state.start_gif_recording {
@@ -517,11 +471,7 @@ fn select_rewind_capacity(ui: &mut Ui, value: &mut usize) {
     });
 }
 
-pub fn show_destructive_action_popup(
-    egui_ctx: &Context,
-    session: &mut Session,
-    ui_state: &mut UiState,
-) {
+pub fn show_destructive_action_popup(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
     // i think these are mostly, kinda centered? horizontal_centered didnt work
     // as expected, learn that later
     if let Some(action) = ui_state.destructive_action
@@ -556,9 +506,7 @@ pub fn show_destructive_action_popup(
                             DestructiveAction::Delete(slot) => {
                                 delete_slots_with_toast(emulator, &mut session.toasts, slot)
                             }
-                            DestructiveAction::DeleteAll => {
-                                delete_all_slots_with_toast(emulator, &mut session.toasts)
-                            }
+                            DestructiveAction::DeleteAll => delete_all_slots_with_toast(emulator, &mut session.toasts),
                             DestructiveAction::Reset => {
                                 add_transient_state = true;
                             }

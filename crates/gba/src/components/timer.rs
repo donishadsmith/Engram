@@ -189,12 +189,7 @@ impl Timers {
         overflowed_mask
     }
 
-    fn set_interrupt_request_flag(
-        &self,
-        timer_id: usize,
-        overflow: bool,
-        interrupt_flag: &mut u16,
-    ) {
+    fn set_interrupt_request_flag(&self, timer_id: usize, overflow: bool, interrupt_flag: &mut u16) {
         if !(overflow && self.timers[timer_id].overflow_interrupt_enabled) {
             return;
         }
@@ -206,9 +201,7 @@ impl Timers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{
-        bus::AccessType, gamepak::BackupType, gba::Event::TimerOverflow, utils::create_bus,
-    };
+    use crate::components::{bus::AccessType, gamepak::BackupType, gba::Event::TimerOverflow, utils::create_bus};
 
     // counter=200; prescaler=256; first tick is 256 and deadline = 256+(0x10000
     // - 200 - 1)*256 = 256 + 65335* 256 = 16726016
@@ -249,10 +242,7 @@ mod tests {
 
         // 1k ticks past fist tick; counter=200+1000
         bus.idle(1000 * 256 - bus.scheduler.current);
-        assert_eq!(
-            bus.read_u16(0x4000104, AccessType::Nonsequential),
-            200 + 1000
-        );
+        assert_eq!(bus.read_u16(0x4000104, AccessType::Nonsequential), 200 + 1000);
     }
 
     #[test]
@@ -263,10 +253,7 @@ mod tests {
         bus.write_u16(0x4000108, 200, AccessType::Sequential);
         bus.write_u16(0x400010A, 0b0000000011000110, AccessType::Sequential);
 
-        assert_eq!(
-            bus.timers.timers[2].increment_mode,
-            IncrementTimerMode::Cascade
-        );
+        assert_eq!(bus.timers.timers[2].increment_mode, IncrementTimerMode::Cascade);
         assert!(!bus.scheduler.is_scheduled(TimerOverflow(2)));
 
         // single event hould handle the entire climb from 200 to overflow

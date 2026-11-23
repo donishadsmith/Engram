@@ -102,8 +102,7 @@ impl NoiseChannel {
                 self.length.timer = 64;
             }
 
-            self.frequency_timer =
-                (DIVISORS[self.clock_divider as usize] as u32) << self.clock_shift;
+            self.frequency_timer = (DIVISORS[self.clock_divider as usize] as u32) << self.clock_shift;
             self.envelope.timer = self.envelope.period;
             self.envelope.current_volume = self.envelope.initial_volume;
             self.lfsr.register = 0x7FFF;
@@ -116,8 +115,7 @@ impl NoiseChannel {
         }
 
         if self.frequency_timer == 0 {
-            self.frequency_timer =
-                (DIVISORS[self.clock_divider as usize] as u32) << self.clock_shift;
+            self.frequency_timer = (DIVISORS[self.clock_divider as usize] as u32) << self.clock_shift;
 
             if self.clock_shift < 14 {
                 self.lfsr.step();

@@ -12,10 +12,7 @@ use macroquad::prelude::*;
 use crate::traits::UnsignedInt;
 
 pub fn screenshot(image_dir: PathBuf) {
-    let image_path = image_dir.join(format!(
-        "screenshot_{}.png",
-        Local::now().format("%Y%m%d_%H%M%S")
-    ));
+    let image_path = image_dir.join(format!("screenshot_{}.png", Local::now().format("%Y%m%d_%H%M%S")));
 
     match &image_path.to_str() {
         Some(image) => get_screen_data().export_png(&image),
@@ -28,17 +25,11 @@ pub fn error_message(message: String) -> Error {
 }
 
 pub fn zero_arr<T: UnsignedInt>(capacity: usize) -> Box<[T]> {
-    vec![T::ZERO; capacity]
-        .into_boxed_slice()
-        .try_into()
-        .unwrap()
+    vec![T::ZERO; capacity].into_boxed_slice().try_into().unwrap()
 }
 
 pub fn saturated_arr<T: UnsignedInt>(capacity: usize) -> Box<[T]> {
-    vec![T::MAX; capacity]
-        .into_boxed_slice()
-        .try_into()
-        .unwrap()
+    vec![T::MAX; capacity].into_boxed_slice().try_into().unwrap()
 }
 
 pub fn get_halfword_shift(address: u32) -> u8 {
@@ -53,11 +44,7 @@ pub fn kilobytes(value: usize) -> usize {
     value * 1024
 }
 
-pub fn centered_row<R>(
-    ui: &mut egui::Ui,
-    id_name: impl Hash + Debug,
-    add_contents: impl FnOnce(&mut Ui) -> R,
-) -> R {
+pub fn centered_row<R>(ui: &mut egui::Ui, id_name: impl Hash + Debug, add_contents: impl FnOnce(&mut Ui) -> R) -> R {
     let id = ui.id().with(id_name);
     let last_width: Option<f32> = ui.data(|data| data.get_temp(id));
     let available = ui.available_width();

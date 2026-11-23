@@ -130,12 +130,7 @@ pub trait ShiftOps: BitOps {
         }
     }
 
-    fn shift_imm(
-        self,
-        shift_type: ShiftType,
-        shift_amount: u8,
-        c_set: bool,
-    ) -> (Self, Option<bool>) {
+    fn shift_imm(self, shift_type: ShiftType, shift_amount: u8, c_set: bool) -> (Self, Option<bool>) {
         match shift_type {
             ShiftType::LogicalLeft if shift_amount == 0 => (self, None),
             ShiftType::LogicalLeft => {
@@ -161,12 +156,7 @@ pub trait ShiftOps: BitOps {
         }
     }
 
-    fn shift_reg(
-        self,
-        shift_type: ShiftType,
-        shift_amount: u8,
-        c_set: bool,
-    ) -> (Self, Option<bool>) {
+    fn shift_reg(self, shift_type: ShiftType, shift_amount: u8, c_set: bool) -> (Self, Option<bool>) {
         match shift_type {
             ShiftType::LogicalLeft => {
                 let (value, carry_out) = self.lsl_reg(shift_amount, c_set);

@@ -20,14 +20,10 @@ use spin_sleep::sleep_until;
 use crate::{
     gui::{
         input::{detect_hot_keys, keybinding},
-        menu::{
-            show_emulation_menu, show_file_menu, show_settings_menu, show_status_section,
-            show_tools_menu,
-        },
+        menu::{show_emulation_menu, show_file_menu, show_settings_menu, show_status_section, show_tools_menu},
         windows::{
-            set_data_directories, set_rewind_settings, show_controller_bindings,
-            show_debugger_pages, show_destructive_action_popup, show_gif_settings,
-            show_hotkey_bindings, show_lua_lab,
+            set_data_directories, set_rewind_settings, show_controller_bindings, show_debugger_pages,
+            show_destructive_action_popup, show_gif_settings, show_hotkey_bindings, show_lua_lab,
         },
     },
     session::Session,
@@ -87,9 +83,7 @@ async fn main() -> Result<(), Error> {
 
         let gamepad_update = session.drain_gamepad_events();
 
-        if let (Some(connected), Some(text)) =
-            (gamepad_update.connected, gamepad_update.event_text.as_ref())
-        {
+        if let (Some(connected), Some(text)) = (gamepad_update.connected, gamepad_update.event_text.as_ref()) {
             if connected {
                 session.toasts.info(text)
             } else {
@@ -101,10 +95,8 @@ async fn main() -> Result<(), Error> {
             session.toasts.warning(text);
         }
 
-        let input_source_changed = session.detect_input_source(
-            gamepad_update.last_pressed,
-            ui_state.key_rebinding.is_some(),
-        );
+        let input_source_changed =
+            session.detect_input_source(gamepad_update.last_pressed, ui_state.key_rebinding.is_some());
 
         detect_hot_keys(&mut session, &mut ui_state);
 
@@ -134,14 +126,10 @@ async fn main() -> Result<(), Error> {
                                 _ => {
                                     match ext.as_str() {
                                         "gb" | "gbc" => {
-                                            session.set_emulator(gb::GameBoySession::new_session(
-                                                rom_path.clone(),
-                                            )?);
+                                            session.set_emulator(gb::GameBoySession::new_session(rom_path.clone())?);
                                         }
                                         "gba" => {
-                                            session.set_emulator(gba::GBASession::new_session(
-                                                rom_path.clone(),
-                                            )?);
+                                            session.set_emulator(gba::GBASession::new_session(rom_path.clone())?);
                                             session.set_solar_sensor();
                                         }
                                         _ => {}
@@ -149,14 +137,9 @@ async fn main() -> Result<(), Error> {
 
                                     session.rom_path = Some(rom_path);
 
-                                    if take(&mut session.pause_on_launch)
-                                        || return_state == EmulatorState::Paused
-                                    {
+                                    if take(&mut session.pause_on_launch) || return_state == EmulatorState::Paused {
                                         session.state = EmulatorState::Paused
-                                    } else if matches!(
-                                        return_state,
-                                        EmulatorState::Running | EmulatorState::Launch
-                                    ) {
+                                    } else if matches!(return_state, EmulatorState::Running | EmulatorState::Launch) {
                                         session.set_running();
                                     } else {
                                         session.state = return_state;
@@ -178,11 +161,9 @@ async fn main() -> Result<(), Error> {
                 }
             }
             EmulatorState::Running => {
-                if session.run(
-                    gamepad_update.changed
-                        | input_source_changed
-                        | take(&mut ui_state.force_clear_inputs),
-                )? == EmulatorState::Paused
+                if session
+                    .run(gamepad_update.changed | input_source_changed | take(&mut ui_state.force_clear_inputs))?
+                    == EmulatorState::Paused
                 {
                     session.set_paused();
                     if !take(&mut session.skip_toast) {

@@ -33,15 +33,7 @@ fn to_rgb555(r: u16, g: u16, b: u16) -> u16 {
     r | (g << 5) | b << 10
 }
 
-fn alpha_blending(
-    r1: u16,
-    g1: u16,
-    b1: u16,
-    r2: u16,
-    g2: u16,
-    b2: u16,
-    bldalpha: u16,
-) -> (u16, u16, u16) {
+fn alpha_blending(r1: u16, g1: u16, b1: u16, r2: u16, g2: u16, b2: u16, bldalpha: u16) -> (u16, u16, u16) {
     let eva = bldalpha.get_bit_range(0..5).min(16);
     let evb = bldalpha.get_bit_range(8..13).min(16);
 
@@ -64,19 +56,11 @@ fn brightness(r: u16, g: u16, b: u16, bldy: u16, effect: SpecialEffects) -> (u16
             b + (((31 - b) * evy) >> 4),
         )
     } else {
-        (
-            r - ((r * evy) >> 4),
-            g - ((g * evy) >> 4),
-            b - ((b * evy) >> 4),
-        )
+        (r - ((r * evy) >> 4), g - ((g * evy) >> 4), b - ((b * evy) >> 4))
     }
 }
 
-pub fn apply_effects(
-    first_pixel: Pixel,
-    second_pixel: Pixel,
-    color_special_effects: &GroupedRegisters<u16>,
-) -> u16 {
+pub fn apply_effects(first_pixel: Pixel, second_pixel: Pixel, color_special_effects: &GroupedRegisters<u16>) -> u16 {
     let (r1, g1, b1) = from_rgb555(first_pixel.color);
     let (r2, g2, b2) = from_rgb555(second_pixel.color);
 
@@ -87,20 +71,19 @@ pub fn apply_effects(
     let second_is_target = bldcnt.is_set(second_pixel.id as usize + 8);
     let programmed_effect = SpecialEffects::from_bits(bldcnt.get_bit_range(6..8));
 
-    let special_effect =
-        if (first_pixel.id == LayerId::Sprite && first_pixel.semitransparent) && second_is_target {
+    let special_effect = if (first_pixel.id == LayerId::Sprite && first_pixel.semitransparent) && second_is_target {
+        SpecialEffects::AlphaBlending
+    } else if programmed_effect == SpecialEffects::AlphaBlending {
+        if bldcnt.is_set(first_pixel.id as usize) && second_is_target {
             SpecialEffects::AlphaBlending
-        } else if programmed_effect == SpecialEffects::AlphaBlending {
-            if bldcnt.is_set(first_pixel.id as usize) && second_is_target {
-                SpecialEffects::AlphaBlending
-            } else {
-                SpecialEffects::None
-            }
-        } else if bldcnt.is_set(first_pixel.id as usize) {
-            programmed_effect
         } else {
             SpecialEffects::None
-        };
+        }
+    } else if bldcnt.is_set(first_pixel.id as usize) {
+        programmed_effect
+    } else {
+        SpecialEffects::None
+    };
 
     if special_effect == SpecialEffects::None {
         return first_pixel.color;

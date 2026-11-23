@@ -163,11 +163,7 @@ impl Watchpoint for Psx {
         &mut self.bus.watchpoint_manager
     }
 
-    fn set_watchpoint(
-        &mut self,
-        watchpoint_range: WatchpointRange,
-        watchpoint_args: WatchpointArgs,
-    ) -> bool {
+    fn set_watchpoint(&mut self, watchpoint_range: WatchpointRange, watchpoint_args: WatchpointArgs) -> bool {
         self.bus.set_watchpoint(watchpoint_range, watchpoint_args)
     }
 
@@ -221,15 +217,9 @@ impl State for Psx {
 
         self.save()?;
 
-        swap(
-            &mut data.bus.watchpoint_manager,
-            &mut self.bus.watchpoint_manager,
-        );
+        swap(&mut data.bus.watchpoint_manager, &mut self.bus.watchpoint_manager);
 
-        swap(
-            &mut data.cpu.breakpoint_manager,
-            &mut self.cpu.breakpoint_manager,
-        );
+        swap(&mut data.cpu.breakpoint_manager, &mut self.cpu.breakpoint_manager);
 
         swap(&mut data.scripted_keypad, &mut self.scripted_keypad);
 

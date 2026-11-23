@@ -136,19 +136,12 @@ pub fn bindings_grid(
             .labels(key_id)
             .iter()
             .zip(match input_type {
-                InputType::Gamepad if matches!(key_id, KeyId::Emulator(_)) => {
-                    key_bindings.buttons(key_id)
-                }
+                InputType::Gamepad if matches!(key_id, KeyId::Emulator(_)) => key_bindings.buttons(key_id),
                 _ => key_bindings.keys(key_id),
             })
             .enumerate()
         {
-            ui.label(
-                &label
-                    .to_string()
-                    .replace("_", " ")
-                    .replace("State", " State"),
-            );
+            ui.label(&label.to_string().replace("_", " ").replace("State", " State"));
 
             let text = if *key_rebinding == Some(index) {
                 match input {
@@ -191,11 +184,7 @@ pub fn detect_state_key() -> Option<usize> {
         .and_then(|slot| Some(slot + 1))
 }
 
-pub fn slot_label(
-    emulator: &mut Box<dyn EmulatorSession>,
-    slot: usize,
-    control_key: &str,
-) -> (String, bool) {
+pub fn slot_label(emulator: &mut Box<dyn EmulatorSession>, slot: usize, control_key: &str) -> (String, bool) {
     let Some(path) = get_state(emulator, slot) else {
         return (
             format!(
@@ -237,11 +226,7 @@ pub fn state_exists(emulator: &mut Box<dyn EmulatorSession>, slot: usize) -> boo
     get_state(emulator, slot).is_some()
 }
 
-pub fn save_slots_with_toast(
-    emulator: &mut Box<dyn EmulatorSession>,
-    toasts: &mut Toasts,
-    slot: usize,
-) {
+pub fn save_slots_with_toast(emulator: &mut Box<dyn EmulatorSession>, toasts: &mut Toasts, slot: usize) {
     let (message, success) = save_slots_lua(emulator, slot, false);
     match success {
         true => toasts.success(message),
@@ -249,11 +234,7 @@ pub fn save_slots_with_toast(
     };
 }
 
-pub fn save_slots_lua(
-    emulator: &mut Box<dyn EmulatorSession>,
-    slot: usize,
-    lowercase: bool,
-) -> (String, bool) {
+pub fn save_slots_lua(emulator: &mut Box<dyn EmulatorSession>, slot: usize, lowercase: bool) -> (String, bool) {
     let first_letter = if lowercase { "s" } else { "S" };
     let status_text = if get_state(emulator, slot).is_some() {
         "overwritten"
@@ -262,22 +243,12 @@ pub fn save_slots_lua(
     };
 
     match emulator.save_state(slot) {
-        Ok(()) => (
-            format!("{first_letter}ave state {slot} {}", status_text),
-            true,
-        ),
-        Err(err) => (
-            format!("{first_letter}ave state {slot} failed: {err}"),
-            false,
-        ),
+        Ok(()) => (format!("{first_letter}ave state {slot} {}", status_text), true),
+        Err(err) => (format!("{first_letter}ave state {slot} failed: {err}"), false),
     }
 }
 
-pub fn load_slots_with_toast(
-    emulator: &mut Box<dyn EmulatorSession>,
-    toasts: &mut Toasts,
-    slot: usize,
-) {
+pub fn load_slots_with_toast(emulator: &mut Box<dyn EmulatorSession>, toasts: &mut Toasts, slot: usize) {
     let (message, success) = load_slots_lua(emulator, slot, false);
     match success {
         true => toasts.success(message),
@@ -285,26 +256,15 @@ pub fn load_slots_with_toast(
     };
 }
 
-pub fn load_slots_lua(
-    emulator: &mut Box<dyn EmulatorSession>,
-    slot: usize,
-    lowercase: bool,
-) -> (String, bool) {
+pub fn load_slots_lua(emulator: &mut Box<dyn EmulatorSession>, slot: usize, lowercase: bool) -> (String, bool) {
     let first_letter = if lowercase { "s" } else { "S" };
     match emulator.load_state(slot) {
         Ok(()) => (format!("{first_letter}ave state {slot} loaded"), true),
-        Err(err) => (
-            format!("{first_letter}ave state {slot} failed to load: {err}"),
-            false,
-        ),
+        Err(err) => (format!("{first_letter}ave state {slot} failed to load: {err}"), false),
     }
 }
 
-pub fn delete_slots_with_toast(
-    emulator: &mut Box<dyn EmulatorSession>,
-    toasts: &mut Toasts,
-    slot: usize,
-) {
+pub fn delete_slots_with_toast(emulator: &mut Box<dyn EmulatorSession>, toasts: &mut Toasts, slot: usize) {
     let (message, success) = delete_slots_lua(emulator, slot, false);
     match success {
         true => toasts.success(message),
@@ -312,24 +272,14 @@ pub fn delete_slots_with_toast(
     };
 }
 
-pub fn delete_slots_lua(
-    emulator: &mut Box<dyn EmulatorSession>,
-    slot: usize,
-    lowercase: bool,
-) -> (String, bool) {
+pub fn delete_slots_lua(emulator: &mut Box<dyn EmulatorSession>, slot: usize, lowercase: bool) -> (String, bool) {
     let first_letter = if lowercase { "s" } else { "S" };
     match get_state(emulator, slot) {
         Some(state) => match remove_file(state) {
             Ok(_) => (format!("{first_letter}ave state {slot} deleted"), true),
-            Err(err) => (
-                format!("{first_letter}ave state {slot} failed to delete: {err}"),
-                false,
-            ),
+            Err(err) => (format!("{first_letter}ave state {slot} failed to delete: {err}"), false),
         },
-        None => (
-            format!("{first_letter}ave state {slot} does not exist"),
-            false,
-        ),
+        None => (format!("{first_letter}ave state {slot} does not exist"), false),
     }
 }
 
@@ -357,8 +307,7 @@ pub fn delete_all_slots_with_toast(emulator: &mut Box<dyn EmulatorSession>, toas
 }
 
 pub fn thin_separator(ui: &mut egui::Ui) {
-    let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 6.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 6.0), egui::Sense::hover());
 
     ui.painter().hline(
         rect.x_range(),
@@ -367,11 +316,7 @@ pub fn thin_separator(ui: &mut egui::Ui) {
     );
 }
 
-pub fn update_controller_hotkey_text(
-    state_text: String,
-    slot: usize,
-    is_save_state: bool,
-) -> String {
+pub fn update_controller_hotkey_text(state_text: String, slot: usize, is_save_state: bool) -> String {
     let arrow = match slot {
         1 => "DPadUp",
         2 => "DPadRight",
@@ -380,11 +325,7 @@ pub fn update_controller_hotkey_text(
         _ => unreachable!(),
     };
 
-    let trigger = if is_save_state {
-        "LeftTrigger"
-    } else {
-        "RightTrigger"
-    };
+    let trigger = if is_save_state { "LeftTrigger" } else { "RightTrigger" };
 
     state_text.replace(")", format!("/{trigger}+Start+{arrow})").as_str())
 }

@@ -184,13 +184,9 @@ impl Bus {
     fn read_value<T: BusAccess>(&mut self, address: u32, accessor: MemoryAccessor) -> T {
         match address {
             0x00000000..=0x001FFFFF => T::read_le_bytes(&self.dram, address as usize),
-            0x1F800000..=0x1F8003FF => {
-                T::read_le_bytes(&self.scratchpad, (address - 0x1F800000) as usize)
-            }
+            0x1F800000..=0x1F8003FF => T::read_le_bytes(&self.scratchpad, (address - 0x1F800000) as usize),
             0x1F801000..=0x1F801FFF => self.read_register::<T>(address, accessor),
-            0x1FC00000..=0x1FC7FFFF => {
-                T::read_le_bytes(&self.bios, (address - 0x1FC00000) as usize)
-            }
+            0x1FC00000..=0x1FC7FFFF => T::read_le_bytes(&self.bios, (address - 0x1FC00000) as usize),
             0xFFFE0130 => T::read(self.bcc, address),
             _ => T::read(0xFFFFFFFF, address),
         }
@@ -225,7 +221,7 @@ impl Bus {
         match address {
             0x1F801070..0x1F801074 => T::read(self.istat, address),
             0x1F801074..0x1F801078 => T::read(self.imask, address),
-            _ => {T::ZERO},
+            _ => T::ZERO,
         }
     }
 
@@ -235,9 +231,7 @@ impl Bus {
         let address = translate_address(address);
         match address {
             0x00000000..=0x001FFFFF => T::write_le_bytes(&mut self.dram, address as usize, value),
-            0x1F800000..=0x1F8003FF => {
-                T::write_le_bytes(&mut self.scratchpad, (address - 0x1F800000) as usize, value)
-            }
+            0x1F800000..=0x1F8003FF => T::write_le_bytes(&mut self.scratchpad, (address - 0x1F800000) as usize, value),
             0x1FC00000..=0x1FC7FFFF if accessor == MemoryAccessor::Lua => {
                 T::write_le_bytes(&mut self.bios, (address - 0x1FC00000) as usize, value)
             }
@@ -265,7 +259,7 @@ impl Bus {
                 self.istat &= interrupt_mask;
             }
             0x1F801074..0x1F801078 => T::write(&mut self.imask, address, value),
-            _ => {},
+            _ => {}
         }
     }
 
@@ -292,9 +286,7 @@ impl Bus {
     }
 
     pub fn remove_watchpoint(&mut self, range: WatchpointRange) {
-        self.watchpoint_manager
-            .queue
-            .remove(&translate_watchpoint(range));
+        self.watchpoint_manager.queue.remove(&translate_watchpoint(range));
     }
 
     pub fn copy_interrupt_info(&mut self) {

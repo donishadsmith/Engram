@@ -57,8 +57,7 @@ impl Timer {
                 }
             }
 
-            self.increase_div_apu_counter =
-                previous_div.is_set(apu_bit) && self.div.is_clear(apu_bit);
+            self.increase_div_apu_counter = previous_div.is_set(apu_bit) && self.div.is_clear(apu_bit);
         }
     }
 

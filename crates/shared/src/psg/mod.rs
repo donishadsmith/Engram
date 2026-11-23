@@ -183,10 +183,7 @@ impl PsgMixer {
         let volume_left = self.nr50.get_bit_range(4..7) as f32;
         let volume_right = self.nr50.get_bit_range(0..3) as f32;
 
-        (
-            left * (volume_left + 1.0) / 8.0,
-            right * (volume_right + 1.0) / 8.0,
-        )
+        (left * (volume_left + 1.0) / 8.0, right * (volume_right + 1.0) / 8.0)
     }
 
     pub fn panned_left(&self, channel: usize) -> bool {
@@ -228,16 +225,12 @@ impl PsgOutput {
         let left = (samples.0 * PSG_SCALE) as i32;
         let right = (samples.1 * PSG_SCALE) as i32;
         if left != self.previous_left_sample {
-            let _ = self
-                .left
-                .add_delta(self.cycle, left - self.previous_left_sample);
+            let _ = self.left.add_delta(self.cycle, left - self.previous_left_sample);
             self.previous_left_sample = left;
         }
 
         if right != self.previous_right_sample {
-            let _ = self
-                .right
-                .add_delta(self.cycle, right - self.previous_right_sample);
+            let _ = self.right.add_delta(self.cycle, right - self.previous_right_sample);
             self.previous_right_sample = right;
         }
     }

@@ -16,8 +16,8 @@ use std::{
 };
 
 use shared::{
-    Audio, Cycles, EmulatorCore, EmulatorId, EmulatorSession, EmulatorState, FrameLoop,
-    FramePacing, FrameTracking, Rewind, RewindControl, ScriptTarget, StateIo, Watchpoint,
+    Audio, Cycles, EmulatorCore, EmulatorId, EmulatorSession, EmulatorState, FrameLoop, FramePacing, FrameTracking,
+    Rewind, RewindControl, ScriptTarget, StateIo, Watchpoint,
     audio::AudioOutput,
     config::system_dir,
     constants::GB_REFRESH_RATE,
@@ -56,10 +56,7 @@ impl GameBoySession {
         let sample_rate = audio.as_ref().map_or(48000, |audio| audio.sample_rate) as f64;
         let apu_sample_period = GB_CLOCK_SPEED / sample_rate;
         let gameboy = GameBoy::boot(gamepak, apu_sample_period);
-        let screen = Screen::new(
-            gameboy.cpu.bus.ppu.frame.width,
-            gameboy.cpu.bus.ppu.frame.height,
-        );
+        let screen = Screen::new(gameboy.cpu.bus.ppu.frame.width, gameboy.cpu.bus.ppu.frame.height);
         let state_dir = system_dir("gb", "states")?;
 
         Ok(Self {
@@ -86,8 +83,7 @@ impl GameBoySession {
             self.gameboy.capture_rewind();
         }
 
-        self.script_engine
-            .execute(&mut self.gameboy, EmulatorId::Gb, true);
+        self.script_engine.execute(&mut self.gameboy, EmulatorId::Gb, true);
 
         self.screen.update(&mut self.gameboy.cpu.bus.ppu.frontend);
     }
@@ -103,8 +99,7 @@ impl GameBoySession {
         {
             self.on_frame();
         } else {
-            self.script_engine
-                .execute(&mut self.gameboy, EmulatorId::Gb, false);
+            self.script_engine.execute(&mut self.gameboy, EmulatorId::Gb, false);
         }
 
         self.draw();
@@ -233,16 +228,13 @@ impl EmulatorSession for GameBoySession {
 
         self.run_frames(volume);
 
-        let breakpoint_action = self.gameboy.cpu.breakpoint_manager.hit.and_then(|address| {
-            self.gameboy
-                .cpu
-                .breakpoint_manager
-                .queue
-                .get(&address)
-                .copied()
-        });
-        self.script_engine
-            .execute(&mut self.gameboy, EmulatorId::Gb, false);
+        let breakpoint_action = self
+            .gameboy
+            .cpu
+            .breakpoint_manager
+            .hit
+            .and_then(|address| self.gameboy.cpu.breakpoint_manager.queue.get(&address).copied());
+        self.script_engine.execute(&mut self.gameboy, EmulatorId::Gb, false);
 
         let state = if self.gameboy.take_watchpoint_pause() | self.gameboy.take_cycle_pause() {
             EmulatorState::Paused
@@ -258,8 +250,7 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn pause(&mut self) {
-        self.script_engine
-            .execute(&mut self.gameboy, EmulatorId::Gb, false);
+        self.script_engine.execute(&mut self.gameboy, EmulatorId::Gb, false);
 
         self.draw();
     }
@@ -324,14 +315,8 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn set_resume(&mut self) {
-        self.gameboy.cpu.breakpoint_manager.resume_from = Some(
-            self.gameboy
-                .cpu
-                .registers
-                .program_counter
-                .address
-                .wrapping_sub(1) as u32,
-        );
+        self.gameboy.cpu.breakpoint_manager.resume_from =
+            Some(self.gameboy.cpu.registers.program_counter.address.wrapping_sub(1) as u32);
     }
 
     fn set_top_height(&mut self, menu_height: f32) {
@@ -358,10 +343,8 @@ impl EmulatorSession for GameBoySession {
     }
 
     fn video_capture(&mut self) {
-        self.video_recorder.capture(
-            &self.gameboy.cpu.bus.ppu.frontend,
-            take(&mut self.recorded_audio),
-        );
+        self.video_recorder
+            .capture(&self.gameboy.cpu.bus.ppu.frontend, take(&mut self.recorded_audio));
     }
 
     fn stop_video(&mut self) -> Result<(), Error> {
@@ -373,7 +356,6 @@ impl EmulatorSession for GameBoySession {
             self.screen.update(&mut self.gameboy.cpu.bus.ppu.frontend)
         }
 
-        self.screen
-            .draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
+        self.screen.draw(&self.gameboy.cpu.bus.ppu.frontend, self.menu_height);
     }
 }

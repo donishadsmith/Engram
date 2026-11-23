@@ -69,10 +69,7 @@ impl Rtc {
 
         match &mut self.mode {
             RtcMode::Idle => unreachable!(),
-            RtcMode::Command {
-                bits,
-                bits_received,
-            } => {
+            RtcMode::Command { bits, bits_received } => {
                 *bits = (*bits << 1) | sio_is_high as u8;
                 *bits_received += 1;
                 if *bits_received == 8 {

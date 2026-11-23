@@ -19,16 +19,11 @@ use macroquad::{
 };
 use shared::{
     EmulatorId, EmulatorSession, EmulatorState,
-    config::{
-        AnalogToDpad, Config, DataDirs, Display, RumbleEffect, SystemRewindCapacity, load_config,
-        save_config,
-    },
+    config::{AnalogToDpad, Config, DataDirs, Display, RumbleEffect, SystemRewindCapacity, load_config, save_config},
     constants::ALLOWED_SPEED,
     debug::DebugPage,
     gif::GifRecorder,
-    input::{
-        AnalogStick, AnalogSticks, KeyBindings, enums::Input, utils::get_relevant_key_presses,
-    },
+    input::{AnalogStick, AnalogSticks, KeyBindings, enums::Input, utils::get_relevant_key_presses},
     lua_lab::{EditorTheme, LuaLab},
     script::ScriptRequest,
     structs::PendingDialog,
@@ -74,27 +69,9 @@ pub struct DataPaths {
 impl DataPaths {
     pub fn to_config(&self) -> DataDirs {
         DataDirs {
-            image_dir: Some(
-                self.image_dir
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap(),
-            ),
-            video_dir: Some(
-                self.video_dir
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap(),
-            ),
-            data_dir: Some(
-                self.data_dir
-                    .clone()
-                    .into_os_string()
-                    .into_string()
-                    .unwrap(),
-            ),
+            image_dir: Some(self.image_dir.clone().into_os_string().into_string().unwrap()),
+            video_dir: Some(self.video_dir.clone().into_os_string().into_string().unwrap()),
+            data_dir: Some(self.data_dir.clone().into_os_string().into_string().unwrap()),
         }
     }
 
@@ -187,9 +164,7 @@ impl Session {
         let rumble_effect = if let Some(gilrs) = &mut gilrs {
             EffectBuilder::new()
                 .add_effect(BaseEffect {
-                    kind: BaseEffectType::Strong {
-                        magnitude: u16::MAX,
-                    },
+                    kind: BaseEffectType::Strong { magnitude: u16::MAX },
                     scheduling: Replay {
                         play_for: Ticks::from_ms(60),
                         with_delay: Ticks::from_ms(0),
@@ -260,7 +235,8 @@ impl Session {
             skip_toast: false,
             analog_to_dpad: Vec::with_capacity(2),
             map_analog_to_dpad: config.map_analog_to_dpad,
-            analog_deadzone_radius: config.analog_deadzone_radius.unwrap_or(0.25), /* some controllers are awful and require higher thresholds */
+            analog_deadzone_radius: config.analog_deadzone_radius.unwrap_or(0.25), /* some controllers are awful and
+                                                                                    * require higher thresholds */
             analog_controls: AnalogSticks {
                 left: AnalogStick { x: 0.0, y: 0.0 },
                 right: AnalogStick { x: 0.0, y: 0.0 },
@@ -299,12 +275,11 @@ impl Session {
             return;
         }
 
-        let debug_page =
-            if let Some(last_debug_page) = self.last_debug_page.get(&emulator_id).copied() {
-                Some(last_debug_page)
-            } else {
-                Some(debugger.available_pages()[0])
-            };
+        let debug_page = if let Some(last_debug_page) = self.last_debug_page.get(&emulator_id).copied() {
+            Some(last_debug_page)
+        } else {
+            Some(debugger.available_pages()[0])
+        };
 
         debugger.toggle(debug_page);
     }
@@ -334,17 +309,12 @@ impl Session {
         }
 
         let (emulator_pause_message, emulator_run_message) = if alt_message {
-            (
-                "Next ROM will pause after loading",
-                "Next ROM will start after loading",
-            )
+            ("Next ROM will pause after loading", "Next ROM will start after loading")
         } else {
             ("Emulator is paused", "Emulator is running")
         };
 
-        let paused = self.is_paused()
-            || self.return_state == Some(EmulatorState::Paused)
-            || self.pause_on_launch;
+        let paused = self.is_paused() || self.return_state == Some(EmulatorState::Paused) || self.pause_on_launch;
 
         if paused {
             self.emulator
@@ -395,13 +365,8 @@ impl Session {
         emulator.set_rewind_capacity(self.system_rewind_capacity.get(emulator.id()));
 
         emulator.run(
-            &get_relevant_key_presses(
-                &keymap[..index],
-                gamepad,
-                input_blocked,
-                take(&mut self.analog_to_dpad),
-            )
-            .into_boxed_slice(),
+            &get_relevant_key_presses(&keymap[..index], gamepad, input_blocked, take(&mut self.analog_to_dpad))
+                .into_boxed_slice(),
             self.master_volume,
         )
     }
@@ -411,10 +376,7 @@ impl Session {
     }
 
     pub fn reset(&mut self) -> Result<(), Error> {
-        self.emulator
-            .as_mut()
-            .unwrap()
-            .reset(self.rom_path.clone().unwrap())?;
+        self.emulator.as_mut().unwrap().reset(self.rom_path.clone().unwrap())?;
 
         self.set_solar_sensor();
 
@@ -499,9 +461,7 @@ impl Session {
 
         let previous_gamepad_id = self.latest_gamepad_id;
 
-        let in_startup = self
-            .startup_deadline
-            .is_some_and(|deadline| Instant::now() < deadline);
+        let in_startup = self.startup_deadline.is_some_and(|deadline| Instant::now() < deadline);
 
         while let Some(event) = gilrs.next_event() {
             match event.event {
@@ -510,10 +470,8 @@ impl Session {
 
                     if !in_startup {
                         gamepad_update.connected = Some(true);
-                        gamepad_update.event_text = Some(format!(
-                            "Controller connected: {}",
-                            gilrs.gamepad(event.id).os_name()
-                        ));
+                        gamepad_update.event_text =
+                            Some(format!("Controller connected: {}", gilrs.gamepad(event.id).os_name()));
                     }
                 }
                 EventType::Disconnected if Some(event.id) == self.latest_gamepad_id => {
@@ -534,19 +492,14 @@ impl Session {
                         ),
                         None => {
                             self.input_source = Some(InputSource::Keyboard);
-                            format!(
-                                "Controller disconnected: {} (switched to keyboard)",
-                                lost_name
-                            )
+                            format!("Controller disconnected: {} (switched to keyboard)", lost_name)
                         }
                     });
                 }
-                EventType::AxisChanged(Axis::LeftStickX, _, _)
-                | EventType::AxisChanged(Axis::RightStickX, _, _) => {
+                EventType::AxisChanged(Axis::LeftStickX, _, _) | EventType::AxisChanged(Axis::RightStickX, _, _) => {
                     self.latest_gamepad_id = Some(event.id);
                 }
-                EventType::AxisChanged(Axis::LeftStickY, _, _)
-                | EventType::AxisChanged(Axis::RightStickY, _, _) => {
+                EventType::AxisChanged(Axis::LeftStickY, _, _) | EventType::AxisChanged(Axis::RightStickY, _, _) => {
                     self.latest_gamepad_id = Some(event.id);
                 }
                 EventType::ButtonPressed(button, _) if button != Button::Unknown => {
@@ -561,10 +514,8 @@ impl Session {
         if !in_startup && self.startup_deadline.take().is_some() {
             if let Some(gamepad_id) = self.latest_gamepad_id {
                 gamepad_update.connected = Some(true);
-                gamepad_update.event_text = Some(format!(
-                    "Controller connected: {}",
-                    gilrs.gamepad(gamepad_id).os_name()
-                ));
+                gamepad_update.event_text =
+                    Some(format!("Controller connected: {}", gilrs.gamepad(gamepad_id).os_name()));
             }
         }
 
@@ -611,30 +562,21 @@ impl Session {
         }
 
         let AnalogSticks { left, right } = self.analog_controls;
-        let analog_stick =
-            if left.x * left.x + left.y * left.y >= right.x * right.x + right.y * right.y {
-                left
-            } else {
-                right
-            };
+        let analog_stick = if left.x * left.x + left.y * left.y >= right.x * right.x + right.y * right.y {
+            left
+        } else {
+            right
+        };
 
-        let gamepad_update =
-            self.map_analog_to_dpad(gamepad_update, analog_stick.x, analog_stick.y);
+        let gamepad_update = self.map_analog_to_dpad(gamepad_update, analog_stick.x, analog_stick.y);
 
         return gamepad_update;
     }
 
     // https://www.easysmx.com/blogs/easysmx-controllers/controller-deadzone-joystick-test?srsltid=AU7gw4W7mI1o6YdNLAugGdbtot7DrsSEGtEMIbXhTOALUp00GXae7jgJ
     // jank code
-    fn map_analog_to_dpad(
-        &mut self,
-        mut gamepad_update: GamepadUpdate,
-        analog_x: f32,
-        analog_y: f32,
-    ) -> GamepadUpdate {
-        if analog_x * analog_x + analog_y * analog_y
-            < self.analog_deadzone_radius * self.analog_deadzone_radius
-        {
+    fn map_analog_to_dpad(&mut self, mut gamepad_update: GamepadUpdate, analog_x: f32, analog_y: f32) -> GamepadUpdate {
+        if analog_x * analog_x + analog_y * analog_y < self.analog_deadzone_radius * self.analog_deadzone_radius {
             return gamepad_update;
         }
 
@@ -651,18 +593,16 @@ impl Session {
             gamepad_update.last_pressed = Some(Button::DPadDown);
         };
 
-        let use_analog =
-            if let Some(emulator_id) = self.emulator.as_ref().map(|emulator| emulator.id()) {
-                self.map_analog_to_dpad.get(emulator_id)
-            } else {
-                false
-            };
+        let use_analog = if let Some(emulator_id) = self.emulator.as_ref().map(|emulator| emulator.id()) {
+            self.map_analog_to_dpad.get(emulator_id)
+        } else {
+            false
+        };
 
         // tan(22.5) = 0.414; tan = x / y; determine if non dominant exceeds
         // threshold
         if !self.is_input_blocked() && use_analog {
-            self.analog_to_dpad
-                .push(gamepad_update.last_pressed.unwrap());
+            self.analog_to_dpad.push(gamepad_update.last_pressed.unwrap());
 
             if is_x_dominant {
                 if analog_y.abs() > analog_x.abs() * 0.414 {
@@ -696,8 +636,7 @@ impl Session {
         set_fullscreen(self.display.fullscreen);
 
         if !self.display.fullscreen
-            && let (Some(screen_width), Some(screen_height)) =
-                (self.display.width, self.display.height)
+            && let (Some(screen_width), Some(screen_height)) = (self.display.width, self.display.height)
         {
             request_new_screen_size(
                 screen_width as f32 / screen_dpi_scale(),
@@ -707,10 +646,7 @@ impl Session {
     }
 
     pub fn is_input_blocked(&self) -> bool {
-        self.show_key_bindings
-            || self.show_hotkeys
-            || self.lua_lab.occupied()
-            || self.controller_hotkey_fired
+        self.show_key_bindings || self.show_hotkeys || self.lua_lab.occupied() || self.controller_hotkey_fired
     }
 
     pub fn record_window_size(&mut self) {
@@ -761,11 +697,7 @@ impl Session {
         emulator.update_frame_deadline();
     }
 
-    pub fn detect_input_source(
-        &mut self,
-        last_key_pressed: Option<Button>,
-        is_key_rebinding: bool,
-    ) -> bool {
+    pub fn detect_input_source(&mut self, last_key_pressed: Option<Button>, is_key_rebinding: bool) -> bool {
         let mut input_source_changed = false;
 
         if is_key_rebinding | self.lua_lab.occupied() {
@@ -779,10 +711,7 @@ impl Session {
         let mut input_source = self.input_source;
         match self.input_source {
             Some(InputSource::Keyboard) => {
-                if self.latest_gamepad_id.is_some()
-                    && self.gilrs.is_some()
-                    && last_key_pressed.is_some()
-                {
+                if self.latest_gamepad_id.is_some() && self.gilrs.is_some() && last_key_pressed.is_some() {
                     input_source = Some(InputSource::Gamepad);
                 }
             }
@@ -815,10 +744,7 @@ impl Session {
             }
         }
 
-        if self.input_source.is_some()
-            && input_source.is_some()
-            && self.input_source != input_source
-        {
+        if self.input_source.is_some() && input_source.is_some() && self.input_source != input_source {
             input_source_changed = true;
         }
 

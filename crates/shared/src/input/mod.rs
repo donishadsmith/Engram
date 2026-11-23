@@ -71,10 +71,7 @@ impl KeyBindings {
     }
 
     pub fn labels(&self, key_id: KeyId) -> Vec<&str> {
-        self.get_bindings_ref(key_id)
-            .iter()
-            .map(|b| b.label)
-            .collect()
+        self.get_bindings_ref(key_id).iter().map(|b| b.label).collect()
     }
 
     fn get_bindings_ref(&self, key_id: KeyId) -> &Vec<Bindings> {
@@ -131,24 +128,14 @@ impl KeyBindings {
     pub fn save_keys(&self) -> Result<SaveKeys, Error> {
         let collect_keys = |vec: &Vec<Bindings>| {
             vec.into_iter()
-                .map(|b| {
-                    (
-                        String::from(b.label),
-                        String::from(keycode_to_string(b.key)),
-                    )
-                })
+                .map(|b| (String::from(b.label), String::from(keycode_to_string(b.key))))
                 .collect::<BTreeMap<String, String>>()
         };
 
         // think of way to consolidate logic later, copy and paste now
         let collect_buttons = |vec: &Vec<Bindings>| {
             vec.into_iter()
-                .map(|b| {
-                    (
-                        String::from(b.label),
-                        String::from(button_to_string(b.button.unwrap())),
-                    )
-                })
+                .map(|b| (String::from(b.label), String::from(button_to_string(b.button.unwrap()))))
                 .collect::<BTreeMap<String, String>>()
         };
 
@@ -181,10 +168,7 @@ impl KeyBindings {
         let default_bindings = get_default_keys(key_id);
 
         for input in current_bindings.iter_mut() {
-            let default_input = default_bindings
-                .iter()
-                .find(|b| b.label == input.label)
-                .unwrap();
+            let default_input = default_bindings.iter().find(|b| b.label == input.label).unwrap();
 
             match input_type {
                 InputType::Gamepad => input.button = default_input.button,
@@ -195,7 +179,8 @@ impl KeyBindings {
 
     pub fn reserved(&self, key_id: KeyId, input: Input) -> bool {
         match key_id {
-            KeyId::Hotkeys => self.keys(KeyId::Emulator(EmulatorId::Gba)).contains(&input), /* eventually use .extend */
+            KeyId::Hotkeys => self.keys(KeyId::Emulator(EmulatorId::Gba)).contains(&input), /* eventually use */
+            // .extend
             KeyId::Emulator(_) => self.keys(KeyId::Hotkeys).contains(&input),
         }
     }

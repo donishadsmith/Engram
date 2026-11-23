@@ -238,11 +238,7 @@ impl PpuDebugger {
 
                     ui.separator();
 
-                    ui.selectable_value(
-                        &mut self.render_tab,
-                        RenderTab::Information,
-                        "Information",
-                    );
+                    ui.selectable_value(&mut self.render_tab, RenderTab::Information, "Information");
                     ui.selectable_value(&mut self.render_tab, RenderTab::Background, "Background");
                     ui.selectable_value(&mut self.render_tab, RenderTab::Sprite, "Sprite");
                     ui.selectable_value(&mut self.render_tab, RenderTab::Palette, "Palette");
@@ -253,10 +249,7 @@ impl PpuDebugger {
                 egui::ScrollArea::vertical().show(ui, |ui| match self.render_tab {
                     RenderTab::Background => {
                         ui.horizontal(|ui| {
-                            ui.checkbox(
-                                &mut gba.bus.ppu.transparant_background,
-                                "Transparent Background",
-                            );
+                            ui.checkbox(&mut gba.bus.ppu.transparant_background, "Transparent Background");
                         });
 
                         self.show_backgrounds(ui, &mut gba.bus.ppu.debug_frontend)
@@ -272,9 +265,7 @@ impl PpuDebugger {
                         self.show_sprites(ui, gba)
                     }
                     RenderTab::Information => self.show_information(ui),
-                    RenderTab::Palette => {
-                        self.show_palettes(ui, &background_palettes, &sprite_palettes)
-                    }
+                    RenderTab::Palette => self.show_palettes(ui, &background_palettes, &sprite_palettes),
                 });
             });
 
@@ -313,11 +304,7 @@ impl PpuDebugger {
         ui.label(RichText::new("Display").strong());
 
         horizontal_text(ui, "Mode", mode_description(self.current_mode));
-        horizontal_text(
-            ui,
-            "Forced Blank",
-            state_text(self.dispcnt.is_set(7), "on", "off"),
-        );
+        horizontal_text(ui, "Forced Blank", state_text(self.dispcnt.is_set(7), "on", "off"));
 
         flag_row(
             ui,
@@ -376,11 +363,7 @@ impl PpuDebugger {
         ui.label(RichText::new("Scanline").strong());
 
         horizontal_text(ui, "Current Vcount Line", self.vcount.to_string());
-        horizontal_text(
-            ui,
-            "Target Vcount Line",
-            self.dispstat.get_bit_range(8..16).to_string(),
-        );
+        horizontal_text(ui, "Target Vcount Line", self.dispstat.get_bit_range(8..16).to_string());
 
         ui.separator();
         ui.label(RichText::new("Interrupts").strong());
@@ -419,12 +402,7 @@ impl PpuDebugger {
             });
     }
 
-    fn show_palettes(
-        &mut self,
-        ui: &mut egui::Ui,
-        background_palettes: &[Color32],
-        sprite_palettes: &[Color32],
-    ) {
+    fn show_palettes(&mut self, ui: &mut egui::Ui, background_palettes: &[Color32], sprite_palettes: &[Color32]) {
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.palette_tab, PaletteType::Background, "Background");
             ui.selectable_value(&mut self.palette_tab, PaletteType::Sprite, "Sprite");
@@ -433,9 +411,7 @@ impl PpuDebugger {
         ui.separator();
 
         match self.palette_tab {
-            PaletteType::Background => {
-                palette_grid(ui, "Background Palette", 0x05000000, background_palettes)
-            }
+            PaletteType::Background => palette_grid(ui, "Background Palette", 0x05000000, background_palettes),
             PaletteType::Sprite => palette_grid(ui, "Sprite Palette", 0x05000200, sprite_palettes),
         }
     }
@@ -461,9 +437,7 @@ impl PpuDebugger {
 
             let size = compute_size(cell, &frames[index]);
             let texture_id = if self.frozen {
-                self.background_textures[index]
-                    .as_ref()
-                    .map(|texture| texture.id())
+                self.background_textures[index].as_ref().map(|texture| texture.id())
             } else {
                 Some(get_texture_id(
                     &mut self.background_textures[index],
@@ -479,11 +453,7 @@ impl PpuDebugger {
                 egui::Image::new((texture_id, size)).paint_at(ui, image_rect);
             }
 
-            let response = ui.interact(
-                image_rect,
-                ui.id().with(("BG Response Hover", index)),
-                Sense::hover(),
-            );
+            let response = ui.interact(image_rect, ui.id().with(("BG Response Hover", index)), Sense::hover());
 
             ui.separator();
 
@@ -491,7 +461,8 @@ impl PpuDebugger {
             let mode = if debug_info.affine { "affine" } else { "text" };
             if self.bg_on[index] {
                 let text = format!(
-                    "mode: {}\nscreen base block: {}\ncharacter base block: {}\nbpp: {}\nreference coordinate: ({:<10.2},{:<10.2})\nscreen size: {}x{}\nmosaic: {}",
+                    "mode: {}\nscreen base block: {}\ncharacter base block: {}\nbpp: {}\nreference coordinate: \
+                     ({:<10.2},{:<10.2})\nscreen size: {}x{}\nmosaic: {}",
                     mode,
                     debug_info.screen_base_block,
                     debug_info.character_base_block,
@@ -512,10 +483,7 @@ impl PpuDebugger {
 
     fn show_sprites(&mut self, ui: &mut egui::Ui, gba: &mut GBA) {
         let atlas_id = if self.frozen && self.sprite_atlas_texture.is_some() {
-            self.sprite_atlas_texture
-                .as_ref()
-                .map(|texture| texture.id())
-                .unwrap()
+            self.sprite_atlas_texture.as_ref().map(|texture| texture.id()).unwrap()
         } else {
             get_texture_id(
                 &mut self.sprite_atlas_texture,
@@ -554,15 +522,13 @@ impl PpuDebugger {
                             .paint_at(ui, egui::Rect::from_center_size(rect.center(), size));
                     }
 
-                    let mode = if sprite.matrix.is_some() {
-                        "affine"
-                    } else {
-                        "normal"
-                    };
+                    let mode = if sprite.matrix.is_some() { "affine" } else { "normal" };
                     let double = sprite.matrix.is_some() && sprite.double_size;
 
                     let text = format!(
-                        "Sprite #{index}\nstart address: {:08x}h\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: {}\ndisabled: {}\nmode: {}\ndouble size: {}\nmosaic: {}",
+                        "Sprite #{index}\nstart address: {:08x}h\ndimension: {}x{}\ncoordinate: ({}, {})\nbounding \
+                         box: {}x{}\ntile: {}\npriority: {}\npalette: {}\nhorizontal flip: {}\nvertical flip: \
+                         {}\ndisabled: {}\nmode: {}\ndouble size: {}\nmosaic: {}",
                         0x07000000 + index * 8,
                         sprite.dimension.width,
                         sprite.dimension.height,

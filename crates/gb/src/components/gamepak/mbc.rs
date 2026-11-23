@@ -204,11 +204,7 @@ pub mod prelude {
         }
 
         fn ram_bank(&self) -> usize {
-            if self.mode {
-                self.register_2bit as usize
-            } else {
-                0
-            }
+            if self.mode { self.register_2bit as usize } else { 0 }
         }
 
         fn get_rom_mut(&mut self) -> &mut [u8] {

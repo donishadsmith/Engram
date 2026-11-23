@@ -104,12 +104,7 @@ impl Cop0 {
         }
     }
 
-    pub fn process_exception(
-        &mut self,
-        code: ExceptionCode,
-        current_pc: u32,
-        in_delay_slot: bool,
-    ) -> u32 {
+    pub fn process_exception(&mut self, code: ExceptionCode, current_pc: u32, in_delay_slot: bool) -> u32 {
         /*
             Rustation Guide Page 64:
             When an exception occurs the following takes place in the CPU:
@@ -143,11 +138,7 @@ impl Cop0 {
             self.cause.set_bit(31);
         }
 
-        if self.sr.is_set(22) {
-            0xBFC00180
-        } else {
-            0x80000080
-        }
+        if self.sr.is_set(22) { 0xBFC00180 } else { 0x80000080 }
     }
 
     // TODO: start with this, next seems straightforward enough

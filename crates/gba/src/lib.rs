@@ -20,9 +20,8 @@ use std::{
 use debug::audio::AudioDebugger;
 use egui::Ui;
 use shared::{
-    Audio, Cycles, DebugInterface, EmulatorCore, EmulatorId, EmulatorSession, EmulatorState,
-    FrameLoop, FramePacing, FrameTracking, Rewind, RewindControl, ScriptTarget, SolarSensor,
-    StateIo, Watchpoint,
+    Audio, Cycles, DebugInterface, EmulatorCore, EmulatorId, EmulatorSession, EmulatorState, FrameLoop, FramePacing,
+    FrameTracking, Rewind, RewindControl, ScriptTarget, SolarSensor, StateIo, Watchpoint,
     audio::AudioOutput,
     config::system_dir,
     constants::GB_REFRESH_RATE,
@@ -99,8 +98,7 @@ impl GBASession {
             self.gba.capture_rewind();
         }
 
-        self.script_engine
-            .execute(&mut self.gba, EmulatorId::Gba, true);
+        self.script_engine.execute(&mut self.gba, EmulatorId::Gba, true);
 
         if self.active_debug.is_none() {
             self.screen.update(&mut self.gba.bus.ppu.frontend);
@@ -114,8 +112,7 @@ impl GBASession {
         if self.gba.bus.ppu.frame_ready {
             self.on_frame();
         } else {
-            self.script_engine
-                .execute(&mut self.gba, EmulatorId::Gba, false);
+            self.script_engine.execute(&mut self.gba, EmulatorId::Gba, false);
         }
 
         self.draw();
@@ -258,8 +255,7 @@ impl EmulatorSession for GBASession {
             .breakpoint_manager
             .hit
             .and_then(|address| self.gba.cpu.breakpoint_manager.queue.get(&address).copied());
-        self.script_engine
-            .execute(&mut self.gba, EmulatorId::Gba, false);
+        self.script_engine.execute(&mut self.gba, EmulatorId::Gba, false);
 
         let state = if self.gba.take_watchpoint_pause() | self.gba.take_cycle_pause() {
             EmulatorState::Paused
@@ -275,8 +271,7 @@ impl EmulatorSession for GBASession {
     }
 
     fn pause(&mut self) {
-        self.script_engine
-            .execute(&mut self.gba, EmulatorId::Gba, false);
+        self.script_engine.execute(&mut self.gba, EmulatorId::Gba, false);
 
         self.draw();
     }
@@ -406,8 +401,7 @@ impl EmulatorSession for GBASession {
         }
 
         if self.active_debug.is_none() {
-            self.screen
-                .draw(&self.gba.bus.ppu.frontend, self.menu_height);
+            self.screen.draw(&self.gba.bus.ppu.frontend, self.menu_height);
         }
     }
 }

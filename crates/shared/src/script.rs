@@ -5,10 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use mlua::{
-    Function, HookTriggers, Lua, LuaString, Table, Thread, Value, Variadic, VmState,
-    thread::ThreadStatus,
-};
+use mlua::{Function, HookTriggers, Lua, LuaString, Table, Thread, Value, Variadic, VmState, thread::ThreadStatus};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -171,9 +168,7 @@ impl Accessor {
             "cpu" => Ok(Accessor::Cpu),
             "dma" => Ok(Accessor::Dma),
             "all" => Ok(Accessor::All),
-            _ => Err(mlua::Error::runtime(format!(
-                "'{string}' is invalid: (valid: {valid})"
-            ))),
+            _ => Err(mlua::Error::runtime(format!("'{string}' is invalid: (valid: {valid})"))),
         }
     }
 
@@ -181,10 +176,7 @@ impl Accessor {
         matches!(
             (self, accessor),
             (Accessor::All, _)
-                | (
-                    Accessor::Cpu,
-                    MemoryAccessor::Cpu | MemoryAccessor::CpuReadWriteModify
-                )
+                | (Accessor::Cpu, MemoryAccessor::Cpu | MemoryAccessor::CpuReadWriteModify)
                 | (Accessor::Dma, MemoryAccessor::Dma)
         )
     }
@@ -290,10 +282,7 @@ pub enum Comparison {
 }
 
 impl Comparison {
-    pub fn from_string(
-        string: Option<String>,
-        target_set: bool,
-    ) -> Result<Comparison, mlua::Error> {
+    pub fn from_string(string: Option<String>, target_set: bool) -> Result<Comparison, mlua::Error> {
         let Some(string) = string else {
             return Ok(Comparison::Eq);
         };
@@ -346,8 +335,7 @@ impl WatchpointArgs {
     }
 
     pub fn fires_on_read(&self, value: u32) -> bool {
-        matches!(self.on, WatchpointType::Read | WatchpointType::ReadWrite)
-            && self.comparison(value)
+        matches!(self.on, WatchpointType::Read | WatchpointType::ReadWrite) && self.comparison(value)
     }
 
     pub fn should_fire_on_write(&mut self, address: u32, value: u32) -> bool {
@@ -362,24 +350,12 @@ impl WatchpointArgs {
 
     pub fn comparison(&self, value: u32) -> bool {
         match self.compare {
-            Comparison::Lt => self
-                .target
-                .map_or(true, |target_value| value < target_value),
-            Comparison::Le => self
-                .target
-                .map_or(true, |target_value| value <= target_value),
-            Comparison::Gt => self
-                .target
-                .map_or(true, |target_value| value > target_value),
-            Comparison::Ge => self
-                .target
-                .map_or(true, |target_value| value >= target_value),
-            Comparison::Eq => self
-                .target
-                .map_or(true, |target_value| value == target_value),
-            Comparison::Ne => self
-                .target
-                .map_or(true, |target_value| value != target_value),
+            Comparison::Lt => self.target.map_or(true, |target_value| value < target_value),
+            Comparison::Le => self.target.map_or(true, |target_value| value <= target_value),
+            Comparison::Gt => self.target.map_or(true, |target_value| value > target_value),
+            Comparison::Ge => self.target.map_or(true, |target_value| value >= target_value),
+            Comparison::Eq => self.target.map_or(true, |target_value| value == target_value),
+            Comparison::Ne => self.target.map_or(true, |target_value| value != target_value),
         }
     }
 
@@ -412,12 +388,7 @@ impl WatchpointHit {
 
     pub fn target_to_string(&self) -> Option<String> {
         if let Some(target) = self.target {
-            Some(format!(
-                "{:x} {} {:x}",
-                self.value,
-                self.compare.to_string(),
-                target
-            ))
+            Some(format!("{:x} {} {:x}", self.value, self.compare.to_string(), target))
         } else {
             None
         }
@@ -426,10 +397,9 @@ impl WatchpointHit {
 
 fn cpu_error(name: &str, error: CpuError, valid: &[&str]) -> mlua::Error {
     match error {
-        CpuError::UnknownRegister => mlua::Error::runtime(format!(
-            "unknown CPU register '{name}' (valid: {})",
-            valid.join(", ")
-        )),
+        CpuError::UnknownRegister => {
+            mlua::Error::runtime(format!("unknown CPU register '{name}' (valid: {})", valid.join(", ")))
+        }
         CpuError::ReadOnly => mlua::Error::runtime(format!("CPU register '{name}' is read-only")),
     }
 }
@@ -753,9 +723,8 @@ impl ScriptEngine {
             target.take_breakpoint_hit();
             target.take_watchpoint_hits();
 
-            self.output.push(
-                "all running hooks, watchpoints, and breakpoints have been terminated".to_string(),
-            );
+            self.output
+                .push("all running hooks, watchpoints, and breakpoints have been terminated".to_string());
         }
     }
 
@@ -763,12 +732,7 @@ impl ScriptEngine {
         take(&mut self.clear_console)
     }
 
-    pub fn execute(
-        &mut self,
-        target: &mut dyn ScriptTarget,
-        emulator_id: EmulatorId,
-        frame_boundary: bool,
-    ) {
+    pub fn execute(&mut self, target: &mut dyn ScriptTarget, emulator_id: EmulatorId, frame_boundary: bool) {
         let Self {
             lua,
             pending,
@@ -796,13 +760,16 @@ impl ScriptEngine {
         let stop_scripts = Cell::from_mut(stop_scripts);
 
         let result = lua.scope(|scope| {
-            script.set("stop", scope.create_function(|_,  (): ()| {
-                stop_scripts.replace(true);
+            script.set(
+                "stop",
+                scope.create_function(|_, (): ()| {
+                    stop_scripts.replace(true);
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            let to_binary = scope.create_function(|_, value: i64 | {
+            let to_binary = scope.create_function(|_, value: i64| {
                 output.borrow_mut().push(format!("{:b}", value));
 
                 Ok(())
@@ -824,211 +791,280 @@ impl ScriptEngine {
             lua.globals().set("print", &print)?;
             console.set("log", print)?;
 
-            console.set("clear", scope.create_function(|_, (): ()| {
-                clear_console.set(true);
+            console.set(
+                "clear",
+                scope.create_function(|_, (): ()| {
+                    clear_console.set(true);
 
-                output.borrow_mut().clear();
+                    output.borrow_mut().clear();
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            memory.set("read_u8", scope
-                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u8(address)))?)?;
+            memory.set(
+                "read_u8",
+                scope.create_function(|_, address: u32| Ok(target.borrow_mut().read_u8(address)))?,
+            )?;
 
-            memory.set("read_u16", scope
-                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u16(address)))?)?;
+            memory.set(
+                "read_u16",
+                scope.create_function(|_, address: u32| Ok(target.borrow_mut().read_u16(address)))?,
+            )?;
 
-            memory.set("read_u32", scope
-                .create_function(|_, address: u32| Ok(target.borrow_mut().read_u32(address)))?)?;
+            memory.set(
+                "read_u32",
+                scope.create_function(|_, address: u32| Ok(target.borrow_mut().read_u32(address)))?,
+            )?;
 
-             memory.set("write_u8", scope.create_function(|_, (address, value): (u32, u8)| {
-                target.borrow_mut().write_u8(address, value);
-                Ok(())
-            })?)?;
+            memory.set(
+                "write_u8",
+                scope.create_function(|_, (address, value): (u32, u8)| {
+                    target.borrow_mut().write_u8(address, value);
+                    Ok(())
+                })?,
+            )?;
 
-            memory.set("write_u16", scope.create_function(|_, (address, value): (u32, u16)| {
-                target.borrow_mut().write_u16(address, value);
-                Ok(())
-            })?)?;
+            memory.set(
+                "write_u16",
+                scope.create_function(|_, (address, value): (u32, u16)| {
+                    target.borrow_mut().write_u16(address, value);
+                    Ok(())
+                })?,
+            )?;
 
-            memory.set("write_u32", scope.create_function(|_, (address, value): (u32, u32)| {
-                target.borrow_mut().write_u32(address, value);
-                Ok(())
-            })?)?;
+            memory.set(
+                "write_u32",
+                scope.create_function(|_, (address, value): (u32, u32)| {
+                    target.borrow_mut().write_u32(address, value);
+                    Ok(())
+                })?,
+            )?;
 
-            memory.set("domain_names", scope
-                .create_function(|_, (): ()| Ok(target.borrow().memory_domain_names().to_vec()))?)?;
+            memory.set(
+                "domain_names",
+                scope.create_function(|_, (): ()| Ok(target.borrow().memory_domain_names().to_vec()))?,
+            )?;
 
-            memory.set("read_domain", scope.create_function(|_, (domain, offset): (String, usize)| {
-                let result = target.borrow().read_domain(&domain, offset);
-                result.map_err(|err| {
-                    domain_error(&domain.to_lowercase(), offset, err, target.borrow().memory_domain_names())
-                })
-            })?)?;
+            memory.set(
+                "read_domain",
+                scope.create_function(|_, (domain, offset): (String, usize)| {
+                    let result = target.borrow().read_domain(&domain, offset);
+                    result.map_err(|err| {
+                        domain_error(
+                            &domain.to_lowercase(),
+                            offset,
+                            err,
+                            target.borrow().memory_domain_names(),
+                        )
+                    })
+                })?,
+            )?;
 
-            memory.set("write_domain",
+            memory.set(
+                "write_domain",
                 scope.create_function(|_, (domain, offset, value): (String, usize, u8)| {
                     let result = target.borrow_mut().write_domain(&domain, offset, value);
                     result.map_err(|err| {
-                        domain_error(&domain.to_lowercase(), offset, err, target.borrow().memory_domain_names())
+                        domain_error(
+                            &domain.to_lowercase(),
+                            offset,
+                            err,
+                            target.borrow().memory_domain_names(),
+                        )
                     })
-                })?)?;
+                })?,
+            )?;
 
-            memory.set("address_to_domain", scope.create_function(|_, address: u32| {
-                target.borrow().address_to_domain(address).ok_or_else(|| {
-                    mlua::Error::runtime(format!(
-                        "address {address:#010x} not mapped to any memory domain"
-                    ))
-                })
-            })?)?;
+            memory.set(
+                "address_to_domain",
+                scope.create_function(|_, address: u32| {
+                    target.borrow().address_to_domain(address).ok_or_else(|| {
+                        mlua::Error::runtime(format!("address {address:#010x} not mapped to any memory domain"))
+                    })
+                })?,
+            )?;
 
-            cpu.set("register_names", scope
-                .create_function(|_, (): ()| Ok(target.borrow().cpu_register_names().to_vec()))?)?;
+            cpu.set(
+                "register_names",
+                scope.create_function(|_, (): ()| Ok(target.borrow().cpu_register_names().to_vec()))?,
+            )?;
 
-            cpu.set("read_register", scope.create_function(|_, name: String| {
-                let name = name.to_lowercase();
-                let result = target.borrow().read_cpu_register(name.clone());
-                result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
-            })?)?;
+            cpu.set(
+                "read_register",
+                scope.create_function(|_, name: String| {
+                    let name = name.to_lowercase();
+                    let result = target.borrow().read_cpu_register(name.clone());
+                    result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
+                })?,
+            )?;
 
-            cpu.set("write_register", scope.create_function(|_, (name, value): (String, u32)| {
-                let name = name.to_lowercase();
-                let result = target.borrow_mut().write_cpu_register(name.clone(), value);
-                result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
-            })?)?;
+            cpu.set(
+                "write_register",
+                scope.create_function(|_, (name, value): (String, u32)| {
+                    let name = name.to_lowercase();
+                    let result = target.borrow_mut().write_cpu_register(name.clone(), value);
+                    result.map_err(|err| cpu_error(&name, err, target.borrow().cpu_register_names()))
+                })?,
+            )?;
 
-            color.set("to_rgb_hex", scope.create_function(|_, value: u32| {
-                let [r, g, b] = target.borrow().to_rgb(value);
-                Ok(format!("#{r:02x}{g:02x}{b:02x}"))
-            })?)?;
+            color.set(
+                "to_rgb_hex",
+                scope.create_function(|_, value: u32| {
+                    let [r, g, b] = target.borrow().to_rgb(value);
+                    Ok(format!("#{r:02x}{g:02x}{b:02x}"))
+                })?,
+            )?;
 
-            controller.set("names", scope.create_function(|_,  (): ()| {
-                Ok(get_available_inputs(emulator_id))
-            })?)?;
+            controller.set(
+                "names",
+                scope.create_function(|_, (): ()| Ok(get_available_inputs(emulator_id)))?,
+            )?;
 
-            controller.set("set", scope.create_function(|_, kwargs: Option<Table>| {
-                let mask = map_inputs(emulator_id, kwargs);
-                target.borrow_mut().set_scripted_inputs(mask);
+            controller.set(
+                "set",
+                scope.create_function(|_, kwargs: Option<Table>| {
+                    let mask = map_inputs(emulator_id, kwargs);
+                    target.borrow_mut().set_scripted_inputs(mask);
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            controller.set("check", scope.create_function(|_,  (): ()| {
-                let message = match target.borrow().check_scripted_inputs() {
-                    Some(key_mask) => format!("The following keys are set: {}", bool_to_keys(emulator_id, key_mask).join(", ")),
-                    None => "No keys set".to_string()
-                };
+            controller.set(
+                "check",
+                scope.create_function(|_, (): ()| {
+                    let message = match target.borrow().check_scripted_inputs() {
+                        Some(key_mask) => format!(
+                            "The following keys are set: {}",
+                            bool_to_keys(emulator_id, key_mask).join(", ")
+                        ),
+                        None => "No keys set".to_string(),
+                    };
 
-                output.borrow_mut().push(message);
+                    output.borrow_mut().push(message);
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            emulator.set("elapsed_cycles", scope.create_function(|_, (): ()| {
-                        Ok(target.borrow().elapsed_cycles())
-            })?)?;
+            emulator.set(
+                "elapsed_cycles",
+                scope.create_function(|_, (): ()| Ok(target.borrow().elapsed_cycles()))?,
+            )?;
 
-            let set_emulator_controls =
-                |name: &'static str, request: fn() -> ScriptRequest| {
-                    let requests = &requests;
-                    let function = scope.create_function(move |_, (): ()| {
-                        requests.borrow_mut().push(request());
-                        Ok(())
-                    })?;
+            let set_emulator_controls = |name: &'static str, request: fn() -> ScriptRequest| {
+                let requests = &requests;
+                let function = scope.create_function(move |_, (): ()| {
+                    requests.borrow_mut().push(request());
+                    Ok(())
+                })?;
 
-                    emulator.set(name, function)
-                };
+                emulator.set(name, function)
+            };
 
             set_emulator_controls("_pause", || ScriptRequest::Pause)?;
             set_emulator_controls("_resume", || ScriptRequest::Resume)?;
             set_emulator_controls("_step_instruction", || ScriptRequest::StepInstruction)?;
             set_emulator_controls("_step_frame", || ScriptRequest::StepFrame)?;
             set_emulator_controls("_reset", || ScriptRequest::Reset)?;
-            set_emulator_controls(
-                "_screenshot",
-                || ScriptRequest::Screenshot,
-            )?;
-            set_emulator_controls(
-                "_start_gif",
-                || ScriptRequest::StartGif,
-            )?;
-            set_emulator_controls(
-                "_stop_gif",
-                || ScriptRequest::StopGif,
-            )?;
-            set_emulator_controls(
-                "_start_video",
-                || ScriptRequest::StartVideo,
-            )?;
-            set_emulator_controls(
-                "_stop_video",
-                || ScriptRequest::StopVideo,
-            )?;
-            set_emulator_controls(
-                "close_debugger",
-                || ScriptRequest::CloseDebugger,
+            set_emulator_controls("_screenshot", || ScriptRequest::Screenshot)?;
+            set_emulator_controls("_start_gif", || ScriptRequest::StartGif)?;
+            set_emulator_controls("_stop_gif", || ScriptRequest::StopGif)?;
+            set_emulator_controls("_start_video", || ScriptRequest::StartVideo)?;
+            set_emulator_controls("_stop_video", || ScriptRequest::StopVideo)?;
+            set_emulator_controls("close_debugger", || ScriptRequest::CloseDebugger)?;
+
+            emulator.set(
+                "rewind",
+                scope.create_function(|_, seconds: Option<usize>| {
+                    Ok(target.borrow_mut().rewind(seconds.unwrap_or(1)))
+                })?,
             )?;
 
-            emulator.set("rewind", scope.create_function(|_, seconds: Option<usize>| {
-                Ok(target.borrow_mut().rewind(seconds.unwrap_or(1)))
-            })?)?;
-
-            emulator.set("snapshot", scope.create_function(|lua, (): ()| {
-                match target.borrow().snapshot() {
+            emulator.set(
+                "snapshot",
+                scope.create_function(|lua, (): ()| match target.borrow().snapshot() {
                     Ok(snapshot) => lua.create_string(&snapshot),
                     Err(err) => Err(mlua::Error::runtime(err.to_string())),
-                }
-            })?)?;
+                })?,
+            )?;
 
-            emulator.set("restore", scope.create_function(|_, buffer: LuaString| {
-                match target.borrow_mut().restore(buffer.as_bytes().to_vec()) {
-                    Ok(_) => output.borrow_mut().push("state restored".to_string()),
-                    Err(err) => output.borrow_mut().push(mlua::Error::runtime(err).to_string()),
-                }
+            emulator.set(
+                "restore",
+                scope.create_function(|_, buffer: LuaString| {
+                    match target.borrow_mut().restore(buffer.as_bytes().to_vec()) {
+                        Ok(_) => output.borrow_mut().push("state restored".to_string()),
+                        Err(err) => output.borrow_mut().push(mlua::Error::runtime(err).to_string()),
+                    }
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            emulator.set("rewind_occupancy", scope.create_function(|_, (): ()| {
-                Ok(target.borrow().rewind_occupancy())
-            })?)?;
+            emulator.set(
+                "rewind_occupancy",
+                scope.create_function(|_, (): ()| Ok(target.borrow().rewind_occupancy()))?,
+            )?;
 
-            emulator.set("open_debugger", scope.create_function(|_, page: String| {
-                requests.borrow_mut().push(ScriptRequest::OpenDebugger(DebugPage::to_debug_page(page)));
+            emulator.set(
+                "open_debugger",
+                scope.create_function(|_, page: String| {
+                    requests
+                        .borrow_mut()
+                        .push(ScriptRequest::OpenDebugger(DebugPage::to_debug_page(page)));
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            emulator.set("speed", scope.create_function(|_, speed: f32| {
-                if ALLOWED_SPEED.contains(&speed) {
-                    requests.borrow_mut().push(ScriptRequest::Speed(speed));
-                } else {
-                    output.borrow_mut().push(format!("speed must one of the following floats: {}",
-                    ALLOWED_SPEED.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", ")));
-                }
+            emulator.set(
+                "speed",
+                scope.create_function(|_, speed: f32| {
+                    if ALLOWED_SPEED.contains(&speed) {
+                        requests.borrow_mut().push(ScriptRequest::Speed(speed));
+                    } else {
+                        output.borrow_mut().push(format!(
+                            "speed must one of the following floats: {}",
+                            ALLOWED_SPEED
+                                .iter()
+                                .map(|x| x.to_string())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        ));
+                    }
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            emulator.set("volume", scope.create_function(|_, volume: i64| {
-                if (0..=100).contains(&volume) {
-                    requests.borrow_mut().push(ScriptRequest::Volume(volume as u8));
-                } else {
-                    output.borrow_mut().push("volume must be an integer from 0 to 100".to_string());
-                }
+            emulator.set(
+                "volume",
+                scope.create_function(|_, volume: i64| {
+                    if (0..=100).contains(&volume) {
+                        requests.borrow_mut().push(ScriptRequest::Volume(volume as u8));
+                    } else {
+                        output
+                            .borrow_mut()
+                            .push("volume must be an integer from 0 to 100".to_string());
+                    }
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
             let set_emulator_save_state = |name: &'static str, request: fn(i64) -> ScriptRequest| {
                 let requests = &requests;
                 let output = &output;
                 let function = scope.create_function(move |_, slot: i64| {
-                if  !(1i64..=(SAVE_STATE_SLOTS as i64)).contains(&slot) {
-                        output.borrow_mut().push(mlua::Error::runtime(format!("Only save states 1-{SAVE_STATE_SLOTS} can be used")).to_string());
+                    if !(1i64..=(SAVE_STATE_SLOTS as i64)).contains(&slot) {
+                        output.borrow_mut().push(
+                            mlua::Error::runtime(format!("Only save states 1-{SAVE_STATE_SLOTS} can be used"))
+                                .to_string(),
+                        );
 
-                        return Ok(false)
-                }
+                        return Ok(false);
+                    }
 
                     requests.borrow_mut().push(request(slot));
 
@@ -1042,21 +1078,25 @@ impl ScriptEngine {
             set_emulator_save_state("_load_state", ScriptRequest::LoadState)?;
             set_emulator_save_state("delete_state", ScriptRequest::DeleteState)?;
 
-            emulator.set("pause_at_cycle", scope
-                .create_function(|_, cycle: u64| {
+            emulator.set(
+                "pause_at_cycle",
+                scope.create_function(|_, cycle: u64| {
                     target.borrow_mut().set_cycle_pause(cycle);
 
                     Ok(())
-                })?)?;
+                })?,
+            )?;
 
-            emulator.set("pause_after_elapsed_cycles", scope
-                .create_function(|_, elapsed_cycles: u64| {
+            emulator.set(
+                "pause_after_elapsed_cycles",
+                scope.create_function(|_, elapsed_cycles: u64| {
                     target.borrow_mut().set_elapsed_cycles_pause(elapsed_cycles);
 
                     Ok(())
-                })?)?;
+                })?,
+            )?;
 
-            let strings =  target.borrow_mut().cycle_paused_text();
+            let strings = target.borrow_mut().cycle_paused_text();
             for string in strings {
                 output.borrow_mut().push(string);
             }
@@ -1069,7 +1109,8 @@ impl ScriptEngine {
                 }
             }
 
-            debugger.set("set_breakpoint",
+            debugger.set(
+                "set_breakpoint",
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
 
@@ -1085,53 +1126,61 @@ impl ScriptEngine {
 
                     output.borrow_mut().push(message);
                     Ok(())
-                })?)?;
+                })?,
+            )?;
 
-            debugger.set("remove_breakpoint", scope.create_function(|_, address: u32| {
-                let label = match target.borrow_mut().remove_breakpoint(address) {
-                    true => format!("breakpoint at {address:08X} removed"),
-                    false => format!("breakpoint at {address:08X} not found")
-                };
+            debugger.set(
+                "remove_breakpoint",
+                scope.create_function(|_, address: u32| {
+                    let label = match target.borrow_mut().remove_breakpoint(address) {
+                        true => format!("breakpoint at {address:08X} removed"),
+                        false => format!("breakpoint at {address:08X} not found"),
+                    };
 
-                output.borrow_mut().push(label);
+                    output.borrow_mut().push(label);
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            debugger.set("clear_all_breakpoints", scope.create_function(|_, (): ()| {
-                target.borrow_mut().clear_all_breakpoints();
-                output
-                    .borrow_mut()
-                    .push("all breakpoints cleared".to_string());
-                Ok(())
-            })?)?;
+            debugger.set(
+                "clear_all_breakpoints",
+                scope.create_function(|_, (): ()| {
+                    target.borrow_mut().clear_all_breakpoints();
+                    output.borrow_mut().push("all breakpoints cleared".to_string());
+                    Ok(())
+                })?,
+            )?;
 
-            debugger.set("check_breakpoints", scope.create_function(|_, (): ()| {
-                let breakpoints = target.borrow_mut().check_breakpoints();
-                if !breakpoints.is_empty() {
-                    for (address, state) in breakpoints.iter() {
-                        let action = if *state == EmulatorState::Paused {
-                            "pause"
-                        } else {
-                            "run"
-                        };
+            debugger.set(
+                "check_breakpoints",
+                scope.create_function(|_, (): ()| {
+                    let breakpoints = target.borrow_mut().check_breakpoints();
+                    if !breakpoints.is_empty() {
+                        for (address, state) in breakpoints.iter() {
+                            let action = if *state == EmulatorState::Paused {
+                                "pause"
+                            } else {
+                                "run"
+                            };
 
-                        output.borrow_mut().push(format!(
-                            "breakpoint at {:08X}, action on breakpoint: {action}",
-                            *address
-                        ))
+                            output.borrow_mut().push(format!(
+                                "breakpoint at {:08X}, action on breakpoint: {action}",
+                                *address
+                            ))
+                        }
+                    } else {
+                        output.borrow_mut().push("no breakpoints found".to_string())
                     }
-                } else {
-                    output.borrow_mut().push("no breakpoints found".to_string())
-                }
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            debugger.set("set_watchpoint",
+            debugger.set(
+                "set_watchpoint",
                 scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
                     check_address(emulator_id, address)?;
-                    let (watchpoint_range, watchpoint_args) =
-                        parse_watchpoint_args(emulator_id, address, &kwargs)?;
+                    let (watchpoint_range, watchpoint_args) = parse_watchpoint_args(emulator_id, address, &kwargs)?;
                     let in_hashmap = target.borrow_mut().set_watchpoint(watchpoint_range, watchpoint_args);
                     let message = if in_hashmap {
                         if let Some(end_address) = watchpoint_range.end_address {
@@ -1149,80 +1198,88 @@ impl ScriptEngine {
 
                     output.borrow_mut().push(message);
                     Ok(())
-                })?)?;
+                })?,
+            )?;
 
-            debugger.set("remove_watchpoint", scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
-                let end_address = match &kwargs {
-                    Some(table) => table.get::<Option<u32>>("end_address")?,
-                    None => None,
-                };
+            debugger.set(
+                "remove_watchpoint",
+                scope.create_function(|_, (address, kwargs): (u32, Option<Table>)| {
+                    let end_address = match &kwargs {
+                        Some(table) => table.get::<Option<u32>>("end_address")?,
+                        None => None,
+                    };
 
-                let stored = target
-                    .borrow()
-                    .check_watchpoints()
-                    .into_iter()
-                    .find(|(range, args)| {
-                        range.start_address == args.width.align(address)
-                            && range.end_address == end_address.map(|end| args.width.align(end))
-                    })
-                    .map(|(range, _)| range);
+                    let stored = target
+                        .borrow()
+                        .check_watchpoints()
+                        .into_iter()
+                        .find(|(range, args)| {
+                            range.start_address == args.width.align(address)
+                                && range.end_address == end_address.map(|end| args.width.align(end))
+                        })
+                        .map(|(range, _)| range);
 
-                let label = match end_address {
-                    Some(end_address) => format!("watchpoint range at {address:08X}..={end_address:08X}"),
-                    None => format!("watchpoint at {address:08X}"),
-                };
+                    let label = match end_address {
+                        Some(end_address) => {
+                            format!("watchpoint range at {address:08X}..={end_address:08X}")
+                        }
+                        None => format!("watchpoint at {address:08X}"),
+                    };
 
-                match stored {
-                    Some(range) => {
-                        target.borrow_mut().remove_watchpoint(range);
-                        output.borrow_mut().push(format!("{label} removed"));
+                    match stored {
+                        Some(range) => {
+                            target.borrow_mut().remove_watchpoint(range);
+                            output.borrow_mut().push(format!("{label} removed"));
+                        }
+                        None => output.borrow_mut().push(format!("{label} not found")),
                     }
-                    None => output.borrow_mut().push(format!("{label} not found")),
-                }
 
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
-            debugger.set("clear_all_watchpoints", scope.create_function(|_, (): ()| {
-                target.borrow_mut().clear_all_watchpoints();
-                output
-                    .borrow_mut()
-                    .push("all watchpoints cleared".to_string());
-                Ok(())
-            })?)?;
+            debugger.set(
+                "clear_all_watchpoints",
+                scope.create_function(|_, (): ()| {
+                    target.borrow_mut().clear_all_watchpoints();
+                    output.borrow_mut().push("all watchpoints cleared".to_string());
+                    Ok(())
+                })?,
+            )?;
 
-            debugger.set("check_watchpoints", scope.create_function(|_, (): ()| {
-                let watchpoints = target.borrow_mut().check_watchpoints();
-                if !watchpoints.is_empty() {
-                    for (watchpoint_range, watchpoint_args) in watchpoints.iter() {
-                        let start_address = watchpoint_range.start_address;
-                        let range = if let Some(end_address) = watchpoint_range.end_address {
-                            format!("watchpoint range at {start_address:08X}..={end_address:08X}")
-                        } else {
-                            format!("watchpoint at {start_address:08X}")
-                        };
-                        let action = if watchpoint_args.pause {
-                            "pause"
-                        } else {
-                            "run"
-                        };
-                        let on = watchpoint_args.on.to_string();
-                        let width = watchpoint_args.width.to_string();
-                        let target_message = if let Some(target) = watchpoint_args.target_to_string() {
-                        format!(" with target: {}", target)} else {
-                            "".to_string()
-                        };
+            debugger.set(
+                "check_watchpoints",
+                scope.create_function(|_, (): ()| {
+                    let watchpoints = target.borrow_mut().check_watchpoints();
+                    if !watchpoints.is_empty() {
+                        for (watchpoint_range, watchpoint_args) in watchpoints.iter() {
+                            let start_address = watchpoint_range.start_address;
+                            let range = if let Some(end_address) = watchpoint_range.end_address {
+                                format!("watchpoint range at {start_address:08X}..={end_address:08X}")
+                            } else {
+                                format!("watchpoint at {start_address:08X}")
+                            };
+                            let action = if watchpoint_args.pause { "pause" } else { "run" };
+                            let on = watchpoint_args.on.to_string();
+                            let width = watchpoint_args.width.to_string();
+                            let target_message = if let Some(target) = watchpoint_args.target_to_string() {
+                                format!(" with target: {}", target)
+                            } else {
+                                "".to_string()
+                            };
 
-                        output.borrow_mut().push(format!(
-                            "{range} on {on} for {width} access{}, action on watchpoint: {action}, accessor: {}",
-                            target_message, watchpoint_args.accessor.to_string()
-                        ))
+                            output.borrow_mut().push(format!(
+                                "{range} on {on} for {width} access{}, action on watchpoint: {action}, accessor: {}",
+                                target_message,
+                                watchpoint_args.accessor.to_string()
+                            ))
+                        }
+                    } else {
+                        output.borrow_mut().push("no watchpoints found".to_string())
                     }
-                } else {
-                    output.borrow_mut().push("no watchpoints found".to_string())
-                }
-                Ok(())
-            })?)?;
+                    Ok(())
+                })?,
+            )?;
 
             // yeah default behavior when no hook is less annoying
             let hit = target.borrow_mut().take_breakpoint_hit();
@@ -1234,9 +1291,7 @@ impl ScriptEngine {
                         let _ = debugger.set("on_breakpoint", Value::Nil);
                     }
                 } else {
-                    output
-                    .borrow_mut()
-                    .push(format!("breakpoint at {address:08x} reached"));
+                    output.borrow_mut().push(format!("breakpoint at {address:08x} reached"));
                 }
             }
 
@@ -1287,7 +1342,7 @@ impl ScriptEngine {
                     }
 
                     let domain = target.borrow().address_to_domain(hit.pc);
-                    if let Some((_, offset)) = domain{
+                    if let Some((_, offset)) = domain {
                         table.set("pc_offset", offset)?;
                     }
 
@@ -1306,45 +1361,41 @@ impl ScriptEngine {
                 time_limit(lua, Duration::from_millis(100));
                 match thread.resume::<mlua::MultiValue>(()) {
                     Ok(_) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
-                    Ok(values) if !values.is_empty() => output.borrow_mut().push(
-                        values
-                            .iter()
-                            .map(display_value)
-                            .collect::<Vec<_>>()
-                            .join("\t")),
-                    Ok(_) => {},
+                    Ok(values) if !values.is_empty() => output
+                        .borrow_mut()
+                        .push(values.iter().map(display_value).collect::<Vec<_>>().join("\t")),
+                    Ok(_) => {}
                     Err(err) => output.borrow_mut().push(format!("{err}")),
                 }
             }
 
-            while running.is_none() && let Some(code) = pending.pop_front() {
+            while running.is_none()
+                && let Some(code) = pending.pop_front()
+            {
                 time_limit(lua, Duration::from_millis(100));
-                let start = lua.load(&code).into_function().and_then(|function| lua.create_thread(function));
+                let start = lua
+                    .load(&code)
+                    .into_function()
+                    .and_then(|function| lua.create_thread(function));
                 match start.and_then(|thread| thread.resume::<mlua::MultiValue>(()).map(|value| (thread, value))) {
                     Ok((thread, _)) if thread.status() == ThreadStatus::Resumable => *running = Some(thread),
-                    Ok((_, values)) if !values.is_empty() => output.borrow_mut().push(
-                        values
-                            .iter()
-                            .map(display_value)
-                            .collect::<Vec<_>>()
-                            .join("\t"),
-                    ),
-                    Ok((_, _)) => {},
+                    Ok((_, values)) if !values.is_empty() => output
+                        .borrow_mut()
+                        .push(values.iter().map(display_value).collect::<Vec<_>>().join("\t")),
+                    Ok((_, _)) => {}
                     Err(err) => output.borrow_mut().push(format!("{err}")),
                 }
 
                 if stop_scripts.get() {
                     return Ok(());
                 }
-            };
+            }
 
             Ok(())
         });
 
         if let Err(err) = result {
-            output
-                .borrow_mut()
-                .push(format!("script engine error: {err}"));
+            output.borrow_mut().push(format!("script engine error: {err}"));
         }
 
         self.stop_all_scripts(target.into_inner());
@@ -1354,16 +1405,11 @@ impl ScriptEngine {
 fn time_limit(lua: &Lua, budget: Duration) {
     let start = Instant::now();
 
-    let _ = lua.set_hook(
-        HookTriggers::new().every_nth_instruction(1000),
-        move |_, _| {
-            if start.elapsed() > budget {
-                Err(mlua::Error::runtime(
-                    "script ran too long and was terminated",
-                ))
-            } else {
-                Ok(VmState::Continue)
-            }
-        },
-    );
+    let _ = lua.set_hook(HookTriggers::new().every_nth_instruction(1000), move |_, _| {
+        if start.elapsed() > budget {
+            Err(mlua::Error::runtime("script ran too long and was terminated"))
+        } else {
+            Ok(VmState::Continue)
+        }
+    });
 }

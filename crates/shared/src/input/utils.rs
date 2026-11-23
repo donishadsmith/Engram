@@ -36,10 +36,7 @@ pub fn keycode_to_string(key: KeyCode) -> String {
 }
 
 pub fn string_to_keycode(str: &str) -> Option<KeyCode> {
-    BINDABLE_KEYS
-        .iter()
-        .copied()
-        .find(|key| format!("{key:?}") == str)
+    BINDABLE_KEYS.iter().copied().find(|key| format!("{key:?}") == str)
 }
 
 pub fn button_to_string(button: Button) -> String {

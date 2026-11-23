@@ -12,10 +12,7 @@ pub struct Sram {
 
 impl Sram {
     pub fn new(memory: Vec<u8>) -> Self {
-        Self {
-            memory,
-            updated: false,
-        }
+        Self { memory, updated: false }
     }
 
     pub fn read(&self, index: usize) -> u8 {

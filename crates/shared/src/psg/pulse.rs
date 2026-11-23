@@ -179,8 +179,7 @@ impl PulseChannel {
     }
 
     pub fn write_nrx4(&mut self, value: u8) {
-        self.frequency_period =
-            self.frequency_period.get_bit_range(0..8) | ((value.get_bit_range(0..3) as u16) << 8);
+        self.frequency_period = self.frequency_period.get_bit_range(0..8) | ((value.get_bit_range(0..3) as u16) << 8);
         self.length.enabled = value.is_set(6);
 
         if value.is_set(7) {

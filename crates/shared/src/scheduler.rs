@@ -30,9 +30,7 @@ impl<T: ScheduledEvent> EventScheduler<T> {
     }
 
     pub fn next(&self) -> u64 {
-        self.queue
-            .peek()
-            .map_or(u64::MAX, |Reverse((time, _))| *time)
+        self.queue.peek().map_or(u64::MAX, |Reverse((time, _))| *time)
     }
 
     pub fn skip_to_next_event(&mut self) {
@@ -46,9 +44,7 @@ impl<T: ScheduledEvent> EventScheduler<T> {
 
     pub fn pop(&mut self) -> Option<(u64, T)> {
         if self.next() <= self.current {
-            self.queue
-                .pop()
-                .map(|Reverse((deadline, kind))| (deadline, kind))
+            self.queue.pop().map(|Reverse((deadline, kind))| (deadline, kind))
         } else {
             None
         }

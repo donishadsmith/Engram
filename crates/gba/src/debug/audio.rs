@@ -150,11 +150,7 @@ fn register(ui: &mut egui::Ui, name: &str, value: u16) {
 
     ui.horizontal(|ui| {
         ui.label(RichText::new(name).strong().size(size));
-        ui.label(
-            RichText::new(format!("{:016b}", value))
-                .monospace()
-                .size(size),
-        );
+        ui.label(RichText::new(format!("{:016b}", value)).monospace().size(size));
     });
 }
 
@@ -200,26 +196,16 @@ impl AudioDebugger {
                 registers.read_u16(0x4000062),
                 registers.read_u16(0x4000064),
             ];
-            self.registers.channel2 =
-                [registers.read_u16(0x4000068), registers.read_u16(0x400006C)];
+            self.registers.channel2 = [registers.read_u16(0x4000068), registers.read_u16(0x400006C)];
             self.registers.channel3 = [
                 registers.read_u16(0x4000070),
                 registers.read_u16(0x4000072),
                 registers.read_u16(0x4000074),
             ];
-            self.registers.channel4 =
-                [registers.read_u16(0x4000078), registers.read_u16(0x400007C)];
+            self.registers.channel4 = [registers.read_u16(0x4000078), registers.read_u16(0x400007C)];
 
-            self.volume.fifo_a = gba
-                .bus
-                .apu
-                .global_control
-                .volume_control_fifo(FifoChannel::A);
-            self.volume.fifo_b = gba
-                .bus
-                .apu
-                .global_control
-                .volume_control_fifo(FifoChannel::B);
+            self.volume.fifo_a = gba.bus.apu.global_control.volume_control_fifo(FifoChannel::A);
+            self.volume.fifo_b = gba.bus.apu.global_control.volume_control_fifo(FifoChannel::B);
             self.volume.psg = gba.bus.apu.global_control.psg_volume();
         }
 
@@ -467,9 +453,7 @@ impl AudioDebugger {
 
                     ui.end_row();
 
-                    for (direction, string) in
-                        [(PanDirection::Left, "Left"), (PanDirection::Right, "Right")]
-                    {
+                    for (direction, string) in [(PanDirection::Left, "Left"), (PanDirection::Right, "Right")] {
                         ui.label(string);
                         for channel_id in CHANNELS {
                             let on = if !self.frozen {
@@ -558,17 +542,9 @@ fn sound_on(apu: &Apu, channel_id: AudioChannel, direction: PanDirection) -> boo
         (AudioChannel::Channel3, PanDirection::Right) => apu.psg_mixer.panned_right(2),
         (AudioChannel::Channel4, PanDirection::Left) => apu.psg_mixer.panned_left(3),
         (AudioChannel::Channel4, PanDirection::Right) => apu.psg_mixer.panned_right(3),
-        (AudioChannel::FifoA, PanDirection::Left) => {
-            apu.global_control.panned_left_fifo(FifoChannel::A)
-        }
-        (AudioChannel::FifoA, PanDirection::Right) => {
-            apu.global_control.panned_right_fifo(FifoChannel::A)
-        }
-        (AudioChannel::FifoB, PanDirection::Left) => {
-            apu.global_control.panned_left_fifo(FifoChannel::B)
-        }
-        (AudioChannel::FifoB, PanDirection::Right) => {
-            apu.global_control.panned_right_fifo(FifoChannel::B)
-        }
+        (AudioChannel::FifoA, PanDirection::Left) => apu.global_control.panned_left_fifo(FifoChannel::A),
+        (AudioChannel::FifoA, PanDirection::Right) => apu.global_control.panned_right_fifo(FifoChannel::A),
+        (AudioChannel::FifoB, PanDirection::Left) => apu.global_control.panned_left_fifo(FifoChannel::B),
+        (AudioChannel::FifoB, PanDirection::Right) => apu.global_control.panned_right_fifo(FifoChannel::B),
     }
 }

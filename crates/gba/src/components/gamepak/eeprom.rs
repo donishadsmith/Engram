@@ -205,11 +205,7 @@ impl Eeprom {
     }
 
     fn expected_address_size(&self) -> u8 {
-        if self.memory.len() == EEPROM_4KBIT {
-            6
-        } else {
-            14
-        }
+        if self.memory.len() == EEPROM_4KBIT { 6 } else { 14 }
     }
 }
 
@@ -237,10 +233,7 @@ mod tests {
         }
         eeprom.write_bit(0); // stop
 
-        assert_eq!(
-            eeprom.memory[16], 0xAB,
-            "first byte shuld be at block start"
-        );
+        assert_eq!(eeprom.memory[16], 0xAB, "first byte shuld be at block start");
         assert_eq!(eeprom.memory[17..24], [0; 7]);
         assert!(eeprom.updated);
     }

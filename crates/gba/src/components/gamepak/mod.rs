@@ -38,15 +38,11 @@ pub enum BackupType {
 impl BackupType {
     fn to_enum(self) -> BackupChip {
         match self {
-            BackupType::Sram | BackupType::SramF => {
-                BackupChip::Sram(Sram::new(vec![0; kilobytes(32)]))
-            }
+            BackupType::Sram | BackupType::SramF => BackupChip::Sram(Sram::new(vec![0; kilobytes(32)])),
             BackupType::Flash | BackupType::Flash512 => {
                 BackupChip::Flash(Flash::new(vec![0xFF; kilobytes(64)], FlashSize::Flash64k))
             }
-            BackupType::Flash1M => {
-                BackupChip::Flash(Flash::new(vec![0xFF; kilobytes(128)], FlashSize::Flash128k))
-            }
+            BackupType::Flash1M => BackupChip::Flash(Flash::new(vec![0xFF; kilobytes(128)], FlashSize::Flash128k)),
             BackupType::Eeprom => BackupChip::Eeprom(Eeprom::new(vec![0xFF; EEPROM_4KBIT], false)), /* default to the small version */
             BackupType::None => BackupChip::None,
         }
@@ -109,8 +105,7 @@ pub struct GamePak {
 impl GamePak {
     pub fn load(rom_path: PathBuf) -> Result<Self, Error> {
         let rom = read(&rom_path)?;
-        let sav_path =
-            system_dir("gba", "saves")?.join(rom_path.with_extension("sav").file_name().unwrap());
+        let sav_path = system_dir("gba", "saves")?.join(rom_path.with_extension("sav").file_name().unwrap());
         let mut backup_chip = detect_save_type(&rom).to_enum();
         Self::read_sav(&sav_path, &mut backup_chip)?;
         let header = rom
@@ -119,11 +114,7 @@ impl GamePak {
             .unwrap_or([0; 32]);
 
         let mut gpio = Gpio::new();
-        gpio.rtc = if has_rtc(&rom) {
-            Some(Rtc::new())
-        } else {
-            None
-        };
+        gpio.rtc = if has_rtc(&rom) { Some(Rtc::new()) } else { None };
 
         gpio.solar_sensor = if has_solar(&rom) {
             Some(SolarSensor::new())

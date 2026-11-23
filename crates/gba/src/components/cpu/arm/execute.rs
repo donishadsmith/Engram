@@ -8,8 +8,8 @@
 use shared::traits::BitOps;
 
 use super::decode::{
-    AddressingMode, ArmInstruction, BitSize, DataOp, HalfwordOffset, MsrSource, Operand2,
-    SdtOffset, ShiftAmount, ShiftType, ThumbBranchType, TransferAction, TransferKind,
+    AddressingMode, ArmInstruction, BitSize, DataOp, HalfwordOffset, MsrSource, Operand2, SdtOffset, ShiftAmount,
+    ShiftType, ThumbBranchType, TransferAction, TransferKind,
 };
 use crate::components::{
     bios::multiply_stall,
@@ -48,9 +48,7 @@ fn barrel_shifter(
     registers: &Registers,
 ) -> (u32, Option<bool>) {
     match shift_amount {
-        ShiftAmount::Immediate(amount) => {
-            base_value.shift_imm(shift_type, amount, registers.is_c_set())
-        }
+        ShiftAmount::Immediate(amount) => base_value.shift_imm(shift_type, amount, registers.is_c_set()),
         ShiftAmount::Register(n) => {
             let amount = registers.r[n as usize] as u8;
             base_value.shift_reg(shift_type, amount, registers.is_c_set())
@@ -67,17 +65,12 @@ fn process_operand2(registers: &Registers, operand2: Operand2) -> (u32, Option<b
     match operand2 {
         Operand2::Immediate { value, rotate } => {
             let value = (value as u32).rotate_right((rotate as u32) * 2);
-            let carry_out = if rotate == 0 {
-                None
-            } else {
-                Some(value.is_set(31))
-            };
+            let carry_out = if rotate == 0 { None } else { Some(value.is_set(31)) };
 
             (value, carry_out, false)
         }
         Operand2::Register(shifted_register) => {
-            let is_register_shift =
-                matches!(shifted_register.shift_amount, ShiftAmount::Register(_));
+            let is_register_shift = matches!(shifted_register.shift_amount, ShiftAmount::Register(_));
 
             let base_value = if is_register_shift {
                 offset_pc(registers, shifted_register.rm)
@@ -136,10 +129,7 @@ fn update_flags(registers: &mut Registers, n: bool, z: bool, c: Option<bool>, v:
 // Page 4-11 of arm7tdmi data sheet. These dont affect the V flag
 // logical ops: AND, EOR, TST, TEQ, ORR, MOV, BIC, MVN
 fn discards_result(opcode: DataOp) -> bool {
-    matches!(
-        opcode,
-        DataOp::Tst | DataOp::Teq | DataOp::Cmp | DataOp::Cmn
-    )
+    matches!(opcode, DataOp::Tst | DataOp::Teq | DataOp::Cmp | DataOp::Cmn)
 }
 
 fn data_processing(
@@ -151,9 +141,8 @@ fn data_processing(
     rd: u8,
     operand2: Operand2,
 ) -> Option<SideEffect> {
-    let pc_relative_add = rn == 15
-        && registers.state() == ProcessorState::Thumb
-        && matches!(operand2, Operand2::Immediate { .. });
+    let pc_relative_add =
+        rn == 15 && registers.state() == ProcessorState::Thumb && matches!(operand2, Operand2::Immediate { .. });
     let (op2, shifter_carry_out, shifted_register) = process_operand2(registers, operand2);
 
     let op1 = if shifted_register {
@@ -188,13 +177,7 @@ fn data_processing(
                 _ => unreachable!(),
             };
 
-            (
-                result,
-                result.is_negative(),
-                result.is_zero(),
-                shifter_carry_out,
-                None,
-            )
+            (result, result.is_negative(), result.is_zero(), shifter_carry_out, None)
         }
         DataOp::Add | DataOp::Cmn => {
             let (result, overflow_unsigned) = op1.overflowing_add(op2);
@@ -209,11 +192,7 @@ fn data_processing(
             )
         }
         DataOp::Sub | DataOp::Cmp | DataOp::Rsb => {
-            let (a, b) = if opcode == DataOp::Rsb {
-                (op2, op1)
-            } else {
-                (op1, op2)
-            };
+            let (a, b) = if opcode == DataOp::Rsb { (op2, op1) } else { (op1, op2) };
             let (result, underflow_unsigned) = a.overflowing_sub(b);
             let (_, underflow_signed) = (a as i32).overflowing_sub(b as i32);
 
@@ -235,21 +214,11 @@ fn data_processing(
             let result_i64 = (op1 as i32 as i64) + (op2 as i32 as i64) + carry as i64;
             let v = result_i64 != (result as i32 as i64);
 
-            (
-                result,
-                result.is_negative(),
-                result.is_zero(),
-                Some(c),
-                Some(v),
-            )
+            (result, result.is_negative(), result.is_zero(), Some(c), Some(v))
         }
         DataOp::Sbc | DataOp::Rsc => {
             let carry = registers.is_c_set() as u64;
-            let (a, b) = if opcode == DataOp::Sbc {
-                (op1, op2)
-            } else {
-                (op2, op1)
-            };
+            let (a, b) = if opcode == DataOp::Sbc { (op1, op2) } else { (op2, op1) };
 
             let result_u64 = (a as u64) + (!b as u64) + carry;
             let result = result_u64 as u32;
@@ -258,13 +227,7 @@ fn data_processing(
             let result_i64 = (a as i32 as i64) + (!b as i32 as i64) + carry as i64;
             let v = result_i64 != (result as i32 as i64);
 
-            (
-                result,
-                result.is_negative(),
-                result.is_zero(),
-                Some(c),
-                Some(v),
-            )
+            (result, result.is_negative(), result.is_zero(), Some(c), Some(v))
         }
     };
 
@@ -382,13 +345,7 @@ fn multiply(
     registers.r[rd as usize] = product;
 
     if set_flags {
-        update_flags(
-            registers,
-            product.is_negative(),
-            product.is_zero(),
-            None,
-            None,
-        );
+        update_flags(registers, product.is_negative(), product.is_zero(), None, None);
     }
 }
 
@@ -430,8 +387,7 @@ fn multiply_long(
     };
 
     if accumulate {
-        let acc_reg =
-            ((registers.r[rdhi as usize] as u64) << 32) | (registers.r[rdlo as usize] as u64);
+        let acc_reg = ((registers.r[rdhi as usize] as u64) << 32) | (registers.r[rdlo as usize] as u64);
         if signed {
             product = (product as i64).wrapping_add(acc_reg as i64) as u64;
         } else {
@@ -443,13 +399,7 @@ fn multiply_long(
     registers.r[rdlo as usize] = product.get_bit_range(0..32) as u32;
 
     if set_flags {
-        update_flags(
-            registers,
-            product.is_negative(),
-            product.is_zero(),
-            None,
-            None,
-        );
+        update_flags(registers, product.is_negative(), product.is_zero(), None, None);
     }
 }
 
@@ -471,11 +421,7 @@ fn process_sdt_address_offset(registers: &Registers, offset_type: SdtOffset) -> 
     }
 }
 
-fn compute_new_start_address(
-    start_address: u32,
-    address_offset: u32,
-    addressing_mode: AddressingMode,
-) -> u32 {
+fn compute_new_start_address(start_address: u32, address_offset: u32, addressing_mode: AddressingMode) -> u32 {
     if matches!(
         addressing_mode,
         AddressingMode::IncrementBefore | AddressingMode::IncrementAfter
@@ -581,11 +527,7 @@ fn single_data_transfer(
     side_effect
 }
 
-fn get_transfer_data(
-    registers: &mut Registers,
-    current_register: u16,
-    use_user_bank: bool,
-) -> (&mut u32, bool) {
+fn get_transfer_data(registers: &mut Registers, current_register: u16, use_user_bank: bool) -> (&mut u32, bool) {
     let offset_pc = current_register == 15;
 
     if !use_user_bank {
@@ -645,12 +587,8 @@ fn block_data_transfer(
 
     if write_back {
         registers.r[rn as usize] = match addressing_mode {
-            AddressingMode::IncrementAfter | AddressingMode::IncrementBefore => {
-                base_address.wrapping_add(n_ones * 4)
-            }
-            AddressingMode::DecrementAfter | AddressingMode::DecrementBefore => {
-                base_address.wrapping_sub(n_ones * 4)
-            }
+            AddressingMode::IncrementAfter | AddressingMode::IncrementBefore => base_address.wrapping_add(n_ones * 4),
+            AddressingMode::DecrementAfter | AddressingMode::DecrementBefore => base_address.wrapping_sub(n_ones * 4),
         };
     }
 
@@ -710,24 +648,13 @@ fn block_data_transfer(
     side_effect
 }
 
-fn single_data_swap(
-    bus: &mut Bus,
-    registers: &mut Registers,
-    rn: u8,
-    rd: u8,
-    rm: u8,
-    swap_size: BitSize,
-) {
+fn single_data_swap(bus: &mut Bus, registers: &mut Registers, rn: u8, rd: u8, rm: u8, swap_size: BitSize) {
     let swap_address = registers.r[rn as usize];
 
     let word = match swap_size {
         BitSize::Byte => {
             let word = bus.read_u8(swap_address, AccessType::Nonsequential) as u32;
-            bus.write_u8(
-                swap_address,
-                registers.r[rm as usize] as u8,
-                AccessType::Sequential,
-            );
+            bus.write_u8(swap_address, registers.r[rm as usize] as u8, AccessType::Sequential);
 
             word
         }
@@ -735,11 +662,7 @@ fn single_data_swap(
             let word = bus.read_u32(swap_address, AccessType::Nonsequential) as u32;
             let misalignment_bits = swap_address.get_bit_range(0..2) * 8;
             let word = word.rotate_right(misalignment_bits);
-            bus.write_u32(
-                swap_address,
-                registers.r[rm as usize],
-                AccessType::Sequential,
-            );
+            bus.write_u32(swap_address, registers.r[rm as usize], AccessType::Sequential);
 
             word
         }
@@ -785,8 +708,7 @@ fn halfword_data_transfer(
         }
     }
 
-    let transfer_kind = if transfer_kind == TransferKind::SignedHalfword && start_address.is_set(0)
-    {
+    let transfer_kind = if transfer_kind == TransferKind::SignedHalfword && start_address.is_set(0) {
         TransferKind::SignedByte
     } else {
         transfer_kind
@@ -832,11 +754,7 @@ fn halfword_data_transfer(
             registers.r[rd as usize] = word;
         }
         TransferAction::Store => {
-            bus.write_u16(
-                start_address,
-                store_value.unwrap() as u16,
-                AccessType::Nonsequential,
-            );
+            bus.write_u16(start_address, store_value.unwrap() as u16, AccessType::Nonsequential);
         }
     }
 
@@ -852,11 +770,7 @@ fn halfword_data_transfer(
     }
 }
 
-fn thumb_branch(
-    registers: &mut Registers,
-    branch_type: ThumbBranchType,
-    offset: u32,
-) -> Option<SideEffect> {
+fn thumb_branch(registers: &mut Registers, branch_type: ThumbBranchType, offset: u32) -> Option<SideEffect> {
     match branch_type {
         ThumbBranchType::Low => {
             let target_address = registers.r[14].wrapping_add(offset);
@@ -873,11 +787,7 @@ fn thumb_branch(
 }
 
 // Note always use overflowing_add and overflowing_sub
-pub fn execute_arm(
-    instruction: ArmInstruction,
-    registers: &mut Registers,
-    bus: &mut Bus,
-) -> Option<SideEffect> {
+pub fn execute_arm(instruction: ArmInstruction, registers: &mut Registers, bus: &mut Bus) -> Option<SideEffect> {
     //eprintln!("{:?}", instruction);
     match instruction {
         ArmInstruction::DataProcessing {
@@ -923,9 +833,7 @@ pub fn execute_arm(
             signed,
             set_flags,
         } => {
-            multiply_long(
-                bus, registers, rm, rs, rdlo, rdhi, accumulate, signed, set_flags,
-            );
+            multiply_long(bus, registers, rm, rs, rdlo, rdhi, accumulate, signed, set_flags);
 
             None
         }
@@ -968,12 +876,7 @@ pub fn execute_arm(
         ArmInstruction::Undefined => None,
         ArmInstruction::SoftwareInterrupt { comment } => Some(SideEffect::Swi(comment)),
         ArmInstruction::BranchExchange { rn } => Some(branch_and_exchange(registers, rn)),
-        ArmInstruction::SingleDataSwap {
-            rm,
-            rd,
-            rn,
-            swap_size,
-        } => {
+        ArmInstruction::SingleDataSwap { rm, rd, rn, swap_size } => {
             single_data_swap(bus, registers, rn, rd, rm, swap_size);
 
             None
@@ -1001,10 +904,7 @@ pub fn execute_arm(
 
             None
         }
-        ArmInstruction::ThumbBranch {
-            branch_type,
-            offset,
-        } => thumb_branch(registers, branch_type, offset),
+        ArmInstruction::ThumbBranch { branch_type, offset } => thumb_branch(registers, branch_type, offset),
     }
 }
 

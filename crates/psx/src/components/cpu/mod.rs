@@ -351,10 +351,7 @@ impl R3000a {
     pub fn step(&mut self, bus: &mut Bus) {
         let executing_address = self.registers.pc;
         if self.breakpoint_manager.in_range(executing_address)
-            && self
-                .breakpoint_manager
-                .queue
-                .contains_key(&executing_address)
+            && self.breakpoint_manager.queue.contains_key(&executing_address)
             && self.breakpoint_manager.resume_from != Some(executing_address)
         {
             self.breakpoint_manager.hit = Some(executing_address);
@@ -380,7 +377,7 @@ impl R3000a {
         if self.interrupt_pending(&bus) {
             self.exception(ExceptionCode::ExternalInterrupt);
 
-            return
+            return;
         }
 
         if !executing_address.is_multiple_of(4) {
@@ -402,11 +399,9 @@ impl R3000a {
     // but when the instruction exception occurs on is delay slot before branch,
     // epc points to the branch and cause bit (31) should be set
     fn exception(&mut self, code: ExceptionCode) {
-        let handler_address = self.cop0.process_exception(
-            code,
-            self.registers.current_pc,
-            self.registers.in_delay_slot,
-        );
+        let handler_address =
+            self.cop0
+                .process_exception(code, self.registers.current_pc, self.registers.in_delay_slot);
 
         self.registers.pc = handler_address;
         self.registers.next_pc = self.registers.pc.wrapping_add(4);
@@ -495,11 +490,10 @@ impl R3000a {
     // https://cgi.cse.unsw.edu.au/~cs3231/doc/R3000.pdf
     //  https://psx-spx.consoledev.net/cpuspecifications/
     fn add(&mut self, instruction: MipsInstruction) {
-        let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
-            .overflowing_add(self.registers.r[instruction.rt()] as i32);
+        let (value, overflow) =
+            (self.registers.r[instruction.rs()] as i32).overflowing_add(self.registers.r[instruction.rt()] as i32);
         if !overflow {
-            self.registers
-                .write_cpu_register(instruction.rd(), value as u32);
+            self.registers.write_cpu_register(instruction.rd(), value as u32);
         } else {
             self.exception(ExceptionCode::ArithmeticOverflow);
         }
@@ -509,8 +503,7 @@ impl R3000a {
         let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
             .overflowing_add(instruction.immediate_16().sign_extend() as i32);
         if !overflow {
-            self.registers
-                .write_cpu_register(instruction.rt(), value as u32);
+            self.registers.write_cpu_register(instruction.rt(), value as u32);
         } else {
             self.exception(ExceptionCode::ArithmeticOverflow);
         }
@@ -519,8 +512,7 @@ impl R3000a {
     fn addiu(&mut self, instruction: MipsInstruction) {
         self.registers.write_cpu_register(
             instruction.rt(),
-            self.registers.r[instruction.rs()]
-                .wrapping_add(instruction.immediate_16().sign_extend()),
+            self.registers.r[instruction.rs()].wrapping_add(instruction.immediate_16().sign_extend()),
         );
     }
 
@@ -549,8 +541,7 @@ impl R3000a {
         self.registers.pending_branch = true;
         if condition {
             let offset = instruction.offset_16().sign_extend() << 2;
-            self.registers
-                .branch(self.registers.pc.wrapping_add(offset));
+            self.registers.branch(self.registers.pc.wrapping_add(offset));
         }
     }
 
@@ -573,16 +564,14 @@ impl R3000a {
 
     fn bgtz(&mut self, instruction: MipsInstruction) {
         self.branch_if(
-            self.registers.r[instruction.rs()].is_clear(31)
-                && self.registers.r[instruction.rs()] != 0,
+            self.registers.r[instruction.rs()].is_clear(31) && self.registers.r[instruction.rs()] != 0,
             instruction,
         );
     }
 
     fn blez(&mut self, instruction: MipsInstruction) {
         self.branch_if(
-            self.registers.r[instruction.rs()].is_set(31)
-                || self.registers.r[instruction.rs()] == 0,
+            self.registers.r[instruction.rs()].is_set(31) || self.registers.r[instruction.rs()] == 0,
             instruction,
         );
     }
@@ -610,10 +599,7 @@ impl R3000a {
 
     fn cfcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         match instruction.coprocessor() {
-            0 => bus.dump(format_args!(
-                "cfcz using register 0; pc={}",
-                self.registers.current_pc
-            )),
+            0 => bus.dump(format_args!("cfcz using register 0; pc={}", self.registers.current_pc)),
             2 => {
                 let rt = instruction.rt();
                 let rd = instruction.rd();
@@ -641,10 +627,7 @@ impl R3000a {
 
     fn ctcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         match instruction.coprocessor() {
-            0 => bus.dump(format_args!(
-                "ctcz using register 0; pc={}",
-                self.registers.current_pc
-            )),
+            0 => bus.dump(format_args!("ctcz using register 0; pc={}", self.registers.current_pc)),
             2 => {
                 let rt = instruction.rt();
                 let rd = instruction.rd();
@@ -724,10 +707,8 @@ impl R3000a {
     fn lbu(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
 
-        self.registers.set_load(
-            instruction.rt(),
-            bus.read::<u8>(address, MemoryAccessor::Cpu) as u32,
-        );
+        self.registers
+            .set_load(instruction.rt(), bus.read::<u8>(address, MemoryAccessor::Cpu) as u32);
     }
 
     fn lh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -754,10 +735,8 @@ impl R3000a {
             return;
         }
 
-        self.registers.set_load(
-            instruction.rt(),
-            bus.read::<u16>(address, MemoryAccessor::Cpu) as u32,
-        );
+        self.registers
+            .set_load(instruction.rt(), bus.read::<u16>(address, MemoryAccessor::Cpu) as u32);
     }
 
     fn lui(&mut self, instruction: MipsInstruction) {
@@ -774,10 +753,8 @@ impl R3000a {
             return;
         }
 
-        self.registers.set_load(
-            instruction.rt(),
-            bus.read::<u32>(address, MemoryAccessor::Cpu),
-        );
+        self.registers
+            .set_load(instruction.rt(), bus.read::<u32>(address, MemoryAccessor::Cpu));
     }
 
     fn lwcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -799,8 +776,7 @@ impl R3000a {
         let mut value = self.get_value(instruction);
         value.clear_bit_range(start_index..32);
 
-        self.registers
-            .set_load(instruction.rt(), value | (word << start_index));
+        self.registers.set_load(instruction.rt(), value | (word << start_index));
     }
 
     fn lwr(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -811,8 +787,7 @@ impl R3000a {
         let mut value = self.get_value(instruction);
         value.clear_bit_range(0..end_index);
 
-        self.registers
-            .set_load(instruction.rt(), value | (word >> offset));
+        self.registers.set_load(instruction.rt(), value | (word >> offset));
     }
 
     fn mfcz(&mut self, instruction: MipsInstruction) {
@@ -829,21 +804,17 @@ impl R3000a {
     }
 
     fn mfhi(&mut self, instruction: MipsInstruction) {
-        self.registers
-            .write_cpu_register(instruction.rd(), self.registers.hi);
+        self.registers.write_cpu_register(instruction.rd(), self.registers.hi);
     }
 
     fn mflo(&mut self, instruction: MipsInstruction) {
-        self.registers
-            .write_cpu_register(instruction.rd(), self.registers.lo);
+        self.registers.write_cpu_register(instruction.rd(), self.registers.lo);
     }
 
     fn mtcz(&mut self, instruction: MipsInstruction) {
         match instruction.coprocessor() {
             0 => match Cop0Registers::to_register(instruction.rd()) {
-                Ok(usable_register) => self
-                    .cop0
-                    .move_to(usable_register, self.registers.r[instruction.rt()]),
+                Ok(usable_register) => self.cop0.move_to(usable_register, self.registers.r[instruction.rt()]),
                 Err(reserved) => self.exception(reserved),
             },
             2 => todo!(),
@@ -908,11 +879,7 @@ impl R3000a {
 
     fn sb(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
         let address = self.create_address(instruction);
-        bus.write::<u8>(
-            address,
-            self.registers.r[instruction.rt()] as u8,
-            MemoryAccessor::Cpu,
-        );
+        bus.write::<u8>(address, self.registers.r[instruction.rt()] as u8, MemoryAccessor::Cpu);
     }
 
     fn sh(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -924,45 +891,35 @@ impl R3000a {
             return;
         }
 
-        bus.write::<u16>(
-            address,
-            self.registers.r[instruction.rt()] as u16,
-            MemoryAccessor::Cpu,
-        );
+        bus.write::<u16>(address, self.registers.r[instruction.rt()] as u16, MemoryAccessor::Cpu);
     }
 
     fn sll(&mut self, instruction: MipsInstruction) {
-        self.registers.write_cpu_register(
-            instruction.rd(),
-            self.registers.r[instruction.rt()] << instruction.sa(),
-        );
+        self.registers
+            .write_cpu_register(instruction.rd(), self.registers.r[instruction.rt()] << instruction.sa());
     }
 
     fn sllv(&mut self, instruction: MipsInstruction) {
         self.registers.write_cpu_register(
             instruction.rd(),
-            self.registers.r[instruction.rt()]
-                << self.registers.r[instruction.rs()].get_bit_range(0..5),
+            self.registers.r[instruction.rt()] << self.registers.r[instruction.rs()].get_bit_range(0..5),
         );
     }
 
     fn set_on(&mut self, condition: bool, destination: usize) {
-        self.registers
-            .write_cpu_register(destination, condition as u32)
+        self.registers.write_cpu_register(destination, condition as u32)
     }
 
     fn slt(&mut self, instruction: MipsInstruction) {
         self.set_on(
-            (self.registers.r[instruction.rs()] as i32)
-                < (self.registers.r[instruction.rt()] as i32),
+            (self.registers.r[instruction.rs()] as i32) < (self.registers.r[instruction.rt()] as i32),
             instruction.rd(),
         );
     }
 
     fn slti(&mut self, instruction: MipsInstruction) {
         self.set_on(
-            (self.registers.r[instruction.rs()] as i32)
-                < (instruction.immediate_16().sign_extend() as i32),
+            (self.registers.r[instruction.rs()] as i32) < (instruction.immediate_16().sign_extend() as i32),
             instruction.rt(),
         );
     }
@@ -991,32 +948,28 @@ impl R3000a {
     fn srav(&mut self, instruction: MipsInstruction) {
         self.registers.write_cpu_register(
             instruction.rd(),
-            ((self.registers.r[instruction.rt()] as i32)
-                >> self.registers.r[instruction.rs()].get_bit_range(0..5)) as u32,
+            ((self.registers.r[instruction.rt()] as i32) >> self.registers.r[instruction.rs()].get_bit_range(0..5))
+                as u32,
         );
     }
 
     fn srl(&mut self, instruction: MipsInstruction) {
-        self.registers.write_cpu_register(
-            instruction.rd(),
-            self.registers.r[instruction.rt()] >> instruction.sa(),
-        );
+        self.registers
+            .write_cpu_register(instruction.rd(), self.registers.r[instruction.rt()] >> instruction.sa());
     }
 
     fn srlv(&mut self, instruction: MipsInstruction) {
         self.registers.write_cpu_register(
             instruction.rd(),
-            self.registers.r[instruction.rt()]
-                >> self.registers.r[instruction.rs()].get_bit_range(0..5),
+            self.registers.r[instruction.rt()] >> self.registers.r[instruction.rs()].get_bit_range(0..5),
         );
     }
 
     fn sub(&mut self, instruction: MipsInstruction) {
-        let (value, overflow) = (self.registers.r[instruction.rs()] as i32)
-            .overflowing_sub(self.registers.r[instruction.rt()] as i32);
+        let (value, overflow) =
+            (self.registers.r[instruction.rs()] as i32).overflowing_sub(self.registers.r[instruction.rt()] as i32);
         if !overflow {
-            self.registers
-                .write_cpu_register(instruction.rd(), value as u32);
+            self.registers.write_cpu_register(instruction.rd(), value as u32);
         } else {
             self.exception(ExceptionCode::ArithmeticOverflow);
         }
@@ -1038,11 +991,7 @@ impl R3000a {
             return;
         }
 
-        bus.write::<u32>(
-            address,
-            self.registers.r[instruction.rt()],
-            MemoryAccessor::Cpu,
-        );
+        bus.write::<u32>(address, self.registers.r[instruction.rt()], MemoryAccessor::Cpu);
     }
 
     fn swcz(&mut self, instruction: MipsInstruction, bus: &mut Bus) {
@@ -1066,11 +1015,7 @@ impl R3000a {
         let value = self.registers.r[instruction.rt()];
         word.clear_bit_range(0..end_index);
 
-        bus.write::<u32>(
-            address & !3,
-            word | (value >> (32 - end_index)),
-            MemoryAccessor::Cpu,
-        );
+        bus.write::<u32>(address & !3, word | (value >> (32 - end_index)), MemoryAccessor::Cpu);
     }
 
     fn swr(&mut self, instruction: MipsInstruction, bus: &mut Bus) {

@@ -106,10 +106,7 @@ impl SpriteAttributes {
         let palette_bank = attribute2.get_bit_range(12..16) as usize;
 
         let matrix = if affine {
-            Some(create_sprite_affine(
-                attribute1.get_bit_range(9..14) as usize,
-                oam,
-            ))
+            Some(create_sprite_affine(attribute1.get_bit_range(9..14) as usize, oam))
         } else {
             None
         };

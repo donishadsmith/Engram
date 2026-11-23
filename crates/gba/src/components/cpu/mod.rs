@@ -357,10 +357,7 @@ impl Registers {
             self.r[14] = self.banked_special_registers[new_sp][1];
         }
 
-        let (old_high_index, new_high_index) = (
-            old_mode.high_register_index(),
-            new_mode.high_register_index(),
-        );
+        let (old_high_index, new_high_index) = (old_mode.high_register_index(), new_mode.high_register_index());
         if old_high_index != new_high_index {
             for i in 0..5 {
                 self.banked_high_registers[old_high_index][i] = self.r[8 + i];
@@ -415,21 +412,13 @@ impl Registers {
             Condition::Vc => !self.is_v_set(),
             Condition::Hi => self.is_c_set() && !self.is_z_set(),
             Condition::Ls => !self.is_c_set() || self.is_z_set(),
-            Condition::Ge => {
-                self.cpsr.get_bit(CpuFlag::N as usize) == self.cpsr.get_bit(CpuFlag::V as usize)
-            }
-            Condition::Lt => {
-                self.cpsr.get_bit(CpuFlag::N as usize) != self.cpsr.get_bit(CpuFlag::V as usize)
-            }
+            Condition::Ge => self.cpsr.get_bit(CpuFlag::N as usize) == self.cpsr.get_bit(CpuFlag::V as usize),
+            Condition::Lt => self.cpsr.get_bit(CpuFlag::N as usize) != self.cpsr.get_bit(CpuFlag::V as usize),
             Condition::Gt => {
-                !self.is_z_set()
-                    && self.cpsr.get_bit(CpuFlag::N as usize)
-                        == self.cpsr.get_bit(CpuFlag::V as usize)
+                !self.is_z_set() && self.cpsr.get_bit(CpuFlag::N as usize) == self.cpsr.get_bit(CpuFlag::V as usize)
             }
             Condition::Le => {
-                self.is_z_set()
-                    || self.cpsr.get_bit(CpuFlag::N as usize)
-                        != self.cpsr.get_bit(CpuFlag::V as usize)
+                self.is_z_set() || self.cpsr.get_bit(CpuFlag::N as usize) != self.cpsr.get_bit(CpuFlag::V as usize)
             }
             Condition::Al => true,
             Condition::Never => false,
@@ -444,11 +433,7 @@ impl Registers {
     }
 
     fn pc_offset(&self) -> u32 {
-        if self.state() == ProcessorState::Arm {
-            4
-        } else {
-            2
-        }
+        if self.state() == ProcessorState::Arm { 4 } else { 2 }
     }
 
     fn copy_pc_to_lr(&mut self) {
@@ -622,19 +607,13 @@ impl Arm7tdmi {
         let access = self.next_fetch_access;
         self.next_fetch_access = AccessType::Sequential;
         let new_fetch = match self.registers.state() {
-            ProcessorState::Arm => {
-                FetchedInstruction::Arm(bus.read_u32(self.registers.r[15], access))
-            }
-            ProcessorState::Thumb => {
-                FetchedInstruction::Thumb(bus.read_u16(self.registers.r[15], access))
-            }
+            ProcessorState::Arm => FetchedInstruction::Arm(bus.read_u32(self.registers.r[15], access)),
+            ProcessorState::Thumb => FetchedInstruction::Thumb(bus.read_u16(self.registers.r[15], access)),
         };
 
         bus.last_instruction_read = match new_fetch {
             FetchedInstruction::Arm(instruction) => instruction,
-            FetchedInstruction::Thumb(instruction) => {
-                instruction as u32 | (instruction as u32) << 16
-            }
+            FetchedInstruction::Thumb(instruction) => instruction as u32 | (instruction as u32) << 16,
         };
 
         self.pipeline.advance(new_fetch)
@@ -744,8 +723,7 @@ impl Arm7tdmi {
         let old_state = self.registers.state();
 
         self.registers.cpsr = value;
-        self.registers
-            .bank_registers(old_mode, self.registers.mode());
+        self.registers.bank_registers(old_mode, self.registers.mode());
 
         if old_state != self.registers.state() {
             self.branch_to(next_address);

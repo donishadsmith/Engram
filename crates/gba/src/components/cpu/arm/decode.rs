@@ -278,15 +278,11 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                                     instruction.get_bit_range(0..4) as u8
                                         | (instruction.get_bit_range(8..12) as u8) << 4,
                                 ),
-                                transfer_kind: TransferKind::from_bits(
-                                    instruction.get_bit_range(5..7) as u8,
-                                ),
+                                transfer_kind: TransferKind::from_bits(instruction.get_bit_range(5..7) as u8),
                                 rd: instruction.get_bit_range(12..16) as u8,
                                 rn: instruction.get_bit_range(16..20) as u8,
                                 write_back: instruction.is_set(21),
-                                addressing_mode: AddressingMode::from_bits(
-                                    instruction.get_bit_range(23..25) as u8,
-                                ),
+                                addressing_mode: AddressingMode::from_bits(instruction.get_bit_range(23..25) as u8),
                                 transfer_action: if instruction.is_set(20) {
                                     TransferAction::Load
                                 } else {
@@ -298,18 +294,12 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                         return DecodedArm {
                             condition,
                             instruction: ArmInstruction::HalfwordDataTransfer {
-                                offset: HalfwordOffset::Register(
-                                    instruction.get_bit_range(0..4) as u8
-                                ),
-                                transfer_kind: TransferKind::from_bits(
-                                    instruction.get_bit_range(5..7) as u8,
-                                ),
+                                offset: HalfwordOffset::Register(instruction.get_bit_range(0..4) as u8),
+                                transfer_kind: TransferKind::from_bits(instruction.get_bit_range(5..7) as u8),
                                 rd: instruction.get_bit_range(12..16) as u8,
                                 rn: instruction.get_bit_range(16..20) as u8,
                                 write_back: instruction.is_set(21),
-                                addressing_mode: AddressingMode::from_bits(
-                                    instruction.get_bit_range(23..25) as u8,
-                                ),
+                                addressing_mode: AddressingMode::from_bits(instruction.get_bit_range(23..25) as u8),
                                 transfer_action: if instruction.is_set(20) {
                                     TransferAction::Load
                                 } else {
@@ -372,10 +362,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                     };
                 }
 
-                if instruction.get_bit_range(23..25) == 0b10
-                    && instruction.is_clear(20)
-                    && instruction.is_set(21)
-                {
+                if instruction.get_bit_range(23..25) == 0b10 && instruction.is_clear(20) && instruction.is_set(21) {
                     let source = if instruction.is_set(25) {
                         MsrSource::Immediate {
                             value: instruction.get_bit_range(0..8) as u8,
@@ -472,9 +459,7 @@ pub fn decode_arm(instruction: u32) -> DecodedArm {
                         } else {
                             BitSize::Word
                         },
-                        addressing_mode: AddressingMode::from_bits(
-                            instruction.get_bit_range(23..25) as u8,
-                        ),
+                        addressing_mode: AddressingMode::from_bits(instruction.get_bit_range(23..25) as u8),
                         offset,
                     },
                 }
@@ -690,10 +675,7 @@ mod tests {
         let branch = 0b1110_1011_0000_0000_0000_0000_0000_0010;
         assert_eq!(
             decode_arm(branch).instruction,
-            ArmInstruction::Branch {
-                link: true,
-                offset: 8
-            }
+            ArmInstruction::Branch { link: true, offset: 8 }
         );
     }
 
@@ -746,13 +728,7 @@ mod tests {
         let mrs = 0b1110_0001_0000_1111_0000_0000_0000_0000;
         let instruction = decode_arm(mrs);
 
-        assert_eq!(
-            instruction.instruction,
-            ArmInstruction::Mrs {
-                rd: 0,
-                use_spsr: false
-            }
-        );
+        assert_eq!(instruction.instruction, ArmInstruction::Mrs { rd: 0, use_spsr: false });
     }
 
     #[test]

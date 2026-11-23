@@ -101,7 +101,7 @@ cd Engram
 cargo run --release
 ```
 
-**Note**: 
+**Note**:
 - Video recording requires [ffmpeg](https://ffmpeg.org/download.html) in your `PATH`.
 - Can download pre-built executables [here](https://github.com/donishadsmith/Engram/releases/latest).
 

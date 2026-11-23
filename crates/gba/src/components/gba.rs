@@ -109,7 +109,10 @@ impl GBA {
             self.bus.ime_enabled(),
         );
 
-        self.bus.dump(format_args!("interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}", ie, iflag, dispstat, ime));
+        self.bus.dump(format_args!(
+            "interrupt_enable={:016b} interrupt_flag={:016b} dispstat={:016b} interrupt_master_enable={}",
+            ie, iflag, dispstat, ime
+        ));
 
         // technically serviced by the time it shows on ui + plus will just be a
         // flash on ui when enabled but looks cool
@@ -164,8 +167,7 @@ impl GBA {
                             self.trigger_dma(trigger);
                         }
                         Event::HblankEnd => {
-                            let scanline_event =
-                                self.bus.ppu.handle_hblank_end(&mut self.bus.interrupt_flag);
+                            let scanline_event = self.bus.ppu.handle_hblank_end(&mut self.bus.interrupt_flag);
 
                             if scanline_event.vblank {
                                 self.bus.keypad.poll(
@@ -197,19 +199,16 @@ impl GBA {
                     }
 
                     match event {
-                        Event::Hblank | Event::HblankEnd => self
-                            .bus
-                            .scheduler
-                            .push(event, deadline + CYCLES_PER_SCANLINE),
+                        Event::Hblank | Event::HblankEnd => {
+                            self.bus.scheduler.push(event, deadline + CYCLES_PER_SCANLINE)
+                        }
                         Event::ApuSample => {
                             self.apu_sample_remainder += self.apu_sample_period;
                             let cycles = self.apu_sample_remainder as u64;
                             self.apu_sample_remainder -= cycles as f64;
                             self.bus.scheduler.push(event, deadline + cycles);
                         }
-                        Event::ApuSequencer => {
-                            self.bus.scheduler.push(event, deadline + APU_SEQUENCER)
-                        }
+                        Event::ApuSequencer => self.bus.scheduler.push(event, deadline + APU_SEQUENCER),
                         _ => unreachable!(),
                     }
                 }
@@ -311,9 +310,7 @@ impl State for GBA {
     fn load_state(&mut self, bytes: &[u8]) -> Result<(), Error> {
         let magic_len = STATE_MAGIC_NAME.len();
         if bytes.len() < magic_len || &bytes[..magic_len] != STATE_MAGIC_NAME {
-            return Err(error_message(
-                "Not a Game Boy Advance save state".to_string(),
-            ));
+            return Err(error_message("Not a Game Boy Advance save state".to_string()));
         }
 
         let decompressed_data = lz4_flex::decompress_size_prepended(&bytes[magic_len..])
@@ -322,30 +319,19 @@ impl State for GBA {
             .map_err(|err| error_message(format!("Invalid save state: {err}")))?;
 
         if self.bus.gamepak.header != data.bus.gamepak.header {
-            return Err(error_message(
-                "Save state is for a different game".to_string(),
-            ));
+            return Err(error_message("Save state is for a different game".to_string()));
         }
 
         self.save()?;
 
         // note to self: since rtc is based on sysytem clock be aware that the
         // time will automatically be updated to current time
-        swap(
-            &mut data.bus.watchpoint_manager,
-            &mut self.bus.watchpoint_manager,
-        );
+        swap(&mut data.bus.watchpoint_manager, &mut self.bus.watchpoint_manager);
 
-        swap(
-            &mut data.cpu.breakpoint_manager,
-            &mut self.cpu.breakpoint_manager,
-        );
+        swap(&mut data.cpu.breakpoint_manager, &mut self.cpu.breakpoint_manager);
 
         swap(&mut data.bus.gamepak.rom, &mut self.bus.gamepak.rom);
-        swap(
-            &mut data.bus.gamepak.sav_path,
-            &mut self.bus.gamepak.sav_path,
-        );
+        swap(&mut data.bus.gamepak.sav_path, &mut self.bus.gamepak.sav_path);
         swap(&mut data.scripted_keypad, &mut self.scripted_keypad);
 
         data.bus.interrupt_enable_copy = self.bus.interrupt_enable_copy;
@@ -496,8 +482,8 @@ impl ScriptTarget for GBA {
 
     fn cpu_register_names(&self) -> &'static [&'static str] {
         &[
-            "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13",
-            "sp", "r14", "lr", "r15", "pc", "cpsr",
+            "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "r13", "sp", "r14", "lr",
+            "r15", "pc", "cpsr",
         ]
     }
 

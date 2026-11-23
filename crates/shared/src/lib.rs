@@ -34,8 +34,7 @@ use crate::{
     render::Frame,
     script::{CpuError, DomainError, ScriptEngine, WatchpointArgs, WatchpointHit, WatchpointRange},
     structs::{
-        BreakpointManager, CycleManager, ElapsedCycles, FramePacer, FrameTracker, RewindManager,
-        WatchpointManager,
+        BreakpointManager, CycleManager, ElapsedCycles, FramePacer, FrameTracker, RewindManager, WatchpointManager,
     },
     utils::error_message,
 };
@@ -233,8 +232,7 @@ pub trait Audio: EmulatorCore + FrameTracking + FramePacing {
 
         for sample in sample_buffer.drain(..) {
             let _ = self.audio_mut().map(|audio| audio.play(sample, volume));
-            self.recorded_audio()
-                .extend_from_slice(&f32::to_le_bytes(sample));
+            self.recorded_audio().extend_from_slice(&f32::to_le_bytes(sample));
         }
 
         *self.sample_buffer() = sample_buffer;
@@ -248,17 +246,15 @@ pub trait Audio: EmulatorCore + FrameTracking + FramePacing {
 
         let sample_rate = audio.sample_rate as f64;
         let current_occupancy = (AUDIO_BUFFER_CAPACITY - audio.producer.slots()) as f64;
-        let difference_from_target = ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64))
-            / (AUDIO_TARGET_OCCUPANCY as f64))
-            .clamp(-1.0, 1.0);
+        let difference_from_target =
+            ((current_occupancy - (AUDIO_TARGET_OCCUPANCY as f64)) / (AUDIO_TARGET_OCCUPANCY as f64)).clamp(-1.0, 1.0);
         let ratio = if self.speed() < 1.0 {
             self.speed() as f64
         } else {
             (self.get_fps() / self.refresh_rate()).clamp(1.0, self.speed() as f64)
         };
         let ideal_sample_period = self.clock_rate() / sample_rate * ratio;
-        let sample_period =
-            ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
+        let sample_period = ideal_sample_period * (1.0 + ALLOWED_AUDIO_PITCH_DEVIATION * difference_from_target);
 
         *self.sample_period() = sample_period;
         self.set_cycles_per_sample(sample_period);
@@ -288,8 +284,7 @@ pub trait FrameLoop: Audio {
         } else {
             let start = Instant::now();
             for _ in 0..(self.speed() as u8) {
-                if !self.run_frame(volume) || start.elapsed() >= self.frame_pacer_ref().frame_period
-                {
+                if !self.run_frame(volume) || start.elapsed() >= self.frame_pacer_ref().frame_period {
                     break;
                 }
             }
@@ -363,12 +358,7 @@ pub trait StateIo: EmulatorCore {
 
     fn get_rom_name(&self) -> String {
         // good enough
-        self.sav_path()
-            .file_stem()
-            .unwrap()
-            .to_owned()
-            .into_string()
-            .unwrap()
+        self.sav_path().file_stem().unwrap().to_owned().into_string().unwrap()
     }
 }
 
@@ -395,11 +385,7 @@ pub trait Breakpoint {
     }
 
     fn check_breakpoints(&self) -> Vec<(u32, EmulatorState)> {
-        self.breakpoint_manager_ref()
-            .queue
-            .clone()
-            .into_iter()
-            .collect()
+        self.breakpoint_manager_ref().queue.clone().into_iter().collect()
     }
 }
 
@@ -409,18 +395,10 @@ pub trait Watchpoint {
     fn watchpoint_manager_mut(&mut self) -> &mut WatchpointManager;
 
     fn check_watchpoints(&self) -> Vec<(WatchpointRange, WatchpointArgs)> {
-        self.watchpoint_manager_ref()
-            .queue
-            .clone()
-            .into_iter()
-            .collect()
+        self.watchpoint_manager_ref().queue.clone().into_iter().collect()
     }
 
-    fn set_watchpoint(
-        &mut self,
-        watchpoint_range: WatchpointRange,
-        watchpoint_args: WatchpointArgs,
-    ) -> bool {
+    fn set_watchpoint(&mut self, watchpoint_range: WatchpointRange, watchpoint_args: WatchpointArgs) -> bool {
         self.watchpoint_manager_mut()
             .queue
             .insert(watchpoint_range, watchpoint_args)
@@ -432,9 +410,7 @@ pub trait Watchpoint {
     }
 
     fn remove_watchpoint(&mut self, watchpoint_range: WatchpointRange) {
-        self.watchpoint_manager_mut()
-            .queue
-            .remove(&watchpoint_range);
+        self.watchpoint_manager_mut().queue.remove(&watchpoint_range);
     }
 
     fn take_watchpoint_hits(&mut self) -> Vec<WatchpointHit> {
@@ -462,9 +438,7 @@ pub trait Cycles {
         self.cycle_manager_ref()
             .elapsed_cycles_pause
             .as_ref()
-            .is_some_and(|pause| {
-                self.elapsed_cycles() >= pause.starting_cycle + pause.target_elapsed_cycles
-            })
+            .is_some_and(|pause| self.elapsed_cycles() >= pause.starting_cycle + pause.target_elapsed_cycles)
     }
 
     fn pause_at_current_cycle(&mut self) -> bool {
@@ -526,7 +500,8 @@ pub trait Cycles {
             && self.elapsed_cycles_pause_reached()
         {
             vec.push(format!(
-                "pause due to specific elapsed cycles being reached - Starting cycle {}; Current cycle {}; Target cycle {}; Requested elapsed cycles {}",
+                "pause due to specific elapsed cycles being reached - Starting cycle {}; Current cycle {}; Target \
+                 cycle {}; Requested elapsed cycles {}",
                 pause.starting_cycle,
                 self.elapsed_cycles(),
                 pause.starting_cycle + pause.target_elapsed_cycles,
@@ -587,8 +562,8 @@ pub trait State {
     where
         Self: Serialize + Deserialize<'static>,
     {
-        let serialized_data = postcard::to_allocvec(self)
-            .map_err(|err| error_message(format!("Failed to create save state: {err}")))?;
+        let serialized_data =
+            postcard::to_allocvec(self).map_err(|err| error_message(format!("Failed to create save state: {err}")))?;
         let compressed_data = lz4_flex::compress_prepend_size(&serialized_data);
 
         let mut output = Vec::with_capacity(self.state_magic_name().len() + compressed_data.len());
@@ -615,9 +590,7 @@ pub trait ScriptedInput {
     }
 }
 
-pub trait ScriptTarget:
-    Emulator + Watchpoint + Breakpoint + Cycles + Rewind + ScriptedInput
-{
+pub trait ScriptTarget: Emulator + Watchpoint + Breakpoint + Cycles + Rewind + ScriptedInput {
     fn read_u8(&mut self, address: u32) -> u8;
 
     fn read_u16(&mut self, address: u32) -> u16;
