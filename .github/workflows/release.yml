@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths: [crates/frontend/Cargo.toml]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,12 +28,12 @@ jobs:
         run: |
           version=$(grep -m1 '^version' crates/frontend/Cargo.toml | cut -d'"' -f2)
 
-          if [ -z '$version' ]; then
+          if [ -z "$version" ]; then
             echo 'Could not read version from crates/frontend/Cargo.toml' >&2
             exit 1
           fi
 
-          echo 'version=$version' >> '$GITHUB_OUTPUT'
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Create release
         id: create
@@ -40,15 +41,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if gh release view '$VERSION' >/dev/null 2>&1; then
-            echo 'Release $VERSION already exists'
-            echo 'created=false' >> '$GITHUB_OUTPUT'
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists"
+            echo "created=false" >> "$GITHUB_OUTPUT"
           else
-            gh release create '$VERSION' \
-              --target '$GITHUB_SHA' \
-              --title '$VERSION' \
+            gh release create "$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "$VERSION" \
               --generate-notes
-            echo 'created=true' >> '$GITHUB_OUTPUT'
+            echo "created=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
