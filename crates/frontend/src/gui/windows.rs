@@ -94,7 +94,7 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
 
             thin_separator(ui);
 
-            folder_selection(ui, ui_state, &session.data_dirs.data_dir);
+            folder_selection(ui, ui_state, &session.data_dirs.data_dir, DataLocation::Data);
 
             ui.add_space(8.0);
 
@@ -102,7 +102,7 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
 
             thin_separator(ui);
 
-            folder_selection(ui, ui_state, &session.data_dirs.image_dir);
+            folder_selection(ui, ui_state, &session.data_dirs.image_dir, DataLocation::Image);
 
             ui.add_space(8.0);
 
@@ -110,7 +110,7 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
 
             thin_separator(ui);
 
-            folder_selection(ui, ui_state, &session.data_dirs.video_dir);
+            folder_selection(ui, ui_state, &session.data_dirs.video_dir, DataLocation::Video);
         });
 
     ui_state.set_dirs = set_dirs || ui_state.dir_dialog.is_some();
@@ -139,13 +139,13 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
     }
 }
 
-fn folder_selection(ui: &mut Ui, ui_state: &mut UiState, path: &PathBuf) {
+fn folder_selection(ui: &mut Ui, ui_state: &mut UiState, path: &PathBuf, location: DataLocation) {
     ui.horizontal(|ui| {
         if ui
             .add_enabled(ui_state.dir_dialog.is_none(), egui::Button::new("Set Location"))
             .clicked()
         {
-            ui_state.dir_dialog = Some((DataLocation::Image, PendingDialog::select_folder(path.to_path_buf())));
+            ui_state.dir_dialog = Some((location, PendingDialog::select_folder(path.to_path_buf())));
         }
 
         ui.add(egui::Label::new(path.display().to_string()).truncate());

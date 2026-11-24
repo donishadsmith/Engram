@@ -11,6 +11,12 @@ use chrono::Local;
 
 use crate::render::{Frame, fit_nearest, to_rgba};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 // https://gist.github.com/carrotflakes/d6960c62d3de5dcbcc2b44562814d5a7
 //https://github.com/NapoleonWils0n/ffmpeg-rust-scripts
 
@@ -33,7 +39,7 @@ impl Active {
         let temp_video = video_dir.join(format!("video_{timestamp}.tmp.mkv"));
         let temp_audio = video_dir.join(format!("video_{timestamp}.tmp.pcm"));
 
-        let mut child = Command::new("ffmpeg")
+        let mut child = ffmpeg()
             .args(["-y", "-f", "rawvideo", "-pix_fmt", "rgba"])
             .args(["-s", &format!("{width}x{height}"), "-r", &fps.to_string(), "-i", "-"])
             .args(["-vf", "scale=iw*4:ih*4:flags=neighbor"])
@@ -76,7 +82,7 @@ impl Active {
         self.child.wait()?;
         let _ = self.audio.flush();
 
-        Command::new("ffmpeg")
+        ffmpeg()
             .args(["-y", "-i"])
             .arg(&self.temp_video)
             .args(["-f", "f32le", "-ar", &self.sample_rate.to_string(), "-ac", "2", "-i"])
@@ -126,11 +132,13 @@ impl VideoRecorder {
     }
 
     pub fn stop(&mut self) -> Result<(), Error> {
-        let Some(active) = self.active.take() else {
-            return Ok(());
-        };
-
-        active.complete()?;
+        if let Some(active) = self.active.take() {
+            spawn(move || {
+                if let Err(err) = active.complete() {
+                    eprintln!("video recording failed to finalize: {err}");
+                }
+            });
+        }
 
         Ok(())
     }
@@ -164,8 +172,22 @@ impl Drop for VideoRecorder {
     }
 }
 
-pub fn ffmpeg_is_available() -> bool {
-    Command::new("ffmpeg")
+fn ffmpeg() -> Command {
+    let mut command = Command::new("ffmpeg");
+
+    // https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
+    // NOTE TO SELF: around nov 15 around minish cap debugging, i used cfg in main to hide console on release builds, but didnt realise
+    // that the app handoff process to launch the gui for windows terminal was slow as hell and blocks
+    // the app for ~two seconds when recording and stopping vids due to the startup for the gui, essentially this just doesnt open up the
+    // gui and lets console run headless so any delay is imperceptible, NEVER REMOVE THIS
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command
+}
+
+fn ffmpeg_is_available() -> bool {
+    ffmpeg()
         .arg("-version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
