@@ -62,6 +62,7 @@ pub fn show_controller_bindings(egui_ctx: &Context, session: &mut Session, ui_st
                 &mut ui_state.key_rebinding,
                 ui_state.target_key_id,
                 &mut ui_state.restore_default_bindings,
+                session.latest_gamepad_id.is_some()
             );
         });
 }
@@ -78,6 +79,7 @@ pub fn show_hotkey_bindings(egui_ctx: &Context, session: &mut Session, ui_state:
                 &mut ui_state.key_rebinding,
                 ui_state.target_key_id,
                 &mut ui_state.restore_default_bindings,
+                session.latest_gamepad_id.is_some()
             );
         });
 }

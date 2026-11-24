@@ -3,6 +3,14 @@ name: Publish
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: write
@@ -34,6 +42,8 @@ jobs:
             ext: ''
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Install Libraries (Ubuntu)
         if: startsWith(matrix.runner, 'ubuntu')
@@ -46,9 +56,10 @@ jobs:
 
       - name: Rename binary
         shell: bash
-        run: mv target/release/Engram${{ matrix.ext }} target/release/Engram-v${{ github.ref_name }}-${{ matrix.target }}${{ matrix.ext }}
+        run: mv target/release/Engram${{ matrix.ext }} target/release/Engram-v${{ env.TAG }}-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Attach files to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/Engram-v${{ github.ref_name }}-${{ matrix.target }}${{ matrix.ext }}
+          tag_name: ${{ env.TAG }}
+          files: target/release/Engram-v${{ env.TAG }}-${{ matrix.target }}${{ matrix.ext }}

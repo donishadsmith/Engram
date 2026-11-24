@@ -47,13 +47,14 @@ enum ShortcutType {
     Screenshot,
     Gif,
     Video,
+    Rewind
 }
 
 // have a eeling that im going to hard regret these button combos later but keep
 // for now not all modern controllers have select or triggers, particulary
 // modern replicas of retro controllers could consider mapping to certain
 // keybindings set in menu but maybe not
-fn display_controller_hotkeys(
+fn controller_hotkeys(
     gilrs: Option<&Gilrs>,
     latest_gamepad_id: Option<GamepadId>,
     shortcut_type: ShortcutType,
@@ -68,6 +69,7 @@ fn display_controller_hotkeys(
             ShortcutType::Gif => Button::East,
             ShortcutType::Screenshot => Button::South,
             ShortcutType::Video => Button::West,
+            ShortcutType::Rewind => Button::North,
         };
 
         if gamepad.is_pressed(Button::Select) && gamepad.is_pressed(other_button) {
@@ -99,6 +101,16 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             ui_state.debug_toggled = true;
         }
 
+        ui_state.controller_rewind = controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, ShortcutType::Rewind);
+        if !(dialog_open
+                || shift_key_down()
+                || super_key_down()
+                || is_key_down(KeyCode::Delete)
+                || is_input_blocked)
+                && ui_state.controller_rewind {
+            session.controller_hotkey_fired = true;
+        }
+
         if let Some(emulator) = &mut session.emulator {
             if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete) || is_input_blocked)
                 && is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Lua))
@@ -106,7 +118,7 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
                 session.lua_lab.opened = !session.lua_lab.opened;
             }
 
-            let hotkey_triggered = display_controller_hotkeys(
+            let hotkey_triggered = controller_hotkeys(
                 session.gilrs.as_ref(),
                 session.latest_gamepad_id,
                 ShortcutType::Screenshot,
@@ -135,7 +147,7 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             }
 
             let hotkey_triggered =
-                display_controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, ShortcutType::Gif)
+                controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, ShortcutType::Gif)
                     && ui_state.last_gif_time.elapsed() >= ui_state.controller_hotkey_delay;
             if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete) || is_input_blocked)
                 && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Gif)) || hotkey_triggered)
@@ -163,7 +175,7 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             }
 
             let hotkey_triggered =
-                display_controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, ShortcutType::Video)
+                controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, ShortcutType::Video)
                     && ui_state.last_video_time.elapsed() >= ui_state.controller_hotkey_delay;
             if !(shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete) || is_input_blocked)
                 && (is_key_pressed(session.key_bindings.get_hotkey_bind(Hotkeys::Video)) || hotkey_triggered)

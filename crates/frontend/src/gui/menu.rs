@@ -634,7 +634,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
         let key_held =
             is_key_down(session.key_bindings.get_hotkey_bind(Hotkeys::Rewind)) && !session.is_input_blocked();
 
-        session.perform_rewind(rewind.is_pointer_button_down_on() || key_held, ui_state);
+        session.perform_rewind(rewind.is_pointer_button_down_on() || key_held || ui_state.controller_rewind, ui_state);
 
         ui.label(egui::RichText::new("| ").strong());
 

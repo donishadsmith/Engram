@@ -78,6 +78,7 @@ pub struct UiState {
     pub last_screenshot_time: Instant,
     pub last_video_time: Instant,
     pub last_rewind_time: Instant,
+    pub controller_rewind: bool,
     pub controller_hotkey_delay: Duration,
     pub dir_dialog: Option<(DataLocation, PendingDialog)>,
     pub open_rewind_settings: bool,
@@ -106,6 +107,7 @@ impl UiState {
             dir_dialog: None,
             last_rewind_time: Instant::now(),
             open_rewind_settings: false,
+            controller_rewind: false
         }
     }
 }
@@ -126,6 +128,7 @@ pub fn bindings_grid(
     key_rebinding: &mut Option<usize>,
     target_key_id: Option<KeyId>,
     restore_default_bindings: &mut bool,
+    controller_enabled: bool
 ) {
     egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
         let Some(key_id) = target_key_id else {
@@ -141,7 +144,12 @@ pub fn bindings_grid(
             })
             .enumerate()
         {
-            ui.label(&label.to_string().replace("_", " ").replace("State", " State"));
+            let mut text_label = label.to_string().replace("_", " ").replace("State", " State");
+            if *label == "Rewind" && controller_enabled {
+                text_label.push_str(" (Select+NorthButton)");
+            }
+
+            ui.label(text_label);
 
             let text = if *key_rebinding == Some(index) {
                 match input {

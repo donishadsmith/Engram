@@ -1,0 +1,62 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+    paths: [crates/frontend/Cargo.toml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      created: ${{ steps.create.outputs.created }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read version from Cargo.toml
+        id: version
+        run: |
+          version=$(grep -m1 '^version' crates/frontend/Cargo.toml | cut -d'"' -f2)
+
+          if [ -z '$version' ]; then
+            echo 'Could not read version from crates/frontend/Cargo.toml' >&2
+            exit 1
+          fi
+
+          echo 'version=$version' >> '$GITHUB_OUTPUT'
+
+      - name: Create release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view '$VERSION' >/dev/null 2>&1; then
+            echo 'Release $VERSION already exists'
+            echo 'created=false' >> '$GITHUB_OUTPUT'
+          else
+            gh release create '$VERSION' \
+              --target '$GITHUB_SHA' \
+              --title '$VERSION' \
+              --generate-notes
+            echo 'created=true' >> '$GITHUB_OUTPUT'
+          fi
+
+  build:
+    name: Build and attach executables
+    needs: release
+    if: needs.release.outputs.created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      tag: ${{ needs.release.outputs.version }}
