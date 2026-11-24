@@ -52,11 +52,21 @@ pub enum KeybindingTab {
     Gamepad,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum DataLocation {
     Data,
     Image,
     Video,
+}
+
+impl DataLocation {
+    pub fn to_string(self) -> String {
+        match self {
+            DataLocation::Data => "Game Saves/Save States".to_string(),
+            DataLocation::Image => "Screenshots/GIFs".to_string(),
+            DataLocation::Video => "Videos".to_string(),
+        }
+    }
 }
 
 pub struct UiState {
@@ -107,7 +117,7 @@ impl UiState {
             dir_dialog: None,
             last_rewind_time: Instant::now(),
             open_rewind_settings: false,
-            controller_rewind: false
+            controller_rewind: false,
         }
     }
 }
@@ -128,7 +138,7 @@ pub fn bindings_grid(
     key_rebinding: &mut Option<usize>,
     target_key_id: Option<KeyId>,
     restore_default_bindings: &mut bool,
-    controller_enabled: bool
+    controller_enabled: bool,
 ) {
     egui::Grid::new(grid_id).num_columns(2).show(ui, |ui| {
         let Some(key_id) = target_key_id else {

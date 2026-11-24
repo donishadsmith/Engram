@@ -62,7 +62,7 @@ pub fn show_controller_bindings(egui_ctx: &Context, session: &mut Session, ui_st
                 &mut ui_state.key_rebinding,
                 ui_state.target_key_id,
                 &mut ui_state.restore_default_bindings,
-                session.latest_gamepad_id.is_some()
+                session.latest_gamepad_id.is_some(),
             );
         });
 }
@@ -79,7 +79,7 @@ pub fn show_hotkey_bindings(egui_ctx: &Context, session: &mut Session, ui_state:
                 &mut ui_state.key_rebinding,
                 ui_state.target_key_id,
                 &mut ui_state.restore_default_bindings,
-                session.latest_gamepad_id.is_some()
+                session.latest_gamepad_id.is_some(),
             );
         });
 }
@@ -87,30 +87,15 @@ pub fn show_hotkey_bindings(egui_ctx: &Context, session: &mut Session, ui_state:
 pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
     let mut flush_configs = false;
     let mut set_dirs = ui_state.set_dirs;
+
     egui::Window::new("Choose Data Locations")
         .open(&mut set_dirs)
         .show(egui_ctx, |ui| {
-            ui.label(egui::RichText::new("Game Saves/Save States").size(16.0).strong());
+            folder_presentation(ui, session, ui_state, DataLocation::Data, false);
 
-            thin_separator(ui);
+            folder_presentation(ui, session, ui_state, DataLocation::Image, false);
 
-            folder_selection(ui, ui_state, &session.data_dirs.data_dir, DataLocation::Data);
-
-            ui.add_space(8.0);
-
-            ui.label(egui::RichText::new("Screenshots/GIFs").size(16.0).strong());
-
-            thin_separator(ui);
-
-            folder_selection(ui, ui_state, &session.data_dirs.image_dir, DataLocation::Image);
-
-            ui.add_space(8.0);
-
-            ui.label(egui::RichText::new("Videos").size(16.0).strong());
-
-            thin_separator(ui);
-
-            folder_selection(ui, ui_state, &session.data_dirs.video_dir, DataLocation::Video);
+            folder_presentation(ui, session, ui_state, DataLocation::Video, true);
         });
 
     ui_state.set_dirs = set_dirs || ui_state.dir_dialog.is_some();
@@ -137,6 +122,30 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
     if flush_configs {
         let _ = session.save_configs();
     }
+}
+
+fn folder_presentation(
+    ui: &mut Ui,
+    session: &Session,
+    ui_state: &mut UiState,
+    location: DataLocation,
+    add_space: bool,
+) {
+    if add_space {
+        ui.add_space(8.0);
+    }
+
+    ui.label(egui::RichText::new(location.to_string()).size(16.0).strong());
+
+    thin_separator(ui);
+
+    let path = match location {
+        DataLocation::Data => &session.data_dirs.data_dir,
+        DataLocation::Image => &session.data_dirs.image_dir,
+        DataLocation::Video => &session.data_dirs.video_dir,
+    };
+
+    folder_selection(ui, ui_state, path, location)
 }
 
 fn folder_selection(ui: &mut Ui, ui_state: &mut UiState, path: &PathBuf, location: DataLocation) {

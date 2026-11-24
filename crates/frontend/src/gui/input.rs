@@ -47,7 +47,7 @@ enum ShortcutType {
     Screenshot,
     Gif,
     Video,
-    Rewind
+    Rewind,
 }
 
 // have a eeling that im going to hard regret these button combos later but keep
@@ -101,13 +101,11 @@ pub fn detect_hot_keys(session: &mut Session, ui_state: &mut UiState) {
             ui_state.debug_toggled = true;
         }
 
-        ui_state.controller_rewind = controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, ShortcutType::Rewind);
-        if !(dialog_open
-                || shift_key_down()
-                || super_key_down()
-                || is_key_down(KeyCode::Delete)
-                || is_input_blocked)
-                && ui_state.controller_rewind {
+        ui_state.controller_rewind =
+            controller_hotkeys(session.gilrs.as_ref(), session.latest_gamepad_id, ShortcutType::Rewind);
+        if !(dialog_open || shift_key_down() || super_key_down() || is_key_down(KeyCode::Delete) || is_input_blocked)
+            && ui_state.controller_rewind
+        {
             session.controller_hotkey_fired = true;
         }
 

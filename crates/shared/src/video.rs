@@ -1,3 +1,5 @@
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
     fs::{File, remove_file},
     io::{BufWriter, Error, Write},
@@ -10,9 +12,6 @@ use std::{
 use chrono::Local;
 
 use crate::render::{Frame, fit_nearest, to_rgba};
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -176,10 +175,10 @@ fn ffmpeg() -> Command {
     let mut command = Command::new("ffmpeg");
 
     // https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
-    // NOTE TO SELF: around nov 15 around minish cap debugging, i used cfg in main to hide console on release builds, but didnt realise
-    // that the app handoff process to launch the gui for windows terminal was slow as hell and blocks
-    // the app for ~two seconds when recording and stopping vids due to the startup for the gui, essentially this just doesnt open up the
-    // gui and lets console run headless so any delay is imperceptible, NEVER REMOVE THIS
+    // NOTE TO SELF: around nov 15 around minish cap debugging, i used cfg in main to hide console on release builds,
+    // but didnt realise that the app handoff process to launch the gui for windows terminal was slow as hell and blocks
+    // the app for ~two seconds when recording and stopping vids due to the startup for the gui, essentially this just
+    // doesnt open up the gui and lets console run headless so any delay is imperceptible, NEVER REMOVE THIS
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
