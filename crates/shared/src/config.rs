@@ -112,7 +112,6 @@ pub struct Config {
     pub solar_level: u8,
     pub gif_settings: BTreeMap<String, u8>,
     pub display: Display,
-    pub show_fps: Option<bool>,
     pub show_notifications: Option<bool>,
     pub destructive_action_popup: Option<bool>,
     pub analog_deadzone_radius: Option<f32>,

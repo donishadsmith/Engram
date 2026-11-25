@@ -1,4 +1,4 @@
-use egui::{Color32, Ui};
+use egui::{Color32, Ui, text::LayoutJob};
 use egui_phosphor::regular as icons;
 use macroquad::{
     input::is_key_down,
@@ -64,19 +64,6 @@ pub fn show_emulation_menu(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
 
             ui.close();
         }
-
-        ui.horizontal(|ui| {
-            ui.add_space(2.0);
-
-            ui.label(
-                egui::RichText::new(format!("{}  Show FPS", icons::GAUGE))
-                    .color(ui.visuals().widgets.inactive.fg_stroke.color),
-            );
-
-            ui.add_space(80.0);
-
-            ui.checkbox(&mut session.show_fps, "");
-        });
 
         ui.add_enabled_ui(has_emulator, |ui| {
             ui.menu_button(format!("{}  Save State", icons::FLOPPY_DISK), |ui| {
@@ -467,6 +454,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             .emulator
             .as_ref()
             .is_some_and(|emulator| emulator.is_video_recording());
+
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         // kinda emulating the exit look that a lot of modern apps follow
         if session.display.fullscreen {
@@ -483,15 +471,13 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             {
                 request_quit();
             };
-
-            ui.label(egui::RichText::new("| ").strong());
         }
 
         let hotkey = keycode_to_string(session.key_bindings.get_hotkey_bind(Hotkeys::Fullscreen));
         let (resize_icon, resize_text) = if session.display.fullscreen {
-            (icons::ARROWS_IN, format!("Close Fullscreen ({})", hotkey))
+            (icons::CORNERS_IN, format!("Close Fullscreen ({})", hotkey))
         } else {
-            (icons::ARROWS_OUT, format!("Fullscreen ({})", hotkey))
+            (icons::CORNERS_OUT, format!("Fullscreen ({})", hotkey))
         };
 
         if ui
@@ -503,44 +489,12 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             session.toggle_fullscreen();
         }
 
-        ui.label(egui::RichText::new("| ").strong());
-
-        if let Some(emulator) = &mut session.emulator
-            && let Some(debugger) = emulator.debugger_ref()
-        {
-            let (text, hover) = if debugger.active() {
-                (
-                    // dont know what icons should go here
-                    egui::RichText::new("ON").color(egui::Color32::LIGHT_GREEN),
-                    "Click to close debugger",
-                )
-            } else {
-                (egui::RichText::new("OFF").weak(), "Click to open debugger")
-            };
-
-            let state = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
-            let title = ui.add(
-                egui::Label::new(egui::RichText::new(format!("{}  Debug:", icons::BUG)).strong())
-                    .sense(egui::Sense::click()),
-            );
-
-            if title
-                .union(state)
-                .on_hover_text(hover)
-                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                .clicked()
-            {
-                ui_state.debug_toggled = true;
-            }
-
-            ui.label(egui::RichText::new("| ").strong());
-        }
-
         let rom_name = session
             .emulator
             .as_ref()
             .map(|emulator| emulator.get_rom_name())
             .unwrap_or("".to_string());
+
         let fps = if session.is_running() {
             session
                 .emulator
@@ -561,12 +515,12 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             ui.add(egui::Slider::new(&mut session.master_volume, 0..=100).text("Volume"));
         });
 
-        ui.label(egui::RichText::new("| ").strong());
+        ui.add_space(8.0);
 
         let mut layout_job = egui::text::LayoutJob::default();
         let font = egui::TextStyle::Body.resolve(ui.style());
         layout_job.append(
-            "Speed: ",
+            format!("{}  ", icons::FAST_FORWARD).as_str(),
             0.0,
             egui::TextFormat::simple(font.clone(), ui.visuals().strong_text_color()),
         );
@@ -579,6 +533,7 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
 
         let old_speed = session.speed;
         egui::ComboBox::from_id_salt("Speed")
+            .width(8.0)
             .selected_text(layout_job)
             .show_ui(ui, |ui| {
                 for speed in ALLOWED_SPEED {
@@ -590,8 +545,6 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             let message = format!("Emulator set to {}x speed", session.speed);
             session.toasts.warning(message);
         }
-
-        ui.label(egui::RichText::new("| ").strong());
 
         let (status_text, hover) = if session.is_paused()
             || session.return_state.is_some_and(|state| state == EmulatorState::Paused)
@@ -617,8 +570,6 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             session.toggle_emulator_status();
         }
 
-        ui.label(egui::RichText::new("| ").strong());
-
         // gotta add te hotkey here
         let rewind_text = if session.rewind_in_action {
             egui::RichText::new(icons::REWIND).color(egui::Color32::YELLOW)
@@ -639,16 +590,43 @@ pub fn show_status_section(ui: &mut Ui, session: &mut Session, ui_state: &mut Ui
             ui_state,
         );
 
-        ui.label(egui::RichText::new("| ").strong());
-
         if session.emulator.is_some() {
-            if session.show_fps {
-                ui.label(egui::RichText::new(format!("FPS: {:.1}", fps)).strong());
+            ui.add_space(8.0);
 
-                ui.label(egui::RichText::new("| ").strong());
+            ui.label(egui::RichText::new(format!("{:.1} FPS", fps)).weak());
+
+            if let Some(debugger) = session.emulator.as_ref().and_then(|emu| emu.debugger_ref()) {
+                ui.add_space(8.0);
+
+                let (state, color, hover) = if debugger.active() {
+                    ("On", Color32::LIGHT_GREEN, "Click to close debugger")
+                } else {
+                    ("Off", ui.visuals().text_color(), "Click to open debugger")
+                };
+
+                let font = egui::TextStyle::Body.resolve(ui.style());
+                let mut debug_layout = LayoutJob::default();
+
+                debug_layout.append(
+                    &format!("{} Debug:", icons::BUG),
+                    0.0,
+                    egui::TextFormat::simple(font.clone(), ui.visuals().strong_text_color()),
+                );
+                debug_layout.append(state, 3.0, egui::TextFormat::simple(font, color));
+
+                if ui
+                    .add(egui::Label::new(debug_layout).sense(egui::Sense::click()))
+                    .on_hover_text(hover)
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .clicked()
+                {
+                    ui_state.debug_toggled = true;
+                }
             }
 
             if recording {
+                ui.add_space(8.0);
+
                 if ui
                     .add(egui::Label::new(
                         egui::RichText::new(format!("{}  RECORDING", icons::RECORD)).color(egui::Color32::RED),

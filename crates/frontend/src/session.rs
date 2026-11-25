@@ -128,7 +128,6 @@ pub struct Session {
     pub input_source: Option<InputSource>,
     pub startup_deadline: Option<Instant>,
     pub paused_due_to_minimize: bool,
-    pub show_fps: bool,
     pub show_notifications: bool,
     pub destructive_action_popup: bool,
     pub skip_toast: bool,
@@ -227,7 +226,6 @@ impl Session {
             input_source: None,
             startup_deadline: Some(Instant::now() + Duration::from_secs(1)),
             paused_due_to_minimize: false,
-            show_fps: config.show_fps.unwrap_or(true),
             show_notifications: config.show_notifications.unwrap_or(true),
             // realizing that my poor and impulsive cotrol over a mouse requires
             // this
@@ -403,7 +401,6 @@ impl Session {
             master_volume: Some(self.master_volume),
             gif_settings: self.gif.settings(),
             display: self.display,
-            show_fps: Some(self.show_fps),
             show_notifications: Some(self.show_notifications),
             destructive_action_popup: Some(self.destructive_action_popup),
             analog_deadzone_radius: Some(self.analog_deadzone_radius),
