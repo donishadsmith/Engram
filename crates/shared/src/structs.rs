@@ -124,7 +124,7 @@ impl PendingDialog {
     }
 
     pub fn select_folder(start_dir: PathBuf) -> Self {
-        Self::new(move || FileDialog::new().set_directory(start_dir).pick_folder())
+        Self::new(|| FileDialog::new().set_directory(start_dir).pick_folder())
     }
 
     pub fn poll(&self) -> Option<Option<PathBuf>> {
