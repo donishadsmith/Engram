@@ -699,7 +699,7 @@ dependencies = [
 
 [[package]]
 name = "frontend"
-version = "0.2.27"
+version = "0.2.28"
 dependencies = [
  "chrono",
  "egui",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "gb"
-version = "0.2.27"
+version = "0.2.28"
 dependencies = [
  "chrono",
  "lz4_flex",
@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "gba"
-version = "0.2.27"
+version = "0.2.28"
 dependencies = [
  "chrono",
  "egui",
@@ -2083,7 +2083,7 @@ dependencies = [
 
 [[package]]
 name = "shared"
-version = "0.2.26"
+version = "0.2.28"
 dependencies = [
  "arboard",
  "blip_buf",
