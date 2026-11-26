@@ -15,13 +15,14 @@ use crate::render::{Frame, fit_nearest, to_rgba};
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+const BYTES_PER_AUDIO_FRAME: usize = 8;
 
 // https://gist.github.com/carrotflakes/d6960c62d3de5dcbcc2b44562814d5a7
 //https://github.com/NapoleonWils0n/ffmpeg-rust-scripts
 
 struct Active {
     child: Child,
-    sender: SyncSender<Vec<u8>>,
+    sender: SyncSender<(Vec<u8>, u8)>,
     writer: JoinHandle<()>,
     audio: BufWriter<File>,
     output: PathBuf,
@@ -29,6 +30,9 @@ struct Active {
     temp_audio: PathBuf,
     recording_size: (u32, u32),
     sample_rate: u32,
+    fps: f64,
+    audio_frames: u64,
+    video_frames: u64,
 }
 
 impl Active {
@@ -51,11 +55,13 @@ impl Active {
             .spawn()?;
 
         let mut stdin = child.stdin.take().unwrap();
-        let (sender, receiver) = mpsc::sync_channel::<Vec<u8>>(16);
+        let (sender, receiver) = mpsc::sync_channel::<(Vec<u8>, u8)>(16);
         let writer = spawn(move || {
-            while let Ok(frame) = receiver.recv() {
-                if stdin.write_all(&frame).is_err() {
-                    break;
+            'outer: while let Ok((frame, repeat)) = receiver.recv() {
+                for _ in 0..repeat {
+                    if stdin.write_all(&frame).is_err() {
+                        break 'outer;
+                    }
                 }
             }
         });
@@ -72,7 +78,18 @@ impl Active {
             temp_audio,
             recording_size: (width, height),
             sample_rate,
+            fps: fps as f64,
+            audio_frames: 0,
+            video_frames: 0,
         })
+    }
+
+    fn video_frames_due(&self) -> u64 {
+        (self.audio_frames as f64 * self.fps / self.sample_rate as f64).round() as u64
+    }
+
+    fn audio_frames_due(&self) -> u64 {
+        (self.video_frames as f64 * self.sample_rate as f64 / self.fps).round() as u64
     }
 
     fn complete(mut self) -> Result<(), Error> {
@@ -146,6 +163,25 @@ impl VideoRecorder {
         let Some(active) = self.active.as_mut() else {
             return;
         };
+
+        let silent = audio.len() < BYTES_PER_AUDIO_FRAME;
+
+        let repeat = if silent {
+            1
+        } else {
+            active.audio_frames += (audio.len() / BYTES_PER_AUDIO_FRAME) as u64;
+            let _ = active.audio.write_all(&audio);
+
+            active
+                .video_frames_due()
+                .saturating_sub(active.video_frames)
+                .min(u8::MAX as u64) as u8
+        };
+
+        if repeat == 0 {
+            return;
+        }
+
         let mut rgba = to_rgba(&frame);
 
         if (frame.width as u32, frame.height as u32) != active.recording_size {
@@ -158,8 +194,17 @@ impl VideoRecorder {
             );
         }
 
-        let _ = active.sender.send(rgba);
-        let _ = active.audio.write_all(&audio);
+        let _ = active.sender.send((rgba, repeat));
+        active.video_frames += repeat as u64;
+
+        if silent {
+            let missing = active.audio_frames_due().saturating_sub(active.audio_frames);
+            let _ = active
+                .audio
+                .write_all(&vec![0u8; missing as usize * BYTES_PER_AUDIO_FRAME]);
+
+            active.audio_frames += missing;
+        }
     }
 }
 

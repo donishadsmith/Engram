@@ -92,9 +92,7 @@ pub fn set_data_directories(egui_ctx: &Context, session: &mut Session, ui_state:
         .open(&mut set_dirs)
         .show(egui_ctx, |ui| {
             folder_presentation(ui, session, ui_state, DataLocation::Data, false);
-
             folder_presentation(ui, session, ui_state, DataLocation::Image, false);
-
             folder_presentation(ui, session, ui_state, DataLocation::Video, true);
         });
 
@@ -456,24 +454,25 @@ pub fn set_rewind_settings(egui_ctx: &Context, session: &mut Session, ui_state: 
     egui::Window::new("Rewind Capacity (Seconds)")
         .open(&mut ui_state.open_rewind_settings)
         .show(egui_ctx, |ui| {
-            ui.label(egui::RichText::new("Game Boy").size(16.0).strong());
-
-            thin_separator(ui);
-
-            select_rewind_capacity(ui, &mut session.system_rewind_capacity.gameboy);
-
-            ui.add_space(8.0);
-
-            ui.label(egui::RichText::new("Game Boy Advance").size(16.0).strong());
-
-            thin_separator(ui);
-
-            select_rewind_capacity(ui, &mut session.system_rewind_capacity.gba);
+            rewind_system_option("Game Boy", ui, &mut session.system_rewind_capacity.gameboy, true);
+            rewind_system_option("Game Boy Advance", ui, &mut session.system_rewind_capacity.gba, false);
         });
 }
 
+fn rewind_system_option(system_name: &str, ui: &mut Ui, capacity: &mut usize, add_space: bool) {
+    ui.label(egui::RichText::new(system_name).size(16.0).strong());
+
+    thin_separator(ui);
+
+    select_rewind_capacity(ui, capacity);
+
+    if add_space {
+        ui.add_space(8.0);   
+    }
+}
+
 fn select_rewind_capacity(ui: &mut Ui, value: &mut usize) {
-    const OPTIONS: [&str; 8] = ["Off", "15", "30", "60", "120", "180", "240", "300"];
+    const OPTIONS: [&str; 9] = ["Off", "5", "15", "30", "60", "120", "180", "240", "300"];
 
     ui.horizontal(|ui| {
         for (index, label) in ALLOWED_REWIND_CAPACITY.iter().zip(OPTIONS) {
@@ -481,6 +480,7 @@ fn select_rewind_capacity(ui: &mut Ui, value: &mut usize) {
         }
     });
 }
+
 
 pub fn show_destructive_action_popup(egui_ctx: &Context, session: &mut Session, ui_state: &mut UiState) {
     // i think these are mostly, kinda centered? horizontal_centered didnt work

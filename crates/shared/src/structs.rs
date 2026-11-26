@@ -323,10 +323,10 @@ impl RewindManager {
     }
 
     pub fn push(&mut self, cycles: u64, state: Vec<u8>) {
-        if self.buffer.len() == self.capacity {
+        while self.buffer.len() >= self.capacity.max(1) {
             self.buffer.pop_front();
         }
-
+        
         self.buffer.push_back((cycles, state));
         self.last_cycle = cycles;
     }

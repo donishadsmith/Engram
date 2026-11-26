@@ -221,7 +221,6 @@ impl EmulatorSession for GameBoySession {
     fn run(&mut self, input: &[bool], volume: u8) -> Result<EmulatorState, Error> {
         self.frame_ready = false;
         self.gameboy.keypad = input.try_into().unwrap_or([false; 8]);
-        self.recorded_audio = Vec::new();
 
         // https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html
         self.dynamic_rate_control();
@@ -257,6 +256,7 @@ impl EmulatorSession for GameBoySession {
 
     fn reset(&mut self, rom_path: PathBuf) -> Result<(), Error> {
         self.audio = AudioOutput::new();
+        self.recorded_audio = Vec::new();
         let gamepak = GamePak::load(rom_path)?;
         let sample_rate = self.audio.as_ref().map_or(48000, |audio| audio.sample_rate) as f64;
         let apu_sample_period = GB_CLOCK_SPEED / sample_rate;
@@ -292,12 +292,10 @@ impl EmulatorSession for GameBoySession {
     fn step_instruction(&mut self, volume: u8) {
         self.gameboy.step();
         self.step_end(volume);
-        self.video_capture();
     }
 
     fn step_frame(&mut self, volume: u8) {
         self.gameboy.take_frame();
-        self.video_capture();
 
         let mut cycles = 0;
         while !self.gameboy.cpu.bus.ppu.frame_ready && cycles < T_CYCLES_PER_FRAME_DOUBLE {

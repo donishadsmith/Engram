@@ -5,6 +5,10 @@ use gif::{Encoder, Frame, Repeat};
 
 use crate::render::to_rgb;
 
+// video now adjusts for speed but right now i dont think gif should do speed adjustments
+// since it would be more like a hidden parameter and would result in my brain
+// having to think about the interactions and waste precious oxygen, glucose
+// and other nutrients for zero reason
 pub struct GifRecorder {
     encoder: Option<Encoder<File>>,
     counter: u8,
